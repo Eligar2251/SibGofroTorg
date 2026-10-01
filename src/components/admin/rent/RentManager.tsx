@@ -16,22 +16,25 @@ import {
   FileText,
   Wallet,
   Settings2,
+  Zap,
 } from "lucide-react";
 import type {
   RentInvoice,
+  RentMeterReading,
   RentOrg,
   RentPayment,
   RentTenant,
 } from "@/lib/rent-shared";
 import { RentDashboard } from "./RentDashboard";
 import { RentTenants } from "./RentTenants";
+import { RentElectricity } from "./RentElectricity";
 import { RentInvoices } from "./RentInvoices";
 import { RentBank } from "./RentBank";
 import { RentOrgSettings } from "./RentOrgSettings";
 
 export type RentMode = "full" | "readonly" | "dashboard";
 
-type RentTab = "dashboard" | "tenants" | "invoices" | "bank";
+type RentTab = "dashboard" | "tenants" | "electricity" | "invoices" | "bank";
 
 export function RentManager({
   adminPath,
@@ -41,6 +44,7 @@ export function RentManager({
   tenants,
   invoices,
   payments,
+  meterReadings,
 }: {
   adminPath: string;
   mode: RentMode;
@@ -49,12 +53,13 @@ export function RentManager({
   tenants: RentTenant[];
   invoices: RentInvoice[];
   payments: RentPayment[];
+  meterReadings: RentMeterReading[];
 }) {
   const readOnly = mode !== "full";
   const allowedTabs: RentTab[] =
     mode === "dashboard"
       ? ["dashboard"]
-      : ["dashboard", "tenants", "invoices", "bank"];
+      : ["dashboard", "tenants", "electricity", "invoices", "bank"];
 
   const [tab, setTab] = useState<RentTab>(() =>
     allowedTabs.includes(initialTab as RentTab) ? (initialTab as RentTab) : "dashboard"
@@ -64,6 +69,7 @@ export function RentManager({
   const tabs: { key: RentTab; label: string; icon: ReactNode }[] = [
     { key: "dashboard", label: "Дашборд", icon: <LayoutDashboard size={13} /> },
     { key: "tenants", label: "Арендаторы", icon: <Users size={13} /> },
+    { key: "electricity", label: "Электроэнергия", icon: <Zap size={13} /> },
     { key: "invoices", label: "Начисления", icon: <FileText size={13} /> },
     { key: "bank", label: "Банк аренды", icon: <Wallet size={13} /> },
   ];
@@ -133,6 +139,19 @@ export function RentManager({
           tenants={tenants}
           invoices={invoices}
           payments={payments}
+          meterReadings={meterReadings}
+          onOpenElectricity={() => setTab("electricity")}
+        />
+      )}
+      {tab === "electricity" && (
+        <RentElectricity
+          adminPath={adminPath}
+          readOnly={readOnly}
+          orgs={orgs}
+          tenants={tenants}
+          invoices={invoices}
+          payments={payments}
+          meterReadings={meterReadings}
         />
       )}
       {tab === "invoices" && (

@@ -48,6 +48,7 @@ export type EntityType =
   | "rent-tenant"
   | "rent-invoice"
   | "rent-payment"
+  | "rent-electricity"
   // Прямая правка денежного счёта владельцем (без документа). Такие
   // записи журнала видит только роль owner.
   | "money-adjustment"

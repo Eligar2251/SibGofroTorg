@@ -109,11 +109,40 @@ function accountFlagsOf(s: Salary) {
 }
 
 /**
- * Визуальный тип ячейки/плитки. В учёте СибГофроТорг: оплачено (зелёный),
- * план, аренда (синий), макулатура (бирюзовый). В модуле макулатуры те же
- * цвета означают: наличка (зелёный), безнал (синий), сторонние (бирюзовый).
+ * Визуальный тип ячейки/плитки. В учёте СибГофроТорг: оплачено (красный),
+ * план (светло-красный К / светло-синий А), аренда (синий), макулатура (бирюзовый).
+ * В модуле макулатуры те же цвета означают: наличка, безнал, сторонние.
  */
 type VisualKind = "planned" | "paid" | "rent" | "wp";
+type SalaryAccountCategory = "cash" | "rent" | "wp";
+
+function salaryAccountCategory(s: Salary, scope: SalaryScope): SalaryAccountCategory {
+  if (scope.kind === "wastepaper") {
+    const account = wastepaperSalaryAccount(s);
+    if (account === "bank") return "rent";
+    if (account === "third_party") return "wp";
+    return "cash";
+  }
+  if (isWastepaperSalary(s)) return "wp";
+  if (isRentSalary(s)) return "rent";
+  return "cash";
+}
+
+function plannedLetterForCategory(cat: SalaryAccountCategory, scope: SalaryScope): string {
+  if (scope.kind === "wastepaper") {
+    if (cat === "rent") return "Б";
+    if (cat === "wp") return "С";
+    return "К";
+  }
+  if (cat === "rent") return "А";
+  if (cat === "wp") return "М";
+  return "К";
+}
+
+function plannedLabelFor(s: Salary, scope: SalaryScope): string {
+  return `план ${plannedLetterForCategory(salaryAccountCategory(s, scope), scope)}`;
+}
+
 function visualKind(s: Salary, scope: SalaryScope): VisualKind {
   if (scope.kind === "wastepaper") {
     const account = wastepaperSalaryAccount(s);
@@ -126,11 +155,189 @@ function visualKind(s: Salary, scope: SalaryScope): VisualKind {
   return s.isPaid ? "paid" : "planned";
 }
 
-/** Оплата «с аренды на карту» или с source="bank" (если это не Карта ЮМ): обычная запись bank + тег в комментарии. ЗП с р/с банка не платится, только аренда. */
+/** Оплата «с аренды на карту» или с source="bank" (если это не Карта ЮМ / В.М.): обычная запись bank + тег в комментарии. ЗП с р/с банка не платится, только аренда. */
 function isRentSalary(s: Salary): boolean {
-  if (isYmCardSalaryComment(s.comment)) return false;
+  if (
+    s.source === "ym_card" ||
+    s.source === "vm_card" ||
+    isYmCardSalaryComment(s.comment) ||
+    isVmCardSalaryComment(s.comment)
+  ) {
+    return false;
+  }
   if (isWastepaperSalary(s)) return false;
   return isRentSalaryComment(s.comment, s.source) || s.source === "bank";
+}
+
+// ─── Цвета запланированных выплат («план») ────────
+
+const DEFAULT_PLAN_COLORS: Record<SalaryAccountCategory, string> = {
+  cash: "#d95b43", // Касса (план К) — чуть светлее красный
+  rent: "#4a7ec7", // Аренда (план А) — более светлый синий
+  wp: "#28969a",   // Макулатура (план М) — более светлый бирюзовый
+};
+
+const PLAN_COLOR_PRESETS: { hex: string; label: string }[] = [
+  { hex: "#d95b43", label: "Светло-красный (план К)" },
+  { hex: "#4a7ec7", label: "Светло-синий (план А)" },
+  { hex: "#16a34a", label: "Зелёный" },
+  { hex: "#8b5cf6", label: "Фиолетовый" },
+  { hex: "#0891b2", label: "Бирюзовый" },
+  { hex: "#ea580c", label: "Оранжевый" },
+  { hex: "#db2777", label: "Розовый" },
+  { hex: "#64748b", label: "Серый" },
+];
+
+interface PlanPalette {
+  base: string;
+  bg: string;
+  border: string;
+  text: string;
+}
+
+function normalizeCustomColorHex(raw: string | null | undefined): string {
+  const s = String(raw || "").trim();
+  if (!/^#[0-9a-fA-F]{3,8}$/.test(s)) return "";
+  const lower = s.toLowerCase();
+  if (lower === "#2563eb") return "#2564eb";
+  return lower.length === 4
+    ? `#${lower[1]}${lower[1]}${lower[2]}${lower[2]}${lower[3]}${lower[3]}`
+    : lower.slice(0, 7);
+}
+
+function parseHexRgb(hex: string): [number, number, number] | null {
+  const clean = hex.replace(/^#/, "");
+  if (clean.length === 3) {
+    const r = parseInt(clean[0] + clean[0], 16);
+    const g = parseInt(clean[1] + clean[1], 16);
+    const b = parseInt(clean[2] + clean[2], 16);
+    if ([r, g, b].some(Number.isNaN)) return null;
+    return [r, g, b];
+  }
+  if (clean.length >= 6) {
+    const r = parseInt(clean.slice(0, 2), 16);
+    const g = parseInt(clean.slice(2, 4), 16);
+    const b = parseInt(clean.slice(4, 6), 16);
+    if ([r, g, b].some(Number.isNaN)) return null;
+    return [r, g, b];
+  }
+  return null;
+}
+
+function toHexByte(n: number): string {
+  return Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${toHexByte(r)}${toHexByte(g)}${toHexByte(b)}`;
+}
+
+function mixRgb(
+  c1: [number, number, number],
+  c2: [number, number, number],
+  weight1: number
+): string {
+  const w = Math.max(0, Math.min(1, weight1));
+  return rgbToHex(
+    c1[0] * w + c2[0] * (1 - w),
+    c1[1] * w + c2[1] * (1 - w),
+    c1[2] * w + c2[2] * (1 - w)
+  );
+}
+
+function buildPlanPalette(hex: string, fallbackHex = DEFAULT_PLAN_COLORS.cash): PlanPalette {
+  const rgb = parseHexRgb(hex) || parseHexRgb(fallbackHex) || [217, 91, 67];
+  const white: [number, number, number] = [255, 255, 255];
+  const dark: [number, number, number] = [24, 28, 36];
+  const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+
+  if (lum > 0.82) {
+    const bg = lum > 0.94 ? mixRgb(rgb, dark, 0.94) : rgbToHex(rgb[0], rgb[1], rgb[2]);
+    const border = mixRgb(rgb, dark, 0.78);
+    const text = mixRgb(rgb, dark, 0.42);
+    return { base: rgbToHex(rgb[0], rgb[1], rgb[2]), bg, border, text };
+  }
+
+  const bg = mixRgb(rgb, white, 0.13);
+  const border = mixRgb(rgb, white, 0.36);
+  const text =
+    lum > 0.62
+      ? mixRgb(rgb, dark, 0.68)
+      : lum < 0.22
+        ? mixRgb(rgb, white, 0.82)
+        : rgbToHex(rgb[0], rgb[1], rgb[2]);
+  return {
+    base: rgbToHex(rgb[0], rgb[1], rgb[2]),
+    bg,
+    border,
+    text,
+  };
+}
+
+function PlanColorPicker({
+  value,
+  defaultColor,
+  defaultLabel = "По счёту",
+  compact = false,
+  onChange,
+}: {
+  value: string;
+  defaultColor: string;
+  defaultLabel?: string;
+  compact?: boolean;
+  onChange: (nextHex: string) => void;
+}) {
+  const normalized = normalizeCustomColorHex(value);
+  const pickerVal = normalized || normalizeCustomColorHex(defaultColor) || DEFAULT_PLAN_COLORS.cash;
+  return (
+    <div className={`whsal-color-picker${compact ? " whsal-color-picker--compact" : ""}`}>
+      <button
+        type="button"
+        className={`whsal-color-auto${!normalized ? " whsal-color-auto--active" : ""}`}
+        onClick={() => onChange("")}
+        title="Автоматический цвет по счёту (касса — светло-красный план К, аренда — светло-синий план А)"
+      >
+        <span
+          className="whsal-color-auto__dot"
+          style={{ backgroundColor: defaultColor }}
+        />
+        {defaultLabel}
+      </button>
+      {PLAN_COLOR_PRESETS.map((preset) => {
+        const active = normalized === preset.hex.toLowerCase();
+        return (
+          <button
+            key={preset.hex}
+            type="button"
+            className={`whsal-color-swatch${active ? " whsal-color-swatch--active" : ""}`}
+            style={{ backgroundColor: preset.hex }}
+            title={preset.label}
+            aria-label={preset.label}
+            onClick={() => onChange(preset.hex)}
+          />
+        );
+      })}
+      <label
+        className={`whsal-color-custom${
+          normalized && !PLAN_COLOR_PRESETS.some((p) => p.hex.toLowerCase() === normalized)
+            ? " whsal-color-custom--active"
+            : ""
+        }`}
+        title="Выбрать свой цвет"
+      >
+        <input
+          type="color"
+          value={pickerVal}
+          onChange={(e) => onChange(normalizeCustomColorHex(e.target.value))}
+          aria-label="Выбрать свой цвет плана"
+        />
+        <span
+          className="whsal-color-custom__preview"
+          style={{ backgroundColor: pickerVal }}
+        />
+      </label>
+    </div>
+  );
 }
 
 function todayIso(): string {
@@ -250,6 +457,8 @@ const calendarSettingKey = (scope: SalaryScope, month: string) =>
   `${scope.settingsPrefix}calendar_${month}`;
 const scheduleSettingKey = (scope: SalaryScope, month: string, employeeId: string) =>
   `${scope.settingsPrefix}schedule_${month}_${employeeId}`;
+const planColorSettingKey = (scope: SalaryScope, cat: SalaryAccountCategory) =>
+  `${scope.settingsPrefix}plan_color_${cat}`;
 
 /**
  * Ширины колонок таблицы взаиморасчётов.
@@ -384,8 +593,16 @@ function SalaryFormModal({
   );
   const [comment, setComment] = useState(stripSalaryMetaTags(initial?.comment));
   const [color, setColor] = useState<string>(
-    getSalaryColor(initial?.comment) || "#2563eb"
+    getSalaryColor(initial?.comment) || ""
   );
+  const defaultColorForSource =
+    source === "bank" || source === "wastepaper_bank"
+      ? DEFAULT_PLAN_COLORS.rent
+      : source === "wastepaper" || source === "wastepaper_third"
+        ? isWpScope && source === "wastepaper"
+          ? DEFAULT_PLAN_COLORS.cash
+          : DEFAULT_PLAN_COLORS.wp
+        : DEFAULT_PLAN_COLORS.cash;
   const [excludeFromBalance, setExcludeFromBalance] = useState(
     Boolean(initial && isSalaryExcludedFromBalance(initial.comment))
   );
@@ -471,7 +688,7 @@ function SalaryFormModal({
               excludeFromBalance,
               debtPayment,
               periodMonth,
-              color,
+              color: color ? normalizeCustomColorHex(color) : null,
             }),
           }),
         }
@@ -688,23 +905,26 @@ function SalaryFormModal({
             </div>
 
             <div className="admin-field" style={{ marginTop: 12 }}>
-              <label className="admin-label">Цвет плитки</label>
-              <div className="settings-color-control">
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  aria-label="Выбрать цвет плитки зарплаты"
-                />
-                <input
-                  type="text"
-                  className="admin-input"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  placeholder="#2563eb"
-                  pattern="#[0-9A-Fa-f]{3,8}"
-                />
-              </div>
+              <label className="admin-label">Цвет в плане («план»)</label>
+              <PlanColorPicker
+                value={color}
+                defaultColor={defaultColorForSource}
+                defaultLabel={
+                  source === "bank"
+                    ? "По счёту (план А — светло-синий)"
+                    : source === "wastepaper_bank"
+                      ? "По счёту (план Б — светло-синий)"
+                      : source === "wastepaper_third"
+                        ? "По счёту (план С — бирюзовый)"
+                        : !isWpScope && source === "wastepaper"
+                          ? "По счёту (план М — бирюзовый)"
+                          : "По счёту (план К — светло-красный)"
+                }
+                onChange={setColor}
+              />
+              <span className="admin-hint" style={{ marginTop: 4, display: "block" }}>
+                По умолчанию касса окрашивается в светло-красный («план К»), аренда — в светло-синий («план А»). Можно выбрать свой цвет для запланированной выплаты.
+              </span>
             </div>
 
             <label className="admin-check" style={{ marginTop: 12 }}>
@@ -963,11 +1183,13 @@ function QuickPayForm({
   scope,
   autoFocus,
   saving,
+  planColors,
   onSubmit,
 }: {
   scope: SalaryScope;
   autoFocus?: boolean;
   saving: boolean;
+  planColors?: Record<SalaryAccountCategory, string>;
   onSubmit: (data: {
     amount: number;
     source: QuickSource;
@@ -977,6 +1199,8 @@ function QuickPayForm({
     comment: string;
     /** Откуда пришли сторонние деньги (счёт «Сторонние» макулатуры). */
     thirdPartyOrigin: string;
+    /** Кастомный цвет плитки в плане (если выбран). */
+    color: string | null;
   }) => void;
 }) {
   const isWpScope = scope.kind === "wastepaper";
@@ -987,6 +1211,15 @@ function QuickPayForm({
   const [excludeFromBalance, setExcludeFromBalance] = useState(false);
   const [debtPayment, setDebtPayment] = useState(false);
   const [comment, setComment] = useState("");
+  const [color, setColor] = useState("");
+
+  const paletteMap = planColors || DEFAULT_PLAN_COLORS;
+  const defaultColorForSource =
+    source === "rent" || source === "bank" || source === "wastepaper_bank"
+      ? paletteMap.rent
+      : source === "wastepaper_third" || (!isWpScope && source === "wastepaper")
+        ? paletteMap.wp
+        : paletteMap.cash;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -1001,11 +1234,13 @@ function QuickPayForm({
       debtPayment,
       comment: comment.trim(),
       thirdPartyOrigin: thirdPartyOrigin.trim(),
+      color: color ? normalizeCustomColorHex(color) : null,
     });
     setAmount("");
     setExcludeFromBalance(false);
     setDebtPayment(false);
     setComment("");
+    setColor("");
   }
 
   return (
@@ -1122,6 +1357,30 @@ function QuickPayForm({
         />
         Выплачено (списать со счёта сразу)
       </label>
+      {!paid && (
+        <div className="whsal-qform__color">
+          <span className="whsal-qform__color-label">
+            Цвет в плане (
+            {source === "rent" || source === "bank"
+              ? "план А"
+              : source === "wastepaper_bank"
+                ? "план Б"
+                : source === "wastepaper_third"
+                  ? "план С"
+                  : !isWpScope && source === "wastepaper"
+                    ? "план М"
+                    : "план К"}
+            ):
+          </span>
+          <PlanColorPicker
+            compact
+            value={color}
+            defaultColor={defaultColorForSource}
+            defaultLabel="По счёту"
+            onChange={setColor}
+          />
+        </div>
+      )}
       <label className="whsal-check">
         <input
           type="checkbox"
@@ -1821,6 +2080,57 @@ export function WarehouseSalaries({
   }, [settingsRaw, activeMonth, scope]);
   const weekendSet = useMemo(() => new Set(weekendDays), [weekendDays]);
 
+  // ── Цвета запланированных выплат («план К» / «план А» / «план М») ──
+  const planBaseColors = useMemo<Record<SalaryAccountCategory, string>>(
+    () => ({
+      cash:
+        normalizeCustomColorHex(settingsRaw[planColorSettingKey(scope, "cash")]) ||
+        DEFAULT_PLAN_COLORS.cash,
+      rent:
+        normalizeCustomColorHex(settingsRaw[planColorSettingKey(scope, "rent")]) ||
+        DEFAULT_PLAN_COLORS.rent,
+      wp:
+        normalizeCustomColorHex(settingsRaw[planColorSettingKey(scope, "wp")]) ||
+        DEFAULT_PLAN_COLORS.wp,
+    }),
+    [settingsRaw, scope]
+  );
+
+  const planPalettes = useMemo<Record<SalaryAccountCategory, PlanPalette>>(
+    () => ({
+      cash: buildPlanPalette(planBaseColors.cash, DEFAULT_PLAN_COLORS.cash),
+      rent: buildPlanPalette(planBaseColors.rent, DEFAULT_PLAN_COLORS.rent),
+      wp: buildPlanPalette(planBaseColors.wp, DEFAULT_PLAN_COLORS.wp),
+    }),
+    [planBaseColors]
+  );
+
+  const planColorsCustomized = useMemo(
+    () =>
+      Boolean(
+        normalizeCustomColorHex(settingsRaw[planColorSettingKey(scope, "cash")]) ||
+          normalizeCustomColorHex(settingsRaw[planColorSettingKey(scope, "rent")]) ||
+          normalizeCustomColorHex(settingsRaw[planColorSettingKey(scope, "wp")])
+      ),
+    [settingsRaw, scope]
+  );
+
+  const planTableCssVars = useMemo(
+    () =>
+      ({
+        "--whsal-plan-cash-bg": planPalettes.cash.bg,
+        "--whsal-plan-cash-line": planPalettes.cash.border,
+        "--whsal-plan-cash-fg": planPalettes.cash.text,
+        "--whsal-plan-rent-bg": planPalettes.rent.bg,
+        "--whsal-plan-rent-line": planPalettes.rent.border,
+        "--whsal-plan-rent-fg": planPalettes.rent.text,
+        "--whsal-plan-wp-bg": planPalettes.wp.bg,
+        "--whsal-plan-wp-line": planPalettes.wp.border,
+        "--whsal-plan-wp-fg": planPalettes.wp.text,
+      }) as React.CSSProperties,
+    [planPalettes]
+  );
+
   // ── Excel-таблица: строки по сотрудникам ──
   const gridRows: GridRow[] = useMemo(() => {
     return employees
@@ -2076,6 +2386,82 @@ export function WarehouseSalaries({
     }
   }
 
+  async function updateSalaryColor(s: Salary, rawColor: string | null) {
+    const cleanColor = rawColor ? normalizeCustomColorHex(rawColor) : null;
+    const nextComment = composeSalaryComment({
+      comment: stripSalaryMetaTags(s.comment),
+      rent: isRentSalary(s),
+      ...accountFlagsOf(s),
+      excludeFromBalance: isSalaryExcludedFromBalance(s.comment),
+      debtPayment: isDebtPaymentSalary(s),
+      periodMonth: salaryPeriodKey(s),
+      color: cleanColor,
+    });
+    const prevSalaries = salaries;
+    setSalaries((prev) =>
+      prev.map((item) =>
+        item.id === s.id ? { ...item, comment: nextComment } : item
+      )
+    );
+    setBusyId(s.id);
+    try {
+      const res = await fetch(`${scope.salariesApi}/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: nextComment }),
+      });
+      if (!res.ok) {
+        setSalaries(prevSalaries);
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || "Не удалось сохранить цвет");
+      }
+    } catch {
+      setSalaries(prevSalaries);
+      alert("Ошибка сети");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function savePlanCategoryColor(
+    cat: SalaryAccountCategory,
+    rawColor: string | null
+  ) {
+    const key = planColorSettingKey(scope, cat);
+    const value = rawColor ? normalizeCustomColorHex(rawColor) : "";
+    setSettingsRaw((prev) => ({ ...prev, [key]: value }));
+    try {
+      const res = await fetch(scope.settingsApi, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!res.ok) {
+        alert("Не удалось сохранить цвет плана");
+      }
+    } catch {
+      alert("Ошибка сети");
+    }
+  }
+
+  async function resetPlanCategoryColors() {
+    const payload: Record<string, string> = {
+      [planColorSettingKey(scope, "cash")]: "",
+      [planColorSettingKey(scope, "rent")]: "",
+      [planColorSettingKey(scope, "wp")]: "",
+    };
+    setSettingsRaw((prev) => ({ ...prev, ...payload }));
+    try {
+      await fetch(scope.settingsApi, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      alert("Ошибка сети");
+    }
+  }
+
   async function handleDelete(s: Salary) {
     if (!confirm(`Удалить начисление для «${s.employeeName}»?`)) return;
     setBusyId(s.id);
@@ -2108,6 +2494,7 @@ export function WarehouseSalaries({
       debtPayment: boolean;
       comment: string;
       thirdPartyOrigin: string;
+      color: string | null;
     }
   ) {
     setQuickBusy(true);
@@ -2125,6 +2512,7 @@ export function WarehouseSalaries({
         excludeFromBalance: data.excludeFromBalance,
         debtPayment: data.debtPayment,
         periodMonth: activeMonth,
+        color: data.color,
       });
       // Виртуальные счета (макулатура наличка/безнал/сторонние) сервер сам
       // приводит к cash/bank в БД и проставляет теги; «аренда» = bank + [Аренда].
@@ -2461,19 +2849,52 @@ export function WarehouseSalaries({
       for (let d = 1; d <= dayCount; d++) {
         const items = row.cells[d] || [];
         const sum = items.reduce((s, x) => s + x.amount, 0);
-        const hasPending = items.some((item) => !item.isPaid);
+        const pendingItems = items.filter((item) => !item.isPaid);
+        const hasPending = pendingItems.length > 0;
+        const pendingRent = pendingItems.some(
+          (item) => salaryAccountCategory(item, scope) === "rent"
+        );
+        const pendingWp = pendingItems.some(
+          (item) => salaryAccountCategory(item, scope) === "wp"
+        );
+        const customHex =
+          pendingItems.map((item) => getSalaryColor(item.comment)).find(Boolean) ||
+          items.map((item) => getSalaryColor(item.comment)).find(Boolean) ||
+          null;
+        const customPal = customHex ? buildPlanPalette(customHex) : null;
         const rent = items.some((item) => item.isPaid && visualKind(item, scope) === "rent");
         const wastepaper = items.some((item) => item.isPaid && visualKind(item, scope) === "wp");
         const scheduled = row.scheduledSet.has(d);
         let style = "border:1px solid #D5D2C9;padding:4px 3px;font-size:10px;text-align:center;";
-        if (hasPending) style += "background:#FFF5D9;color:#9A6500;font-weight:bold;";
-        else if (rent) style += "background:#DCE6F5;color:#1E3A5A;font-weight:bold;";
-        else if (wastepaper) style += "background:#D9F0EC;color:#0F5F52;font-weight:bold;";
-        else if (items.length) style += "background:#FBE3DC;color:#B83A1E;font-weight:bold;";
-        else if (scheduled) style += "background:#E8EEF6;color:#1E3A5A;font-weight:bold;";
-        else if (weekendSet.has(d)) style += "background:#FFF3C4;";
-        else style += "background:#FFFFFF;";
-        body += `<td style="${style}">${sum ? `${fmt(sum)}${hasPending ? " (план)" : ""}` : scheduled ? "П" : ""}</td>`;
+        if (customPal && hasPending) {
+          style += `background:${customPal.bg.toUpperCase()};color:${customPal.text.toUpperCase()};font-weight:bold;`;
+        } else if (hasPending && pendingRent) {
+          style += `background:${planPalettes.rent.bg.toUpperCase()};color:${planPalettes.rent.text.toUpperCase()};font-weight:bold;`;
+        } else if (hasPending && pendingWp) {
+          style += `background:${planPalettes.wp.bg.toUpperCase()};color:${planPalettes.wp.text.toUpperCase()};font-weight:bold;`;
+        } else if (hasPending) {
+          style += `background:${planPalettes.cash.bg.toUpperCase()};color:${planPalettes.cash.text.toUpperCase()};font-weight:bold;`;
+        } else if (rent) {
+          style += "background:#CFE0F5;color:#1E3A5A;font-weight:bold;";
+        } else if (wastepaper) {
+          style += "background:#D9F0EC;color:#0F5F52;font-weight:bold;";
+        } else if (items.length) {
+          style += "background:#F9D5CC;color:#B83A1E;font-weight:bold;";
+        } else if (scheduled) {
+          const schedPal = isWpScope ? planPalettes.cash : planPalettes.rent;
+          style += `background:${schedPal.bg.toUpperCase()};color:${schedPal.text.toUpperCase()};font-weight:bold;`;
+        } else if (weekendSet.has(d)) {
+          style += "background:#FFF3C4;";
+        } else {
+          style += "background:#FFFFFF;";
+        }
+        const pendingLabel = hasPending
+          ? pendingItems[0]
+            ? ` (${plannedLabelFor(pendingItems[0], scope)})`
+            : " (план К)"
+          : "";
+        const scheduledMark = isWpScope ? "план К" : "план А";
+        body += `<td style="${style}">${sum ? `${fmt(sum)}${pendingLabel}` : scheduled ? scheduledMark : ""}</td>`;
       }
       const restColor = row.rest === 0 ? "#1E4A2D" : row.rest < 0 ? "#B83A1E" : "#C8860A";
       body += `<td align="right" style="border:1px solid #D5D2C9;padding:4px 6px;font-size:11px;font-weight:bold;color:${restColor};background:#F7F5F0;">${row.rest}</td>`;
@@ -2803,9 +3224,17 @@ export function WarehouseSalaries({
           )}
         </div>
 
-        <div style={{ background: "var(--adm-card)" }}>
+        <div style={{ background: "var(--adm-card)", ...planTableCssVars }}>
         <div className="whsal-grid-scroll">
-          <div ref={salaryTableExportRef} style={{ width: "max-content", minWidth: "100%", background: "var(--adm-card)" }}>
+          <div
+            ref={salaryTableExportRef}
+            style={{
+              width: "max-content",
+              minWidth: "100%",
+              background: "var(--adm-card)",
+              ...planTableCssVars,
+            }}
+          >
           <table className="whsal-table" ref={setColsHostRef}>
             <thead>
               <tr>
@@ -2991,6 +3420,36 @@ export function WarehouseSalaries({
                     const rent = paidItems.some((item) => visualKind(item, scope) === "rent");
                     const wastepaper = paidItems.some((item) => visualKind(item, scope) === "wp");
                     const hasPlannedPayment = pendingItems.length > 0;
+                    const plannedRent = pendingItems.some(
+                      (item) => salaryAccountCategory(item, scope) === "rent"
+                    );
+                    const plannedWp = pendingItems.some(
+                      (item) => salaryAccountCategory(item, scope) === "wp"
+                    );
+                    const primaryPlannedCat: SalaryAccountCategory = plannedRent
+                      ? "rent"
+                      : plannedWp
+                        ? "wp"
+                        : "cash";
+                    const customCellHex =
+                      pendingItems
+                        .map((item) => getSalaryColor(item.comment))
+                        .find(Boolean) ||
+                      paidItems
+                        .map((item) => getSalaryColor(item.comment))
+                        .find(Boolean) ||
+                      null;
+                    const customCellPalette = customCellHex
+                      ? buildPlanPalette(customCellHex)
+                      : null;
+                    const customCellStyle: React.CSSProperties | undefined =
+                      customCellPalette
+                        ? ({
+                            "--whsal-custom-bg": customCellPalette.bg,
+                            "--whsal-custom-line": customCellPalette.border,
+                            "--whsal-custom-fg": customCellPalette.text,
+                          } as React.CSSProperties)
+                        : undefined;
                     const scheduled = row.scheduledSet.has(d);
                     const cls = [
                       "whsal-td",
@@ -2998,14 +3457,31 @@ export function WarehouseSalaries({
                       weekendSet.has(d) ? "whsal-day--weekend" : "",
                       items.length
                         ? hasPlannedPayment
-                          ? "whsal-day--planned"
-                          : rent
-                            ? "whsal-day--rent"
-                            : wastepaper
-                              ? "whsal-day--wp"
-                              : "whsal-day--paid"
+                          ? [
+                              "whsal-day--planned",
+                              primaryPlannedCat === "rent"
+                                ? "whsal-day--planned-rent"
+                                : primaryPlannedCat === "wp"
+                                  ? "whsal-day--planned-wp"
+                                  : "whsal-day--planned-cash",
+                              customCellPalette ? "whsal-day--custom-color" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")
+                          : [
+                              rent
+                                ? "whsal-day--rent"
+                                : wastepaper
+                                  ? "whsal-day--wp"
+                                  : "whsal-day--paid",
+                              customCellPalette ? "whsal-day--custom-color" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")
                         : scheduled
-                          ? "whsal-day--scheduled"
+                          ? isWpScope
+                            ? "whsal-day--scheduled whsal-day--planned-cash"
+                            : "whsal-day--scheduled whsal-day--planned-rent"
                           : "",
                       flashKey === `${row.employee.id}:${d}` ? "whsal-day--flash" : "",
                     ]
@@ -3018,7 +3494,11 @@ export function WarehouseSalaries({
                     const itemDates = items
                       .map(
                         (item) =>
-                          `${fmtDate(salaryOperationDate(item))} — ${item.isPaid ? "выплачено" : "запланировано"} ${fmt(item.amount)} ₽`
+                          `${fmtDate(salaryOperationDate(item))} — ${
+                            item.isPaid
+                              ? `выплачено (${sourceLabel(item, scope)})`
+                              : `запланировано (${plannedLabelFor(item, scope)} · ${sourceLabel(item, scope)})`
+                          } ${fmt(item.amount)} ₽`
                       )
                       .join("\n");
                     const title =
@@ -3027,8 +3507,8 @@ export function WarehouseSalaries({
                         ? `\n${itemDates}`
                         : scheduled
                           ? isWpScope
-                            ? "\nЗапланирована выплата по графику"
-                            : "\nЗапланирована выплата с аренды"
+                            ? "\nЗапланирована выплата по графику (план К)"
+                            : "\nЗапланирована выплата с аренды (план А)"
                           : "\nКлик — добавить выплату");
                     const plannedAmount = row.scheduledPlanByDay?.[d] || 0;
                     const visibleItems = items.slice(0, 2);
@@ -3036,6 +3516,7 @@ export function WarehouseSalaries({
                     return (
                       <td
                         key={d}
+                        style={customCellStyle}
                         className={`${cls}${
                           dragOverDay &&
                           dragOverDay.employeeId === row.employee.id &&
@@ -3083,74 +3564,102 @@ export function WarehouseSalaries({
                         }}
                       >
                         <span className="whsal-day-stack">
-                          {visibleItems.map((entry) => (
-                            <span
-                              key={entry.id}
-                              draggable
-                              className={`whsal-day-line whsal-day-line--draggable${
-                                !entry.isPaid
-                                  ? " whsal-day-line--planned"
-                                  : visualKind(entry, scope) === "rent"
-                                    ? " whsal-day-line--rent"
-                                    : visualKind(entry, scope) === "wp"
-                                      ? " whsal-day-line--wp"
-                                      : isDebtPaymentSalary(entry)
-                                        ? " whsal-day-line--debt"
-                                        : ""
-                              }`}
-                              title={`${entry.isPaid ? "Выплачено" : "Запланировано"} ${fmtDate(salaryOperationDate(entry))} за ${monthLabel(salaryPeriodKey(entry))}. Перетащите на другой день, чтобы перенести.`}
-                              onDragStart={(e) => {
-                                e.stopPropagation();
-                                e.dataTransfer.setData("text/plain", entry.id);
-                                e.dataTransfer.effectAllowed = "move";
-                                setDragSalary({
-                                  id: entry.id,
-                                  employeeId: row.employee.id,
-                                  fromDay: d,
-                                });
-                              }}
-                              onDragEnd={() => {
-                                setDragSalary(null);
-                                setDragOverDay(null);
-                              }}
-                            >
-                              {Math.round(entry.amount) === entry.amount
-                                ? String(entry.amount)
-                                : String(entry.amount).replace(".", ",")}
-                              {(salaryPeriodKey(entry) !==
-                                monthKey(salaryOperationDate(entry)) ||
-                                !entry.isPaid) && (
-                                <small>
-                                  {[
-                                    salaryPeriodKey(entry) !==
-                                    monthKey(salaryOperationDate(entry))
-                                      ? `за ${monthLabel(salaryPeriodKey(entry))
-                                          .split(" ")[0]
-                                          .slice(0, 3)
-                                          .toLowerCase()}`
-                                      : "",
-                                    !entry.isPaid ? "план" : "",
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </small>
-                              )}
-                            </span>
-                          ))}
+                          {visibleItems.map((entry) => {
+                            const entryCat = salaryAccountCategory(entry, scope);
+                            const entryCustomHex = getSalaryColor(entry.comment);
+                            const entryCustomPal = entryCustomHex
+                              ? buildPlanPalette(entryCustomHex)
+                              : null;
+                            const entryLineStyle: React.CSSProperties | undefined =
+                              entryCustomPal && visibleItems.length > 1
+                                ? {
+                                    background: entryCustomPal.bg,
+                                    color: entryCustomPal.text,
+                                    borderRadius: 3,
+                                    padding: "0 2px",
+                                  }
+                                : undefined;
+                            return (
+                              <span
+                                key={entry.id}
+                                draggable
+                                style={entryLineStyle}
+                                className={`whsal-day-line whsal-day-line--draggable${
+                                  !entry.isPaid
+                                    ? ` whsal-day-line--planned whsal-day-line--planned-${entryCat}${
+                                        entryCustomPal ? " whsal-day-line--custom" : ""
+                                      }`
+                                    : visualKind(entry, scope) === "rent"
+                                      ? " whsal-day-line--rent"
+                                      : visualKind(entry, scope) === "wp"
+                                        ? " whsal-day-line--wp"
+                                        : isDebtPaymentSalary(entry)
+                                          ? " whsal-day-line--debt"
+                                          : ""
+                                }`}
+                                title={`${entry.isPaid ? "Выплачено" : `Запланировано (${plannedLabelFor(entry, scope)})`} ${fmtDate(salaryOperationDate(entry))} за ${monthLabel(salaryPeriodKey(entry))}. Перетащите на другой день, чтобы перенести.`}
+                                onDragStart={(e) => {
+                                  e.stopPropagation();
+                                  e.dataTransfer.setData("text/plain", entry.id);
+                                  e.dataTransfer.effectAllowed = "move";
+                                  setDragSalary({
+                                    id: entry.id,
+                                    employeeId: row.employee.id,
+                                    fromDay: d,
+                                  });
+                                }}
+                                onDragEnd={() => {
+                                  setDragSalary(null);
+                                  setDragOverDay(null);
+                                }}
+                              >
+                                {Math.round(entry.amount) === entry.amount
+                                  ? String(entry.amount)
+                                  : String(entry.amount).replace(".", ",")}
+                                {(salaryPeriodKey(entry) !==
+                                  monthKey(salaryOperationDate(entry)) ||
+                                  !entry.isPaid) && (
+                                  <small>
+                                    {[
+                                      salaryPeriodKey(entry) !==
+                                      monthKey(salaryOperationDate(entry))
+                                        ? `за ${monthLabel(salaryPeriodKey(entry))
+                                            .split(" ")[0]
+                                            .slice(0, 3)
+                                            .toLowerCase()}`
+                                        : "",
+                                      !entry.isPaid
+                                        ? plannedLabelFor(entry, scope)
+                                        : "",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </small>
+                                )}
+                              </span>
+                            );
+                          })}
                           {!items.length && plannedAmount > 0 && (
                             <span className="whsal-day-line whsal-day-line--scheduled">
                               {Math.round(plannedAmount) === plannedAmount
                                 ? String(plannedAmount)
                                 : String(plannedAmount).replace(".", ",")}
+                              <small>{isWpScope ? "план К" : "план А"}</small>
                             </span>
                           )}
                         </span>
                         {hasPlannedPayment ? (
-                          <span className="whsal-day-mark">П</span>
+                          <span className="whsal-day-mark">
+                            {plannedLetterForCategory(primaryPlannedCat, scope)}
+                          </span>
                         ) : rent ? (
-                          <span className="whsal-day-mark">А</span>
+                          <span className="whsal-day-mark">
+                            {isWpScope ? "Б" : "А"}
+                          </span>
                         ) : !items.length && scheduled ? (
-                          <span className="whsal-day-mark">П</span>
+                          <span className="whsal-day-mark">
+                            {isWpScope ? "К" : "А"}
+                          </span>
                         ) : null}
                         {extraCount > 0 && (
                           <span className="whsal-day-count">+{extraCount}</span>
@@ -3256,47 +3765,102 @@ export function WarehouseSalaries({
         <div className="whsal-legend">
           <span className="whsal-legend__item">
             <span className="whsal-legend__swatch whsal-legend__swatch--paid" />
-            Выплата получена
+            {isWpScope ? "Выплата наличными (получена)" : "Касса / карта (выплачено)"}
           </span>
-          <span className="whsal-legend__item">
-            <span className="whsal-legend__swatch whsal-legend__swatch--planned" />
-            Запланировано на дату (деньги ещё не списаны)
-          </span>
-          <span className="whsal-legend__item">
-            <span className="whsal-legend__swatch whsal-legend__swatch--weekend" />
-            Выходной / праздник
-          </span>
+          <label
+            className="whsal-legend__item whsal-legend__item--color-config"
+            title="Нажмите на квадратик, чтобы настроить цвет «план К» (запланировано с кассы)"
+          >
+            <span className="whsal-legend__swatch whsal-legend__swatch--planned-cash">
+              <input
+                type="color"
+                className="whsal-legend__color-input"
+                value={planBaseColors.cash}
+                onChange={(e) => savePlanCategoryColor("cash", e.target.value)}
+                aria-label="Цвет запланированных выплат с кассы (план К)"
+              />
+            </span>
+            <span>
+              <strong>план К</strong> — запланировано с кассы (настроить цвет)
+            </span>
+          </label>
           {isWpScope ? (
             <>
               <span className="whsal-legend__item">
                 <span className="whsal-legend__swatch whsal-legend__swatch--rent" />
                 Оплачено безналом (счёт макулатуры)
               </span>
+              <label
+                className="whsal-legend__item whsal-legend__item--color-config"
+                title="Нажмите на квадратик, чтобы настроить цвет запланированных безналичных выплат"
+              >
+                <span className="whsal-legend__swatch whsal-legend__swatch--planned-rent">
+                  <input
+                    type="color"
+                    className="whsal-legend__color-input"
+                    value={planBaseColors.rent}
+                    onChange={(e) => savePlanCategoryColor("rent", e.target.value)}
+                    aria-label="Цвет запланированных безналичных выплат (план Б)"
+                  />
+                </span>
+                <span>
+                  <strong>план Б</strong> — запланировано безналом (настроить цвет)
+                </span>
+              </label>
               <span className="whsal-legend__item">
                 <span className="whsal-legend__swatch whsal-legend__swatch--wp" />
                 Оплачено сторонними деньгами (с пометкой, откуда)
-              </span>
-              <span className="whsal-legend__item">
-                <span className="admin-badge admin-badge--muted">вне баланса</span>
-                Историческая выплата — не влияет на остатки макулатуры
               </span>
             </>
           ) : (
             <>
               <span className="whsal-legend__item">
                 <span className="whsal-legend__swatch whsal-legend__swatch--rent" />
-                Оплачено с аренды на карту
+                Оплачено с аренды на карту (А)
               </span>
+              <label
+                className="whsal-legend__item whsal-legend__item--color-config"
+                title="Нажмите на квадратик, чтобы настроить цвет «план А» (запланировано с аренды)"
+              >
+                <span className="whsal-legend__swatch whsal-legend__swatch--planned-rent">
+                  <input
+                    type="color"
+                    className="whsal-legend__color-input"
+                    value={planBaseColors.rent}
+                    onChange={(e) => savePlanCategoryColor("rent", e.target.value)}
+                    aria-label="Цвет запланированных выплат с аренды (план А)"
+                  />
+                </span>
+                <span>
+                  <strong>план А</strong> — запланировано с аренды (настроить цвет)
+                </span>
+              </label>
               <span className="whsal-legend__item">
                 <span className="whsal-legend__swatch whsal-legend__swatch--wp" />
-                Оплачено наличными с макулатуры (расход в учёте макулатуры)
-              </span>
-              <span className="whsal-legend__item">
-                <span className="admin-badge admin-badge--muted">вне баланса</span>
-                Историческая выплата — не влияет на банк/кассу
+                Оплачено наличными с макулатуры
               </span>
             </>
           )}
+          <span className="whsal-legend__item">
+            <span className="whsal-legend__swatch whsal-legend__swatch--weekend" />
+            Выходной / праздник
+          </span>
+          {planColorsCustomized && (
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={resetPlanCategoryColors}
+              title="Вернуть стандартные цвета плана (светло-красный для кассы и светло-синий для аренды)"
+            >
+              <RotateCcw size={12} /> Сбросить цвета плана
+            </button>
+          )}
+          <span className="whsal-legend__item">
+            <span className="admin-badge admin-badge--muted">вне баланса</span>
+            {isWpScope
+              ? "Историческая выплата — не влияет на остатки макулатуры"
+              : "Историческая выплата — не влияет на банк/кассу"}
+          </span>
           <span className="whsal-legend__item whsal-hint">
             «Остаток» (к выплате) = «За месяц» + «Долг» − «Получено» · зелёный —
             выплачено полностью
@@ -3359,14 +3923,18 @@ export function WarehouseSalaries({
         </div>
       ) : (
         <div className="bank-month__list">
-          {filtered.map((s) => (
+          {filtered.map((s) => {
+            const cat = salaryAccountCategory(s, scope);
+            const itemCustomColor = getSalaryColor(s.comment);
+            const borderColor =
+              itemCustomColor ||
+              (!s.isPaid ? planBaseColors[cat] : "var(--adm-border-mid)");
+            return (
             <div
               key={s.id}
               className={`bank-pay${!s.isPaid ? " bank-pay--pending" : ""}`}
               style={{
-                borderLeft: `4px solid ${
-                  getSalaryColor(s.comment) || "var(--adm-border-mid)"
-                }`,
+                borderLeft: `4px solid ${borderColor}`,
               }}
             >
               <div
@@ -3393,7 +3961,11 @@ export function WarehouseSalaries({
                   {isDebtPaymentSalary(s) && (
                     <span className="admin-badge admin-badge--amber">долг</span>
                   )}
-                  {!s.isPaid && <span className="bank-pay__wait">запланировано</span>}
+                  {!s.isPaid && (
+                    <span className="bank-pay__wait">
+                      запланировано · {plannedLabelFor(s, scope)}
+                    </span>
+                  )}
                   {s.isPaid && (
                     <span className="admin-badge admin-badge--green">
                       <CheckCircle size={10} /> выплачено
@@ -3486,7 +4058,8 @@ export function WarehouseSalaries({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -3535,7 +4108,10 @@ export function WarehouseSalaries({
 
               {popover.kind === "day" && popItems.length > 0 && (
                 <div className="whsal-pop__list">
-                  {popItems.map((s) => (
+                  {popItems.map((s) => {
+                    const itemCat = salaryAccountCategory(s, scope);
+                    const itemColor = getSalaryColor(s.comment) || "";
+                    return (
                     <div key={s.id} className="whsal-pop__item">
                       <div className="whsal-pop__item-top">
                         <span className="whsal-pop__amount">{fmt(s.amount)} ₽</span>
@@ -3548,7 +4124,7 @@ export function WarehouseSalaries({
                         <span className="whsal-pop__date">
                           {s.isPaid
                             ? `выплачено ${fmtDate(s.paidAt || s.date)}`
-                            : `план ${fmtDate(s.date)}`}
+                            : `${plannedLabelFor(s, scope)} · ${fmtDate(s.date)}`}
                         </span>
                         {isDebtPaymentSalary(s) && (
                           <span className="admin-badge admin-badge--amber">долг</span>
@@ -3558,8 +4134,16 @@ export function WarehouseSalaries({
                             <CheckCircle size={10} /> выплачено
                           </span>
                         ) : (
-                          <span className="admin-badge admin-badge--amber">
-                            <Hourglass size={10} /> к выплате
+                          <span
+                            className={`admin-badge ${
+                              itemCat === "rent"
+                                ? "admin-badge--indigo"
+                                : itemCat === "wp"
+                                  ? "admin-badge--teal"
+                                  : "admin-badge--amber"
+                            }`}
+                          >
+                            <Hourglass size={10} /> {plannedLabelFor(s, scope)}
                           </span>
                         )}
                         {isSalaryExcludedFromBalance(s.comment) && (
@@ -3603,8 +4187,23 @@ export function WarehouseSalaries({
                       {stripSalaryMetaTags(s.comment) && (
                         <div className="whsal-pop__comment">{stripSalaryMetaTags(s.comment)}</div>
                       )}
+                      {!s.isPaid && (
+                        <div className="whsal-pop__item-color">
+                          <span className="whsal-pop__item-color-label">
+                            Цвет ({plannedLabelFor(s, scope)}):
+                          </span>
+                          <PlanColorPicker
+                            compact
+                            value={itemColor}
+                            defaultColor={planBaseColors[itemCat]}
+                            defaultLabel="По счёту"
+                            onChange={(next) => updateSalaryColor(s, next || null)}
+                          />
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -3618,6 +4217,7 @@ export function WarehouseSalaries({
                     scope={scope}
                     autoFocus
                     saving={quickBusy}
+                    planColors={planBaseColors}
                     onSubmit={async (data) => {
                       await quickCreate(popRow.employee, popover.day, data);
                       setPopover(null);
@@ -3762,7 +4362,7 @@ export function WarehouseSalaries({
                               <span className="whsal-pop__date">
                                 {s.isPaid
                                   ? `выплачено ${fmtDate(s.paidAt || s.date)}`
-                                  : `план ${fmtDate(s.date)}`}
+                                  : `${plannedLabelFor(s, scope)} · ${fmtDate(s.date)}`}
                               </span>
                               {isDebtPaymentSalary(s) && (
                                 <span className="admin-badge admin-badge--amber">долг</span>
@@ -3770,7 +4370,17 @@ export function WarehouseSalaries({
                               {s.isPaid ? (
                                 <span className="admin-badge admin-badge--green">выплачено</span>
                               ) : (
-                                <span className="admin-badge admin-badge--amber">к выплате</span>
+                                <span
+                                  className={`admin-badge ${
+                                    salaryAccountCategory(s, scope) === "rent"
+                                      ? "admin-badge--indigo"
+                                      : salaryAccountCategory(s, scope) === "wp"
+                                        ? "admin-badge--teal"
+                                        : "admin-badge--amber"
+                                  }`}
+                                >
+                                  {plannedLabelFor(s, scope)}
+                                </span>
                               )}
                               {isSalaryExcludedFromBalance(s.comment) && (
                                 <span className="admin-badge admin-badge--muted">вне баланса</span>

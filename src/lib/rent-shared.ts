@@ -76,6 +76,11 @@ export interface RentOrg {
   comment: string | null;
 }
 
+/** Стандартный тариф за электроэнергию (руб./кВт⋅ч) по умолчанию. */
+export const DEFAULT_ELECTRICITY_TARIFF = 9;
+
+export const ELECTRICITY_INVOICE_TAG = "[ЭЭ]";
+
 export interface RentTenant {
   id: string;
   orgId: string;
@@ -84,6 +89,8 @@ export interface RentTenant {
   contractNumber: string | null;
   contractDate: string | null;
   monthlyRent: number;
+  /** Индивидуальный тариф за электроэнергию (руб./кВт⋅ч), по стандарту 9 ₽. */
+  electricityTariff: number;
   periodMonths: number;
   dueDay: number | null;
   invoiceDay: number | null;
@@ -103,6 +110,8 @@ export interface RentInvoice {
   tenantId: string;
   orgId: string;
   accountOrgId: string;
+  /** Тип счёта: аренда или электроэнергия (по счётчику). */
+  kind?: "rent" | "electricity";
   periodStart: string;
   periodEnd: string;
   issueDate: string;
@@ -112,6 +121,28 @@ export interface RentInvoice {
   paidAt: string | null;
   payMethod: "bank" | "cash" | null;
   comment: string | null;
+}
+
+export interface RentMeterReading {
+  id: string;
+  tenantId: string;
+  /** Первое число месяца расчёта: YYYY-MM-01 */
+  period: string;
+  /** Тариф руб./кВт⋅ч за данный период */
+  tariff: number;
+  /** Начальное показание счётчика (кВт⋅ч) */
+  readingStart: number | null;
+  /** Конечное показание счётчика (кВт⋅ч) */
+  readingEnd: number | null;
+  /** Расход = readingEnd - readingStart (кВт⋅ч) */
+  consumption: number;
+  /** Сумма = consumption * tariff (руб.) */
+  amount: number;
+  /** Связанный счёт за ЭЭ в rent_invoices (если выставлен) */
+  invoiceId: string | null;
+  comment: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface RentPayment {
@@ -431,3 +462,176 @@ export function computeRentBalances(
 export function rentFmt(n: number): string {
   return Math.round(n).toLocaleString("ru-RU");
 }
+
+export function rentFmtDec(
+  n: number | null | undefined,
+  maxFrac = 1
+): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return Number(n).toLocaleString("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxFrac,
+  });
+}
+
+// ── Электроэнергия (показания счётчиков и счета за ЭЭ) ───
+
+/** Определяет, относится ли счёт (начисление) к электроэнергии. */
+export function isElectricityInvoice(
+  inv: Pick<RentInvoice, "comment"> & { kind?: string | null }
+): boolean {
+  if (inv.kind === "electricity") return true;
+  const c = String(inv.comment || "").trim();
+  return (
+    c.startsWith(ELECTRICITY_INVOICE_TAG) ||
+    /^электроэнергия\b/i.test(c)
+  );
+}
+
+/** Убирает служебный префикс [ЭЭ] из комментария счёта для отображения. */
+export function stripElectricityTag(comment: string | null | undefined): string {
+  if (!comment) return "";
+  return comment.replace(/^\[ЭЭ\]\s*/i, "").trim();
+}
+
+/** Нормализует период к виду YYYY-MM-01. */
+export function normalizeElectricityPeriod(raw: string): string {
+  const s = String(raw || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})/);
+  if (!m) {
+    const today = rentTodayIso();
+    return `${today.slice(0, 7)}-01`;
+  }
+  return `${m[1]}-${m[2]}-01`;
+}
+
+/** Возвращает ключ месяца YYYY-MM из периода YYYY-MM-01. */
+export function electricityPeriodMonthKey(period: string): string {
+  return normalizeElectricityPeriod(period).slice(0, 7);
+}
+
+/** Сдвигает месяц YYYY-MM на deltaMonths. */
+export function shiftElectricityMonth(
+  monthKey: string,
+  deltaMonths: number
+): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  const d = new Date(y || 2026, (m || 1) - 1 + deltaMonths, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Конец месяца YYYY-MM-DD для периода YYYY-MM-01. */
+export function electricityPeriodEndIso(period: string): string {
+  const norm = normalizeElectricityPeriod(period);
+  const [y, m] = norm.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+}
+
+/** Округление показаний до 1 знака после запятой. */
+export function roundReading1(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+/** Округление суммы до 2 знаков после запятой (копеек). */
+export function roundMoney2(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
+/**
+ * Чистый расчёт расхода и суммы по показаниям счётчика:
+ *   consumption = reading_end − reading_start
+ *   amount      = consumption × tariff
+ */
+export function calcElectricityReading(
+  readingStart: number | null | undefined,
+  readingEnd: number | null | undefined,
+  tariff: number | null | undefined
+): {
+  consumption: number;
+  amount: number;
+  valid: boolean;
+  error: string | null;
+} {
+  const t = Number(tariff);
+  if (!Number.isFinite(t) || t <= 0) {
+    return {
+      consumption: 0,
+      amount: 0,
+      valid: false,
+      error: "Тариф должен быть больше 0",
+    };
+  }
+  if (
+    readingStart == null ||
+    readingEnd == null ||
+    !Number.isFinite(readingStart) ||
+    !Number.isFinite(readingEnd)
+  ) {
+    return {
+      consumption: 0,
+      amount: 0,
+      valid: false,
+      error: null,
+    };
+  }
+  const start = roundReading1(readingStart);
+  const end = roundReading1(readingEnd);
+  if (end < start) {
+    return {
+      consumption: roundReading1(end - start),
+      amount: 0,
+      valid: false,
+      error: "Конечное показание меньше начального",
+    };
+  }
+  const consumption = roundReading1(end - start);
+  const amount = roundMoney2(consumption * t);
+  return {
+    consumption,
+    amount,
+    valid: true,
+    error: null,
+  };
+}
+
+/** Формирует информативный комментарий для счёта за электроэнергию. */
+export function composeElectricityInvoiceComment(opts: {
+  period: string;
+  readingStart: number;
+  readingEnd: number;
+  consumption: number;
+  tariff: number;
+  extra?: string | null;
+}): string {
+  const mKey = electricityPeriodMonthKey(opts.period);
+  const base = `${ELECTRICITY_INVOICE_TAG} Электроэнергия за ${rentMonthLabel(mKey).toLocaleLowerCase("ru-RU")}: ${rentFmtDec(opts.consumption, 1)} кВт⋅ч × ${rentFmtDec(opts.tariff, 2)} ₽ (${rentFmtDec(opts.readingStart, 1)} → ${rentFmtDec(opts.readingEnd, 1)})`;
+  const cleanExtra = stripElectricityTag(opts.extra).trim();
+  return cleanExtra ? `${base} · ${cleanExtra}` : base;
+}
+
+/**
+ * Находит предыдущую запись показаний арендатора перед указанным периодом
+ * (с заполненным конечным показанием).
+ */
+export function findPreviousReading(
+  readings: RentMeterReading[],
+  tenantId: string,
+  period: string
+): RentMeterReading | null {
+  const targetPeriod = normalizeElectricityPeriod(period);
+  const prev = readings
+    .filter(
+      (r) =>
+        r.tenantId === tenantId &&
+        normalizeElectricityPeriod(r.period) < targetPeriod &&
+        r.readingEnd != null
+    )
+    .sort((a, b) =>
+      normalizeElectricityPeriod(b.period).localeCompare(
+        normalizeElectricityPeriod(a.period)
+      )
+    );
+  return prev[0] || null;
+}
+

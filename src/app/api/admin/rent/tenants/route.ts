@@ -30,6 +30,12 @@ export async function POST(request: NextRequest) {
       contractNumber: body.contractNumber,
       contractDate: body.contractDate,
       monthlyRent: Number(body.monthlyRent) || 0,
+      electricityTariff:
+        body.electricityTariff != null
+          ? Number(body.electricityTariff)
+          : body.tariff != null
+            ? Number(body.tariff)
+            : undefined,
       periodMonths: Number(body.periodMonths) || 1,
       dueDay: body.dueDay,
       invoiceDay: body.invoiceDay,

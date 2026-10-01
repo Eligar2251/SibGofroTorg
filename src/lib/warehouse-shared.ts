@@ -930,9 +930,13 @@ export function getSalaryPeriodMonth(
 /** Кастомный цвет плитки зарплаты из комментария (без миграции БД). */
 export function getSalaryColor(comment: string | null | undefined): string | null {
   const match = String(comment || "").match(/\[Цвет:#?([0-9a-fA-F]{3,8})\]/);
-  return match?.[1]
-    ? `#${match[1].toLowerCase()}`
-    : null;
+  if (!match?.[1]) return null;
+  const hex = match[1].toLowerCase();
+  // Раньше в форме создания зарплаты был захардкожен дефолт #2563eb,
+  // который записывался в комментарий каждой созданной записи.
+  // Игнорируем его, чтобы касса и аренда в плане окрашивались по своим счетам.
+  if (hex === "2563eb") return null;
+  return `#${hex}`;
 }
 
 /** Убирает служебные теги из комментария для отображения в UI. */
@@ -1000,7 +1004,7 @@ export function composeSalaryComment(options: {
     tags.push(`[${SALARY_PERIOD_TAG_PREFIX}${options.periodMonth}]`);
   }
   const color = String(options.color || "").trim();
-  if (/^#[0-9a-fA-F]{3,8}$/.test(color)) {
+  if (/^#[0-9a-fA-F]{3,8}$/.test(color) && color.toLowerCase() !== "#2563eb") {
     tags.push(`[Цвет:${color.slice(1).toLowerCase()}]`);
   }
   const clean = stripSalaryMetaTags(options.comment);

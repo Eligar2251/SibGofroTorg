@@ -9,7 +9,7 @@ import { useAdminRealtime } from "@/lib/use-admin-realtime";
 
 export function RentRealtime() {
   useAdminRealtime({
-    tables: ["rent_invoices", "rent_payments"],
+    tables: ["rent_invoices", "rent_payments", "rent_meter_readings"],
     pollIntervalMs: 60_000,
   });
 

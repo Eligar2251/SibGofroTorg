@@ -6108,7 +6108,7 @@ body.is-col-resizing * {
   background: var(--adm-card);
 }
 
-.whsal-row:hover .whsal-td {
+.whsal-row:hover .whsal-td:not(.whsal-day--paid):not(.whsal-day--rent):not(.whsal-day--wp):not(.whsal-day--planned):not(.whsal-day--scheduled):not(.whsal-day--custom-color) {
   background: var(--adm-paper-warm);
 }
 
@@ -6311,8 +6311,8 @@ body.is-col-resizing * {
 }
 
 .whsal-day--paid {
-  background: var(--adm-rust-pale);
-  box-shadow: inset 0 0 0 1px var(--adm-rust-line);
+  background: var(--whsal-paid-cash-bg, #f7cec4);
+  box-shadow: inset 0 0 0 1px var(--whsal-paid-cash-line, #e3927e);
 }
 
 .whsal-day--paid:hover {
@@ -6320,8 +6320,8 @@ body.is-col-resizing * {
 }
 
 .whsal-day--rent {
-  background: var(--adm-steel-pale);
-  box-shadow: inset 0 0 0 1px var(--adm-steel-line);
+  background: var(--whsal-paid-rent-bg, #cddff5);
+  box-shadow: inset 0 0 0 1px var(--whsal-paid-rent-line, #8ab0de);
 }
 
 .whsal-day--rent:hover {
@@ -6340,31 +6340,86 @@ body.is-col-resizing * {
 }
 
 /* Конкретная запланированная выплата: это реальная запись с суммой и датой,
-   но деньги ещё не списаны из кассы/банка. */
-.whsal-day--planned {
-  background: var(--adm-kraft-pale);
-  box-shadow: inset 0 0 0 1px var(--adm-kraft-line);
+   но деньги ещё не списаны из кассы/банка.
+   Касса («план К») — более светлый красный, аренда («план А») — более светлый синий,
+   чтобы план не сливался с жёлтыми выходными. */
+.whsal-day--planned,
+.whsal-day--planned-cash {
+  background: var(--whsal-plan-cash-bg, #fff1ee);
+  box-shadow: inset 0 0 0 1px var(--whsal-plan-cash-line, #f5c2b8);
 }
 
-.whsal-day--planned:hover {
-  box-shadow: inset 0 0 0 2px var(--adm-kraft);
+.whsal-day--planned:hover,
+.whsal-day--planned-cash:hover {
+  box-shadow: inset 0 0 0 2px var(--whsal-plan-cash-fg, #c84b31);
 }
 
-.whsal-day--planned .whsal-day-mark {
-  color: var(--adm-kraft);
+.whsal-day--planned .whsal-day-mark,
+.whsal-day--planned-cash .whsal-day-mark {
+  color: var(--whsal-plan-cash-fg, #c84b31);
+}
+
+.whsal-day--planned-rent {
+  background: var(--whsal-plan-rent-bg, #eef5ff);
+  box-shadow: inset 0 0 0 1px var(--whsal-plan-rent-line, #b8d4fe);
+}
+
+.whsal-day--planned-rent:hover {
+  box-shadow: inset 0 0 0 2px var(--whsal-plan-rent-fg, #2b5fa6);
+}
+
+.whsal-day--planned-rent .whsal-day-mark {
+  color: var(--whsal-plan-rent-fg, #2b5fa6);
+}
+
+.whsal-day--planned-wp {
+  background: var(--whsal-plan-wp-bg, #eefaf8);
+  box-shadow: inset 0 0 0 1px var(--whsal-plan-wp-line, #a8dfd8);
+}
+
+.whsal-day--planned-wp:hover {
+  box-shadow: inset 0 0 0 2px var(--whsal-plan-wp-fg, #197278);
+}
+
+.whsal-day--planned-wp .whsal-day-mark {
+  color: var(--whsal-plan-wp-fg, #197278);
 }
 
 .whsal-day--scheduled {
-  background: var(--adm-steel-pale);
-  box-shadow: inset 0 0 0 1px var(--adm-steel-line);
+  background: var(--whsal-plan-rent-bg, #eef5ff);
+  box-shadow: inset 0 0 0 1px var(--whsal-plan-rent-line, #b8d4fe);
+}
+
+.whsal-day--scheduled.whsal-day--planned-cash {
+  background: var(--whsal-plan-cash-bg, #fff1ee);
+  box-shadow: inset 0 0 0 1px var(--whsal-plan-cash-line, #f5c2b8);
 }
 
 .whsal-day--scheduled:hover {
-  box-shadow: inset 0 0 0 2px var(--adm-steel);
+  box-shadow: inset 0 0 0 2px var(--whsal-plan-rent-fg, #2b5fa6);
 }
 
 .whsal-day--scheduled .whsal-day-mark {
-  color: var(--adm-steel);
+  color: var(--whsal-plan-rent-fg, #2b5fa6);
+}
+
+.whsal-day--scheduled.whsal-day--planned-cash .whsal-day-mark {
+  color: var(--whsal-plan-cash-fg, #c84b31);
+}
+
+/* Индивидуально настроенный цвет конкретной ячейки/выплаты */
+.whsal-day--custom-color {
+  background: var(--whsal-custom-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--whsal-custom-line) !important;
+}
+
+.whsal-day--custom-color:hover {
+  box-shadow: inset 0 0 0 2px var(--whsal-custom-fg) !important;
+}
+
+.whsal-day--custom-color .whsal-day-mark,
+.whsal-day--custom-color .whsal-day-line {
+  color: var(--whsal-custom-fg);
 }
 
 .whsal-day-stack {
@@ -6387,17 +6442,33 @@ body.is-col-resizing * {
   white-space: nowrap;
 }
 
-.whsal-day-line--rent,
-.whsal-day-line--scheduled {
+.whsal-day-line--rent {
   color: var(--adm-steel);
+}
+
+.whsal-day-line--scheduled {
+  color: var(--whsal-plan-rent-fg, #2b5fa6);
+}
+
+.whsal-day--planned-cash .whsal-day-line--scheduled {
+  color: var(--whsal-plan-cash-fg, #c84b31);
 }
 
 .whsal-day-line--wp {
   color: var(--adm-teal);
 }
 
-.whsal-day-line--planned {
-  color: var(--adm-kraft);
+.whsal-day-line--planned,
+.whsal-day-line--planned-cash {
+  color: var(--whsal-plan-cash-fg, #c84b31);
+}
+
+.whsal-day-line--planned-rent {
+  color: var(--whsal-plan-rent-fg, #2b5fa6);
+}
+
+.whsal-day-line--planned-wp {
+  color: var(--whsal-plan-wp-fg, #197278);
 }
 
 .whsal-day-line small {
@@ -6519,12 +6590,171 @@ body.is-col-resizing * {
   border: 1px solid transparent;
 }
 
-.whsal-legend__swatch--paid    { background: var(--adm-rust-pale); border-color: var(--adm-rust-line); }
-.whsal-legend__swatch--planned { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
-.whsal-legend__swatch--weekend { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
-.whsal-legend__swatch--rent    { background: var(--adm-steel-pale); border-color: var(--adm-steel-line); }
+.whsal-legend__swatch--paid         { background: var(--whsal-paid-cash-bg, #f7cec4); border-color: var(--whsal-paid-cash-line, #e3927e); }
+.whsal-legend__swatch--planned      { background: var(--whsal-plan-cash-bg, #fff1ee); border-color: var(--whsal-plan-cash-line, #f5c2b8); }
+.whsal-legend__swatch--planned-cash { background: var(--whsal-plan-cash-bg, #fff1ee); border-color: var(--whsal-plan-cash-line, #f5c2b8); position: relative; overflow: hidden; cursor: pointer; }
+.whsal-legend__swatch--planned-rent { background: var(--whsal-plan-rent-bg, #eef5ff); border-color: var(--whsal-plan-rent-line, #b8d4fe); position: relative; overflow: hidden; cursor: pointer; }
+.whsal-legend__swatch--weekend      { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line); }
+.whsal-legend__swatch--rent         { background: var(--whsal-paid-rent-bg, #cddff5); border-color: var(--whsal-paid-rent-line, #8ab0de); }
 /* Выплата наличными из кассы макулатуры (расход в модуле «Учёт макулатуры») */
-.whsal-legend__swatch--wp      { background: var(--adm-teal-pale); border-color: var(--adm-teal-line); }
+.whsal-legend__swatch--wp           { background: var(--adm-teal-pale); border-color: var(--adm-teal-line); }
+
+.whsal-legend__item--color-config {
+  cursor: pointer;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 5px;
+  transition: background 0.12s ease;
+}
+
+.whsal-legend__item--color-config:hover {
+  background: var(--adm-paper-warm);
+}
+
+.whsal-legend__color-input {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
+
+/* ── Выбор цвета запланированной выплаты ── */
+.whsal-color-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.whsal-color-picker--compact {
+  gap: 4px;
+}
+
+.whsal-color-picker__auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--adm-ink-soft);
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border-mid);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.whsal-color-picker--compact .whsal-color-picker__auto {
+  height: 22px;
+  padding: 0 6px;
+  font-size: 10.5px;
+}
+
+.whsal-color-picker__auto:hover {
+  background: var(--adm-paper-warm);
+}
+
+.whsal-color-picker__auto--active {
+  border-color: var(--adm-ink);
+  box-shadow: 0 0 0 1px var(--adm-ink);
+  color: var(--adm-ink);
+}
+
+.whsal-color-picker__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.whsal-color-picker__swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.whsal-color-picker--compact .whsal-color-picker__swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.whsal-color-picker__swatch:hover {
+  transform: scale(1.08);
+}
+
+.whsal-color-picker__swatch--active {
+  box-shadow: 0 0 0 2px var(--adm-ink);
+}
+
+.whsal-color-picker__custom {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px dashed var(--adm-border-mid);
+  overflow: hidden;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(
+    from 0deg,
+    #fda4af,
+    #fcd34d,
+    #86efac,
+    #93c5fd,
+    #c4b5fd,
+    #fda4af
+  );
+}
+
+.whsal-color-picker--compact .whsal-color-picker__custom {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.whsal-color-picker__custom input[type="color"] {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
+
+.whsal-qform__color,
+.whsal-pop__item-color {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--adm-border);
+}
+
+.whsal-qform__color-label,
+.whsal-pop__item-color-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--adm-sand);
+}
 
 .whsal-hint {
   font-size: 11.5px;

@@ -41,6 +41,7 @@ export const REALTIME_TABLES = [
   "activity_logs",
   "rent_invoices",
   "rent_payments",
+  "rent_meter_readings",
   // Отдельный учёт макулатуры — эти таблицы уже добавлены в публикацию
   // миграцией migration_wastepaper_account.sql
   "wp_intakes",

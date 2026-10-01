@@ -21,15 +21,18 @@ import {
   Undo2,
   Wand2,
   X,
+  Zap,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
+  isElectricityInvoice,
   rentAddMonths,
   rentFmt,
   rentFmtDate,
   rentInvoiceState,
   rentTodayIso,
   rentToIso,
+  stripElectricityTag,
   RENT_INVOICE_STATE_LABELS,
   type RentInvoice,
   type RentInvoiceState,
@@ -40,6 +43,7 @@ import {
 import { useEscapeClose } from "@/hooks/use-escape-close";
 
 type StatusFilter = "all" | "unpaid" | "overdue" | "paid" | "cancelled";
+type KindFilter = "all" | "rent" | "electricity";
 
 const STATE_BADGE: Record<RentInvoiceState, string> = {
   paid: "admin-badge admin-badge--green",
@@ -70,6 +74,7 @@ export function RentInvoices({
   const router = useRouter();
   const today = rentTodayIso();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("unpaid");
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [orgFilter, setOrgFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<RentInvoice | null>(null);
@@ -99,16 +104,22 @@ export function RentInvoices({
         if (statusFilter === "paid") return state === "paid";
         return state === "cancelled";
       })
+      .filter(({ inv }) => {
+        if (kindFilter === "all") return true;
+        const isEl = isElectricityInvoice(inv);
+        return kindFilter === "electricity" ? isEl : !isEl;
+      })
       .filter(({ inv }) => orgFilter === "all" || inv.accountOrgId === orgFilter)
       .filter(
         ({ inv, tenant }) =>
           !q ||
           (tenant?.name || "").toLocaleLowerCase("ru-RU").includes(q) ||
           String(inv.number).includes(q) ||
-          (tenant?.office || "").toLocaleLowerCase("ru-RU").includes(q)
+          (tenant?.office || "").toLocaleLowerCase("ru-RU").includes(q) ||
+          (inv.comment || "").toLocaleLowerCase("ru-RU").includes(q)
       )
       .sort((a, b) => b.inv.dueDate.localeCompare(a.inv.dueDate));
-  }, [invoices, tenantById, statusFilter, orgFilter, query, today]);
+  }, [invoices, tenantById, statusFilter, kindFilter, orgFilter, query, today]);
 
   async function generate() {
     setBusyId("generate");
@@ -204,6 +215,16 @@ export function RentInvoices({
           </button>
         ))}
         <span style={{ flex: 1 }} />
+        <select
+          className="admin-select"
+          style={{ width: "auto" }}
+          value={kindFilter}
+          onChange={(e) => setKindFilter(e.target.value as KindFilter)}
+        >
+          <option value="all">Все типы (аренда + ЭЭ)</option>
+          <option value="rent">Только аренда</option>
+          <option value="electricity">⚡ Только счета за ЭЭ</option>
+        </select>
         <select className="admin-select" style={{ width: "auto" }} value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
           <option value="all">Все счета</option>
           {orgs.filter((o) => !o.paysToOrgId).map((o) => (
@@ -270,14 +291,33 @@ export function RentInvoices({
                   <td colSpan={9} className="admin-table__empty">Начислений нет</td>
                 </tr>
               )}
-              {rows.map(({ inv, tenant, state }) => (
+              {rows.map(({ inv, tenant, state }) => {
+                const isEl = isElectricityInvoice(inv);
+                return (
                 <tr key={inv.id}>
-                  <td className="admin-muted">АР-{inv.number}</td>
+                  <td className="admin-muted">
+                    {isEl ? `ЭЭ-${inv.number}` : `АР-${inv.number}`}
+                    {isEl && (
+                      <div>
+                        <span
+                          className="admin-badge admin-badge--amber"
+                          style={{ marginTop: 2, fontSize: 10 }}
+                        >
+                          <Zap size={10} /> ЭЭ
+                        </span>
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <div style={{ fontWeight: 600 }}>{tenant?.name || "—"}</div>
                     <div className="admin-muted" style={{ fontSize: 12 }}>
                       {tenant?.office ? `${tenant.office} · ` : ""}{orgName(inv.orgId)}
                     </div>
+                    {inv.comment && (
+                      <div className="admin-muted" style={{ fontSize: 11, marginTop: 2 }}>
+                        {stripElectricityTag(inv.comment)}
+                      </div>
+                    )}
                   </td>
                   <td>
                     {rentFmtDate(inv.periodStart)}–{rentFmtDate(inv.periodEnd)}
@@ -384,7 +424,8 @@ export function RentInvoices({
                     </td>
                   )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -416,7 +457,7 @@ export function RentInvoices({
 
 // ── Быстрая оплата счёта (в т.ч. частичная) ─────────────
 
-function QuickPayModal({
+export function QuickPayModal({
   invoice,
   tenant,
   paidBefore,
@@ -428,6 +469,8 @@ function QuickPayModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const isEl = isElectricityInvoice(invoice);
+  const docCode = isEl ? `ЭЭ-${invoice.number}` : `АР-${invoice.number}`;
   const remaining = Math.max(0, invoice.amount - paidBefore);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -456,17 +499,17 @@ function QuickPayModal({
         body: JSON.stringify({
           accountOrgId: invoice.accountOrgId,
           direction: "incoming",
-          kind: "rent",
+          kind: isEl ? "utility" : "rent",
           method,
           tenantId: invoice.tenantId,
           invoiceId: invoice.id,
           amount: sum,
           date,
-          invoiceNumber: `АР-${invoice.number}`,
+          invoiceNumber: docCode,
           isPaid: true,
           comment:
             comment ||
-            `Оплата аренды за период ${rentFmtDate(invoice.periodStart)}–${rentFmtDate(invoice.periodEnd)}${
+            `Оплата ${isEl ? "электроэнергии" : "аренды"} за период ${rentFmtDate(invoice.periodStart)}–${rentFmtDate(invoice.periodEnd)}${
               sum + 0.009 < remaining ? " (частично)" : ""
             }`,
         }),
@@ -486,7 +529,7 @@ function QuickPayModal({
       <div className="admin-modal-overlay" data-admin="true">
         <div className="admin-modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
           <div className="admin-modal__head">
-            <h3 className="admin-modal__title">Оплата счёта АР-{invoice.number}</h3>
+            <h3 className="admin-modal__title">Оплата счёта {docCode}</h3>
             <button className="admin-modal__close" onClick={onClose}>
               <X size={16} />
             </button>
