@@ -6,6 +6,7 @@ import {
   getRentTenants,
   getRentInvoices,
   getRentPayments,
+  getRentMeterReadings,
 } from "@/lib/rent";
 
 export async function GET() {
@@ -13,13 +14,14 @@ export async function GET() {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const [orgs, tenants, invoices, payments] = await Promise.all([
+    const [orgs, tenants, invoices, payments, meterReadings] = await Promise.all([
       getRentOrgs(),
       getRentTenants(),
       getRentInvoices(),
       getRentPayments(),
+      getRentMeterReadings(),
     ]);
-    return NextResponse.json({ orgs, tenants, invoices, payments });
+    return NextResponse.json({ orgs, tenants, invoices, payments, meterReadings });
   } catch (error: any) {
     console.error("Rent GET error:", error);
     return NextResponse.json(

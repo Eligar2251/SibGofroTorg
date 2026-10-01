@@ -123,6 +123,7 @@ const TABLE_META: Record<string, TableMeta> = {
   rent_tenants: { label: "Аренда: арендаторы", group: "Аренда" },
   rent_invoices: { label: "Аренда: счета", group: "Аренда" },
   rent_payments: { label: "Аренда: платежи", group: "Аренда" },
+  rent_meter_readings: { label: "Аренда: счётчики ЭЭ", group: "Аренда" },
   wp_intakes: { label: "Макулатура: приёмы", group: "Макулатура" },
   wp_shipments: { label: "Макулатура: продажи", group: "Макулатура" },
   wp_payments: { label: "Макулатура: платежи", group: "Макулатура" },

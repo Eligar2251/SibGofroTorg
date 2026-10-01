@@ -18,13 +18,17 @@ import {
   Trash2,
   Wallet,
   X,
+  Zap,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
   computeTenantState,
+  DEFAULT_ELECTRICITY_TARIFF,
+  isElectricityInvoice,
   rentDueDay,
   rentFmt,
   rentFmtDate,
+  rentFmtDec,
   rentHasPayeeNote,
   rentInvoiceState,
   rentPeriodLabel,
@@ -60,6 +64,7 @@ export function TenantCardModal({
   onEdit,
   onNewInvoice,
   onNewPayment,
+  onOpenElectricity,
   onArchive,
   onDelete,
 }: {
@@ -72,6 +77,7 @@ export function TenantCardModal({
   onEdit: () => void;
   onNewInvoice: () => void;
   onNewPayment: () => void;
+  onOpenElectricity?: () => void;
   onArchive: () => void;
   onDelete: () => void;
 }) {
@@ -147,6 +153,9 @@ export function TenantCardModal({
               {rentFmt(tenant.monthlyRent)} ₽/мес · {rentPeriodLabel(tenant.periodMonths).toLocaleLowerCase("ru-RU")}
             </span>
             <span>
+              ⚡ Тариф ЭЭ: <b>{rentFmtDec(tenant.electricityTariff || DEFAULT_ELECTRICITY_TARIFF, 2)} ₽/кВт⋅ч</b>
+            </span>
+            <span>
               оплата до {dueDay}-го{tenant.dueDay ? " (исключение)" : ""}
               {tenant.deferralDays > 0 ? ` · отсрочка ${tenant.deferralDays} дн.` : ""}
             </span>
@@ -211,6 +220,11 @@ export function TenantCardModal({
               <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={onNewPayment}>
                 <Wallet size={13} /> Принять оплату
               </button>
+              {onOpenElectricity && (
+                <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={onOpenElectricity}>
+                  <Zap size={13} /> Показания ЭЭ
+                </button>
+              )}
               <button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={onEdit}>
                 <Pencil size={13} /> Редактировать
               </button>
@@ -238,11 +252,12 @@ export function TenantCardModal({
                 <div className="rent-rows">
                   {ownInvoices.map((inv) => {
                     const state = rentInvoiceState(inv, tenant.deferralDays, today);
+                    const isEl = isElectricityInvoice(inv);
                     return (
                       <div key={inv.id} className="rent-row" style={{ padding: "7px 8px" }}>
                         <div className="rent-row__main">
                           <div style={{ fontSize: 13, fontWeight: 600 }}>
-                            АР-{inv.number} · {rentFmtDate(inv.periodStart)}–{rentFmtDate(inv.periodEnd)}
+                            {isEl ? `⚡ ЭЭ-${inv.number}` : `АР-${inv.number}`} · {rentFmtDate(inv.periodStart)}–{rentFmtDate(inv.periodEnd)}
                           </div>
                           <div className="admin-muted" style={{ fontSize: 12 }}>
                             до {rentFmtDate(inv.dueDate)}

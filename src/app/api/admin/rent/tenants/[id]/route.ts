@@ -1,7 +1,11 @@
-// PATCH/DELETE /api/admin/rent/tenants/[id]
+// PATCH/PUT/DELETE /api/admin/rent/tenants/[id]
 import { NextRequest, NextResponse } from "next/server";
 import { requireRentEdit } from "../../helpers";
-import { updateRentTenant, deleteRentTenant } from "@/lib/rent";
+import {
+  updateRentTenant,
+  updateTenantElectricityTariff,
+  deleteRentTenant,
+} from "@/lib/rent";
 import { logAdminAction } from "@/lib/activity-log";
 
 export async function PATCH(
@@ -13,6 +17,25 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+
+    // Быстрое обновление только тарифа ЭЭ
+    if (
+      body.name === undefined &&
+      (body.electricityTariff !== undefined || body.tariff !== undefined)
+    ) {
+      const nextTariff = Number(body.electricityTariff ?? body.tariff);
+      await updateTenantElectricityTariff(id, nextTariff);
+      await logAdminAction(
+        auth.displayName,
+        auth.role,
+        "update",
+        "rent-tenant",
+        id,
+        `Тариф ЭЭ: ${nextTariff} ₽/кВт⋅ч`
+      );
+      return NextResponse.json({ success: true, electricityTariff: nextTariff });
+    }
+
     await updateRentTenant(id, {
       orgId: body.orgId,
       name: body.name,
@@ -20,6 +43,12 @@ export async function PATCH(
       contractNumber: body.contractNumber,
       contractDate: body.contractDate,
       monthlyRent: Number(body.monthlyRent) || 0,
+      electricityTariff:
+        body.electricityTariff != null
+          ? Number(body.electricityTariff)
+          : body.tariff != null
+            ? Number(body.tariff)
+            : undefined,
       periodMonths: Number(body.periodMonths) || 1,
       dueDay: body.dueDay,
       invoiceDay: body.invoiceDay,
@@ -48,6 +77,13 @@ export async function PATCH(
       { status: 400 }
     );
   }
+}
+
+export async function PUT(
+  request: NextRequest,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  return PATCH(request, ctx);
 }
 
 export async function DELETE(

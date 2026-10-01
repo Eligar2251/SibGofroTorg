@@ -18,18 +18,23 @@ import {
   Search,
   Trash2,
   X,
+  Zap,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
   computeTenantState,
+  DEFAULT_ELECTRICITY_TARIFF,
+  isElectricityInvoice,
   rentDueDay,
   rentFmt,
   rentFmtDate,
+  rentFmtDec,
   rentHasPayeeNote,
   rentPeriodLabel,
   rentTodayIso,
   RENT_PAY_METHOD_LABELS,
   type RentInvoice,
+  type RentMeterReading,
   type RentOrg,
   type RentPayment,
   type RentTenant,
@@ -37,6 +42,10 @@ import {
 import { TenantCardModal } from "./RentTenantCard";
 import { InvoiceFormModal } from "./RentInvoices";
 import { PaymentFormModal } from "./RentBank";
+import {
+  RentElectricity,
+  TenantElectricityHistoryModal,
+} from "./RentElectricity";
 import { useEscapeClose } from "@/hooks/use-escape-close";
 
 const PERIOD_CHOICES = [1, 3, 6, 12];
@@ -48,6 +57,8 @@ export function RentTenants({
   tenants,
   invoices,
   payments,
+  meterReadings = [],
+  onOpenElectricity,
 }: {
   adminPath: string;
   readOnly: boolean;
@@ -55,16 +66,20 @@ export function RentTenants({
   tenants: RentTenant[];
   invoices: RentInvoice[];
   payments: RentPayment[];
+  meterReadings?: RentMeterReading[];
+  onOpenElectricity?: () => void;
 }) {
   void adminPath;
   const router = useRouter();
   const today = rentTodayIso();
+  const [subView, setSubView] = useState<"list" | "electricity">("list");
   const [orgFilter, setOrgFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"active" | "archived">("active");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<RentTenant | null>(null);
   const [creating, setCreating] = useState(false);
   const [cardTenant, setCardTenant] = useState<RentTenant | null>(null);
+  const [electricityTenant, setElectricityTenant] = useState<RentTenant | null>(null);
   const [invoicePreset, setInvoicePreset] = useState<RentTenant | null>(null);
   const [paymentPreset, setPaymentPreset] = useState<RentTenant | null>(null);
   const [busyId, setBusyId] = useState("");
@@ -109,6 +124,7 @@ export function RentTenants({
           contractNumber: t.contractNumber,
           contractDate: t.contractDate,
           monthlyRent: t.monthlyRent,
+          electricityTariff: t.electricityTariff,
           periodMonths: t.periodMonths,
           dueDay: t.dueDay,
           invoiceDay: t.invoiceDay,
@@ -150,6 +166,38 @@ export function RentTenants({
 
   const orgName = (id: string) => orgs.find((o) => o.id === id)?.shortName || id;
 
+  if (subView === "electricity") {
+    return (
+      <div className="admin-stack">
+        <div className="admin-filters admin-filters--sub">
+          <button
+            type="button"
+            className="admin-filter"
+            onClick={() => setSubView("list")}
+          >
+            Список арендаторов
+          </button>
+          <button
+            type="button"
+            className="admin-filter admin-filter--active"
+            onClick={() => setSubView("electricity")}
+          >
+            <Zap size={13} /> Электроэнергия (по счётчикам)
+          </button>
+        </div>
+        <RentElectricity
+          adminPath={adminPath}
+          readOnly={readOnly}
+          orgs={orgs}
+          tenants={tenants}
+          invoices={invoices}
+          payments={payments}
+          meterReadings={meterReadings}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="admin-stack">
       <div className="admin-filters admin-filters--sub">
@@ -169,6 +217,17 @@ export function RentTenants({
           </button>
         ))}
         <span style={{ flex: 1 }} />
+        <button
+          type="button"
+          className="admin-filter"
+          onClick={() => {
+            if (onOpenElectricity) onOpenElectricity();
+            else setSubView("electricity");
+          }}
+          title="Перейти к расчёту электроэнергии по счётчикам и счетам за ЭЭ"
+        >
+          <Zap size={13} /> Электроэнергия
+        </button>
         <button
           className={`admin-filter${statusFilter === "active" ? " admin-filter--active" : ""}`}
           onClick={() => setStatusFilter("active")}
@@ -277,6 +336,9 @@ export function RentTenants({
                     </td>
                     <td>
                       {rentFmt(t.monthlyRent)} ₽/мес
+                      <div className="admin-muted" style={{ fontSize: 12 }}>
+                        ⚡ ЭЭ: {rentFmtDec(t.electricityTariff || DEFAULT_ELECTRICITY_TARIFF, 2)} ₽/кВт⋅ч
+                      </div>
                     </td>
                     <td>{st?.paidUntil ? rentFmtDate(st.paidUntil) : "—"}</td>
                     <td>
@@ -293,6 +355,13 @@ export function RentTenants({
                     {!readOnly && (
                       <td onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: "flex", gap: 4 }}>
+                          <button
+                            className="admin-btn admin-btn--icon admin-btn--ghost"
+                            title="Показания электроэнергии и история по месяцам"
+                            onClick={() => setElectricityTenant(t)}
+                          >
+                            <Zap size={14} />
+                          </button>
                           <button
                             className="admin-btn admin-btn--icon admin-btn--ghost"
                             title="Редактировать"
@@ -363,6 +432,10 @@ export function RentTenants({
             setPaymentPreset(cardTenant);
             setCardTenant(null);
           }}
+          onOpenElectricity={() => {
+            setElectricityTenant(cardTenant);
+            setCardTenant(null);
+          }}
           onArchive={() => {
             archiveTenant(cardTenant);
             setCardTenant(null);
@@ -371,6 +444,23 @@ export function RentTenants({
             deleteTenant(cardTenant);
             setCardTenant(null);
           }}
+        />
+      )}
+
+      {electricityTenant && (
+        <TenantElectricityHistoryModal
+          tenant={electricityTenant}
+          orgs={orgs}
+          readings={meterReadings.filter(
+            (r) => r.tenantId === electricityTenant.id
+          )}
+          invoices={invoices.filter(
+            (i) =>
+              i.tenantId === electricityTenant.id && isElectricityInvoice(i)
+          )}
+          readOnly={readOnly}
+          onClose={() => setElectricityTenant(null)}
+          onChanged={() => router.refresh()}
         />
       )}
 
@@ -419,6 +509,8 @@ export function TenantFormModal({
     contractNumber: tenant?.contractNumber || "",
     contractDate: tenant?.contractDate || "",
     monthlyRent: tenant?.monthlyRent || 0,
+    electricityTariff:
+      tenant?.electricityTariff ?? DEFAULT_ELECTRICITY_TARIFF,
     periodMonths: tenant?.periodMonths || 1,
     dueDay: tenant?.dueDay ?? null,
     invoiceDay: tenant?.invoiceDay ?? null,
@@ -449,6 +541,10 @@ export function TenantFormModal({
       const body = {
         ...form,
         monthlyRent: Number(form.monthlyRent) || 0,
+        electricityTariff:
+          Number(form.electricityTariff) > 0
+            ? Number(form.electricityTariff)
+            : DEFAULT_ELECTRICITY_TARIFF,
         periodMonths: Number(form.periodMonths) || 1,
         dueDay: form.dueDay ? Number(form.dueDay) : null,
         invoiceDay: form.invoiceDay ? Number(form.invoiceDay) : null,
@@ -526,6 +622,20 @@ export function TenantFormModal({
             <div className="admin-field">
               <label className="admin-label">Ставка, ₽/мес</label>
               <input type="number" min={0} className="admin-input" value={form.monthlyRent} onChange={(e) => set("monthlyRent", e.target.value)} />
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">
+                Тариф за ЭЭ, ₽/кВт⋅ч{" "}
+                <span className="admin-muted">(стандарт {DEFAULT_ELECTRICITY_TARIFF} ₽)</span>
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                className="admin-input"
+                value={form.electricityTariff}
+                onChange={(e) => set("electricityTariff", e.target.value)}
+              />
             </div>
             <div className="admin-field">
               <label className="admin-label">Период оплаты</label>

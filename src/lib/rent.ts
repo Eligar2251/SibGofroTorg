@@ -8,6 +8,12 @@
 import { revalidateTag } from "next/cache";
 import { getAdminDb } from "./supabase";
 import {
+  calcElectricityReading,
+  composeElectricityInvoiceComment,
+  DEFAULT_ELECTRICITY_TARIFF,
+  electricityPeriodEndIso,
+  isElectricityInvoice,
+  normalizeElectricityPeriod,
   rentAccountOrgId,
   rentAddMonths,
   rentClampDay,
@@ -16,7 +22,10 @@ import {
   rentParseDate,
   rentTodayIso,
   rentToIso,
+  roundMoney2,
+  roundReading1,
   type RentInvoice,
+  type RentMeterReading,
   type RentOrg,
   type RentPayment,
   type RentTenant,
@@ -122,7 +131,74 @@ export async function updateRentOrg(
 
 // ── Арендаторы ───────────────────────────────────────────
 
-function mapTenant(row: any): RentTenant {
+const ELECTRICITY_FALLBACK_SETTING_KEY = "rent_electricity_state";
+
+interface ElectricityFallbackState {
+  tariffs?: Record<string, number>;
+  readings?: RentMeterReading[];
+}
+
+async function getElectricityFallbackState(): Promise<ElectricityFallbackState> {
+  try {
+    const db = getAdminDb();
+    const { data, error } = await db
+      .from("settings")
+      .select("value")
+      .eq("key", ELECTRICITY_FALLBACK_SETTING_KEY)
+      .maybeSingle();
+    if (error || !data?.value) return {};
+    const parsed = JSON.parse(data.value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveElectricityFallbackState(
+  next: ElectricityFallbackState
+): Promise<void> {
+  const db = getAdminDb();
+  await db.from("settings").upsert(
+    {
+      key: ELECTRICITY_FALLBACK_SETTING_KEY,
+      value: JSON.stringify(next),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "key" }
+  );
+}
+
+function isMissingColumnOrTableError(err: any): boolean {
+  if (!err) return false;
+  const code = String(err.code || "");
+  const msg = String(err.message || err.details || "").toLowerCase();
+  return (
+    code === "42P01" ||
+    code === "42703" ||
+    code === "PGRST204" ||
+    code === "PGRST205" ||
+    msg.includes("does not exist") ||
+    msg.includes("schema cache") ||
+    msg.includes("electricity_tariff") ||
+    msg.includes("rent_meter_readings") ||
+    msg.includes("kind")
+  );
+}
+
+function mapTenant(
+  row: any,
+  fallbackTariffs?: Record<string, number>
+): RentTenant {
+  const rawTariff =
+    row.electricity_tariff != null
+      ? Number(row.electricity_tariff)
+      : fallbackTariffs?.[row.id] != null
+        ? Number(fallbackTariffs[row.id])
+        : DEFAULT_ELECTRICITY_TARIFF;
+  const electricityTariff =
+    Number.isFinite(rawTariff) && rawTariff > 0
+      ? roundMoney2(rawTariff)
+      : DEFAULT_ELECTRICITY_TARIFF;
   return {
     id: row.id,
     orgId: row.org_id,
@@ -131,6 +207,7 @@ function mapTenant(row: any): RentTenant {
     contractNumber: row.contract_number ?? null,
     contractDate: row.contract_date ?? null,
     monthlyRent: Number(row.monthly_rent) || 0,
+    electricityTariff,
     periodMonths: Number(row.period_months) || 1,
     dueDay: row.due_day != null ? Number(row.due_day) : null,
     invoiceDay: row.invoice_day != null ? Number(row.invoice_day) : null,
@@ -147,12 +224,12 @@ function mapTenant(row: any): RentTenant {
 
 export async function getRentTenants(): Promise<RentTenant[]> {
   const db = getAdminDb();
-  const { data, error } = await db
-    .from("rent_tenants")
-    .select("*")
-    .order("name");
+  const [{ data, error }, fallback] = await Promise.all([
+    db.from("rent_tenants").select("*").order("name"),
+    getElectricityFallbackState(),
+  ]);
   if (error) throw error;
-  return (data || []).map(mapTenant);
+  return (data || []).map((row) => mapTenant(row, fallback.tariffs));
 }
 
 export interface RentTenantInput {
@@ -162,6 +239,7 @@ export interface RentTenantInput {
   contractNumber?: string | null;
   contractDate?: string | null;
   monthlyRent?: number;
+  electricityTariff?: number;
   periodMonths?: number;
   dueDay?: number | null;
   invoiceDay?: number | null;
@@ -175,11 +253,22 @@ export interface RentTenantInput {
   status?: "active" | "archived";
 }
 
-function tenantPayload(d: RentTenantInput): Record<string, any> {
+function tenantPayload(
+  d: RentTenantInput,
+  includeElectricityTariff = true
+): Record<string, any> {
   const name = String(d.name || "").trim();
   if (!name) throw new Error("Укажите название арендатора");
   const periodMonths = Math.max(1, Math.round(Number(d.periodMonths) || 1));
-  return {
+  const rawTariff =
+    d.electricityTariff != null
+      ? Number(d.electricityTariff)
+      : DEFAULT_ELECTRICITY_TARIFF;
+  const electricityTariff =
+    Number.isFinite(rawTariff) && rawTariff > 0
+      ? roundMoney2(rawTariff)
+      : DEFAULT_ELECTRICITY_TARIFF;
+  const payload: Record<string, any> = {
     org_id: String(d.orgId || "").trim() || "bau",
     name,
     normalized_name: normalizeName(name),
@@ -199,26 +288,92 @@ function tenantPayload(d: RentTenantInput): Record<string, any> {
     comment: cleanText(d.comment),
     status: d.status === "archived" ? "archived" : "active",
   };
+  if (includeElectricityTariff) {
+    payload.electricity_tariff = electricityTariff;
+  }
+  return payload;
 }
 
 export async function createRentTenant(data: RentTenantInput): Promise<{ id: string }> {
   const db = getAdminDb();
-  const { data: result, error } = await db
+  let { data: result, error } = await db
     .from("rent_tenants")
-    .insert(tenantPayload(data))
+    .insert(tenantPayload(data, true))
     .select("id")
     .single();
-  if (error) throw error;
+  if (error && isMissingColumnOrTableError(error)) {
+    const retry = await db
+      .from("rent_tenants")
+      .insert(tenantPayload(data, false))
+      .select("id")
+      .single();
+    result = retry.data;
+    error = retry.error;
+    if (!error && result?.id && data.electricityTariff != null) {
+      const fb = await getElectricityFallbackState();
+      await saveElectricityFallbackState({
+        ...fb,
+        tariffs: {
+          ...(fb.tariffs || {}),
+          [result.id]: roundMoney2(Number(data.electricityTariff) || DEFAULT_ELECTRICITY_TARIFF),
+        },
+      });
+    }
+  }
+  if (error || !result) throw error || new Error("Не удалось создать арендатора");
   bumpRent();
   return { id: result.id };
 }
 
 export async function updateRentTenant(id: string, data: RentTenantInput): Promise<void> {
   const db = getAdminDb();
+  let { error } = await db
+    .from("rent_tenants")
+    .update(tenantPayload(data, true))
+    .eq("id", id);
+  if (error && isMissingColumnOrTableError(error)) {
+    const retry = await db
+      .from("rent_tenants")
+      .update(tenantPayload(data, false))
+      .eq("id", id);
+    error = retry.error;
+    if (!error && data.electricityTariff != null) {
+      const fb = await getElectricityFallbackState();
+      await saveElectricityFallbackState({
+        ...fb,
+        tariffs: {
+          ...(fb.tariffs || {}),
+          [id]: roundMoney2(Number(data.electricityTariff) || DEFAULT_ELECTRICITY_TARIFF),
+        },
+      });
+    }
+  }
+  if (error) throw error;
+  bumpRent();
+}
+
+export async function updateTenantElectricityTariff(
+  tenantId: string,
+  tariff: number
+): Promise<void> {
+  const cleanTariff = roundMoney2(Number(tariff));
+  if (!Number.isFinite(cleanTariff) || cleanTariff <= 0) {
+    throw new Error("Тариф должен быть больше 0");
+  }
+  const db = getAdminDb();
   const { error } = await db
     .from("rent_tenants")
-    .update(tenantPayload(data))
-    .eq("id", id);
+    .update({ electricity_tariff: cleanTariff })
+    .eq("id", tenantId);
+  if (error && isMissingColumnOrTableError(error)) {
+    const fb = await getElectricityFallbackState();
+    await saveElectricityFallbackState({
+      ...fb,
+      tariffs: { ...(fb.tariffs || {}), [tenantId]: cleanTariff },
+    });
+    bumpRent();
+    return;
+  }
   if (error) throw error;
   bumpRent();
 }
@@ -243,12 +398,18 @@ export async function deleteRentTenant(id: string): Promise<void> {
 // ── Начисления (счета) ───────────────────────────────────
 
 function mapInvoice(row: any): RentInvoice {
+  const comment = row.comment ?? null;
+  const kind: "rent" | "electricity" =
+    row.kind === "electricity" || isElectricityInvoice({ comment, kind: row.kind })
+      ? "electricity"
+      : "rent";
   return {
     id: row.id,
     number: Number(row.number) || 0,
     tenantId: row.tenant_id,
     orgId: row.org_id,
     accountOrgId: row.account_org_id,
+    kind,
     periodStart: row.period_start,
     periodEnd: row.period_end,
     issueDate: row.issue_date,
@@ -257,7 +418,7 @@ function mapInvoice(row: any): RentInvoice {
     status: row.status === "paid" || row.status === "cancelled" ? row.status : "awaiting",
     paidAt: row.paid_at ?? null,
     payMethod: row.pay_method === "bank" || row.pay_method === "cash" ? row.pay_method : null,
-    comment: row.comment ?? null,
+    comment,
   };
 }
 
@@ -418,7 +579,12 @@ export async function generateRentInvoices(): Promise<{
       continue;
     }
     const own = invoices
-      .filter((i) => i.tenantId === tenant.id && i.status !== "cancelled")
+      .filter(
+        (i) =>
+          i.tenantId === tenant.id &&
+          i.status !== "cancelled" &&
+          !isElectricityInvoice(i)
+      )
       .sort((a, b) => a.periodEnd.localeCompare(b.periodEnd));
     const last = own[own.length - 1];
 
@@ -742,3 +908,494 @@ export async function getRentSummary(): Promise<RentSummary> {
     upcomingCount,
   };
 }
+
+// ── Электроэнергия: показания счётчиков и счета за ЭЭ ────
+
+function mapMeterReading(row: any): RentMeterReading {
+  const period = normalizeElectricityPeriod(String(row.period || ""));
+  const tariff =
+    Number(row.tariff) > 0
+      ? roundMoney2(Number(row.tariff))
+      : DEFAULT_ELECTRICITY_TARIFF;
+  const readingStart =
+    row.reading_start != null && row.reading_start !== ""
+      ? roundReading1(Number(row.reading_start))
+      : row.readingStart != null && row.readingStart !== ""
+        ? roundReading1(Number(row.readingStart))
+        : null;
+  const readingEnd =
+    row.reading_end != null && row.reading_end !== ""
+      ? roundReading1(Number(row.reading_end))
+      : row.readingEnd != null && row.readingEnd !== ""
+        ? roundReading1(Number(row.readingEnd))
+        : null;
+  const calc = calcElectricityReading(readingStart, readingEnd, tariff);
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id || row.tenantId),
+    period,
+    tariff,
+    readingStart,
+    readingEnd,
+    consumption:
+      readingStart != null && readingEnd != null
+        ? calc.consumption
+        : Number(row.consumption) || 0,
+    amount:
+      readingStart != null && readingEnd != null
+        ? calc.amount
+        : Number(row.amount) || 0,
+    invoiceId: row.invoice_id ?? row.invoiceId ?? null,
+    comment: row.comment ?? null,
+    createdAt: row.created_at ?? row.createdAt ?? null,
+    updatedAt: row.updated_at ?? row.updatedAt ?? null,
+  };
+}
+
+export async function getRentMeterReadings(
+  periodFilter?: string
+): Promise<RentMeterReading[]> {
+  const db = getAdminDb();
+  const normFilter = periodFilter
+    ? normalizeElectricityPeriod(periodFilter)
+    : null;
+
+  let query = db
+    .from("rent_meter_readings")
+    .select("*")
+    .order("period", { ascending: false });
+  if (normFilter) {
+    query = query.eq("period", normFilter);
+  }
+  const { data, error } = await query;
+
+  if (error) {
+    if (isMissingColumnOrTableError(error)) {
+      const fb = await getElectricityFallbackState();
+      const list = (fb.readings || []).map(mapMeterReading);
+      return normFilter
+        ? list.filter((r) => r.period === normFilter)
+        : list.sort((a, b) => b.period.localeCompare(a.period));
+    }
+    throw error;
+  }
+
+  const dbRows = (data || []).map(mapMeterReading);
+  // Если в fallback-хранилище были записи до миграции, объединяем их по (tenantId, period).
+  const fb = await getElectricityFallbackState();
+  if (fb.readings && fb.readings.length > 0) {
+    const seen = new Set(dbRows.map((r) => `${r.tenantId}:${r.period}`));
+    for (const raw of fb.readings) {
+      const mapped = mapMeterReading(raw);
+      if (normFilter && mapped.period !== normFilter) continue;
+      if (!seen.has(`${mapped.tenantId}:${mapped.period}`)) {
+        dbRows.push(mapped);
+      }
+    }
+  }
+  return dbRows.sort((a, b) => b.period.localeCompare(a.period));
+}
+
+export interface RentMeterReadingInput {
+  id?: string;
+  tenantId: string;
+  period: string;
+  tariff?: number;
+  readingStart?: number | null;
+  readingEnd?: number | null;
+  comment?: string | null;
+  /** Обновить ли базовый тариф арендатора при сохранении */
+  updateTenantTariff?: boolean;
+  /** Автоматически создать/обновить счёт за ЭЭ в rent_invoices (по умолчанию true) */
+  syncInvoice?: boolean;
+}
+
+async function syncElectricityInvoiceForReading(opts: {
+  tenant: RentTenant;
+  orgs: RentOrg[];
+  invoices: RentInvoice[];
+  period: string;
+  readingStart: number | null;
+  readingEnd: number | null;
+  tariff: number;
+  consumption: number;
+  amount: number;
+  existingInvoiceId: string | null;
+  comment: string | null;
+}): Promise<{ invoiceId: string | null; created: boolean; updated: boolean }> {
+  const db = getAdminDb();
+  const {
+    tenant,
+    orgs,
+    invoices,
+    period,
+    readingStart,
+    readingEnd,
+    tariff,
+    consumption,
+    amount,
+    existingInvoiceId,
+    comment,
+  } = opts;
+
+  const existing =
+    (existingInvoiceId
+      ? invoices.find((i) => i.id === existingInvoiceId)
+      : null) ||
+    invoices.find(
+      (i) =>
+        i.tenantId === tenant.id &&
+        i.periodStart === period &&
+        isElectricityInvoice(i) &&
+        i.status !== "cancelled"
+    ) ||
+    null;
+
+  if (readingStart == null || readingEnd == null || amount <= 0) {
+    return {
+      invoiceId: existing?.id ?? null,
+      created: false,
+      updated: false,
+    };
+  }
+
+  const invComment = composeElectricityInvoiceComment({
+    period,
+    readingStart,
+    readingEnd,
+    consumption,
+    tariff,
+    extra: comment,
+  });
+
+  if (existing) {
+    if (existing.status !== "paid") {
+      const { error } = await db
+        .from("rent_invoices")
+        .update({
+          amount,
+          comment: invComment,
+        })
+        .eq("id", existing.id);
+      if (error) throw error;
+      return { invoiceId: existing.id, created: false, updated: true };
+    }
+    return { invoiceId: existing.id, created: false, updated: false };
+  }
+
+  const periodEnd = electricityPeriodEndIso(period);
+  const today = rentTodayIso();
+  const dueDay = rentDueDay(tenant, orgs);
+  // Показания за месяц обычно снимаются в конце расчётного месяца или начале следующего:
+  // ставим срок оплаты в следующем за расчётным месяце (или не раньше сегодняшнего дня).
+  const nextMonthDate = rentAddMonths(period, 1);
+  let dueDate = rentClampDay(
+    nextMonthDate.getFullYear(),
+    nextMonthDate.getMonth(),
+    dueDay
+  );
+  if (dueDate < today) {
+    const [ty, tm] = today.split("-").map(Number);
+    const candidate = rentClampDay(ty, (tm || 1) - 1, dueDay);
+    dueDate =
+      candidate >= today
+        ? candidate
+        : rentToIso(new Date(Date.now() + 5 * 86_400_000));
+  }
+
+  const number = await nextNumber("rent_invoice");
+  const baseInsert = {
+    number,
+    tenant_id: tenant.id,
+    org_id: tenant.orgId,
+    account_org_id: rentAccountOrgId(
+      orgs.find((o) => o.id === tenant.orgId),
+      orgs
+    ),
+    period_start: period,
+    period_end: periodEnd,
+    issue_date: today,
+    due_date: dueDate,
+    amount,
+    status: "awaiting",
+    comment: invComment,
+  };
+
+  let { data: createdRow, error } = await db
+    .from("rent_invoices")
+    .insert({ ...baseInsert, kind: "electricity" })
+    .select("id")
+    .single();
+  if (error && isMissingColumnOrTableError(error)) {
+    const retry = await db
+      .from("rent_invoices")
+      .insert(baseInsert)
+      .select("id")
+      .single();
+    createdRow = retry.data;
+    error = retry.error;
+  }
+  if (error || !createdRow) throw error || new Error("Не удалось создать счёт за ЭЭ");
+
+  // Добавляем в локальный массив, чтобы при пакетном сохранении не создать дубликат
+  invoices.push({
+    id: createdRow.id,
+    number,
+    tenantId: tenant.id,
+    orgId: tenant.orgId,
+    accountOrgId: baseInsert.account_org_id,
+    kind: "electricity",
+    periodStart: period,
+    periodEnd,
+    issueDate: today,
+    dueDate,
+    amount,
+    status: "awaiting",
+    paidAt: null,
+    payMethod: null,
+    comment: invComment,
+  });
+
+  return { invoiceId: createdRow.id, created: true, updated: false };
+}
+
+export async function bulkUpsertRentMeterReadings(
+  items: RentMeterReadingInput[]
+): Promise<{
+  readings: RentMeterReading[];
+  invoicesCreated: number;
+  invoicesUpdated: number;
+}> {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { readings: [], invoicesCreated: 0, invoicesUpdated: 0 };
+  }
+
+  const db = getAdminDb();
+  const [tenants, orgs, invoices, allExistingReadings] = await Promise.all([
+    getRentTenants(),
+    getRentOrgs(),
+    getRentInvoices(),
+    getRentMeterReadings(),
+  ]);
+  const tenantById = new Map(tenants.map((t) => [t.id, t]));
+
+  const savedReadings: RentMeterReading[] = [];
+  let invoicesCreated = 0;
+  let invoicesUpdated = 0;
+
+  for (const raw of items) {
+    const tenant = tenantById.get(raw.tenantId);
+    if (!tenant) {
+      throw new Error(`Арендатор не найден (${raw.tenantId})`);
+    }
+    const period = normalizeElectricityPeriod(raw.period);
+    const tariff =
+      raw.tariff != null
+        ? roundMoney2(Number(raw.tariff))
+        : tenant.electricityTariff || DEFAULT_ELECTRICITY_TARIFF;
+    if (!Number.isFinite(tariff) || tariff <= 0) {
+      throw new Error(`Тариф для «${tenant.name}» должен быть больше 0`);
+    }
+
+    const existingReading = allExistingReadings.find(
+      (r) => r.tenantId === tenant.id && r.period === period
+    );
+
+    // Автоматическая подстановка начального показания из предыдущего месяца,
+    // если оно не передано явно
+    let readingStart: number | null =
+      raw.readingStart !== undefined
+        ? raw.readingStart != null
+          ? roundReading1(Number(raw.readingStart))
+          : null
+        : existingReading?.readingStart ?? null;
+
+    if (readingStart == null && raw.readingStart === undefined) {
+      const prev = allExistingReadings
+        .filter(
+          (r) =>
+            r.tenantId === tenant.id &&
+            r.period < period &&
+            r.readingEnd != null
+        )
+        .sort((a, b) => b.period.localeCompare(a.period))[0];
+      if (prev && prev.readingEnd != null) {
+        readingStart = prev.readingEnd;
+      }
+    }
+
+    const readingEnd: number | null =
+      raw.readingEnd !== undefined
+        ? raw.readingEnd != null
+          ? roundReading1(Number(raw.readingEnd))
+          : null
+        : existingReading?.readingEnd ?? null;
+
+    let consumption = 0;
+    let amount = 0;
+    if (readingStart != null && readingEnd != null) {
+      if (readingEnd < readingStart) {
+        throw new Error(
+          `«${tenant.name}»: конечное показание (${readingEnd}) не может быть меньше начального (${readingStart})`
+        );
+      }
+      const calc = calcElectricityReading(readingStart, readingEnd, tariff);
+      consumption = calc.consumption;
+      amount = calc.amount;
+    }
+
+    if (raw.updateTenantTariff !== false && tariff !== tenant.electricityTariff) {
+      await updateTenantElectricityTariff(tenant.id, tariff);
+      tenant.electricityTariff = tariff;
+    }
+
+    let invoiceId = existingReading?.invoiceId ?? null;
+    if (raw.syncInvoice !== false && readingStart != null && readingEnd != null && amount > 0) {
+      const invRes = await syncElectricityInvoiceForReading({
+        tenant,
+        orgs,
+        invoices,
+        period,
+        readingStart,
+        readingEnd,
+        tariff,
+        consumption,
+        amount,
+        existingInvoiceId: invoiceId,
+        comment: raw.comment ?? existingReading?.comment ?? null,
+      });
+      invoiceId = invRes.invoiceId;
+      if (invRes.created) invoicesCreated++;
+      if (invRes.updated) invoicesUpdated++;
+    }
+
+    const comment =
+      raw.comment !== undefined
+        ? cleanText(raw.comment)
+        : existingReading?.comment ?? null;
+
+    const dbPayload = {
+      tenant_id: tenant.id,
+      period,
+      tariff,
+      reading_start: readingStart,
+      reading_end: readingEnd,
+      consumption,
+      amount,
+      invoice_id: invoiceId,
+      comment,
+    };
+
+    const { data: upserted, error } = await db
+      .from("rent_meter_readings")
+      .upsert(dbPayload, { onConflict: "tenant_id,period" })
+      .select("*")
+      .single();
+
+    if (error) {
+      if (isMissingColumnOrTableError(error)) {
+        const fb = await getElectricityFallbackState();
+        const list = [...(fb.readings || [])];
+        const nowIso = new Date().toISOString();
+        const idx = list.findIndex(
+          (r) =>
+            r.tenantId === tenant.id &&
+            normalizeElectricityPeriod(r.period) === period
+        );
+        const record: RentMeterReading = {
+          id:
+            idx >= 0
+              ? list[idx].id
+              : existingReading?.id ||
+                `el-${tenant.id.slice(0, 8)}-${period.slice(0, 7)}`,
+          tenantId: tenant.id,
+          period,
+          tariff,
+          readingStart,
+          readingEnd,
+          consumption,
+          amount,
+          invoiceId,
+          comment,
+          createdAt: idx >= 0 ? list[idx].createdAt : nowIso,
+          updatedAt: nowIso,
+        };
+        if (idx >= 0) list[idx] = record;
+        else list.push(record);
+        await saveElectricityFallbackState({ ...fb, readings: list });
+        savedReadings.push(record);
+
+        const memIdx = allExistingReadings.findIndex(
+          (r) => r.tenantId === tenant.id && r.period === period
+        );
+        if (memIdx >= 0) allExistingReadings[memIdx] = record;
+        else allExistingReadings.push(record);
+        continue;
+      }
+      throw error;
+    }
+
+    const mapped = mapMeterReading(upserted);
+    savedReadings.push(mapped);
+    const memIdx = allExistingReadings.findIndex(
+      (r) => r.tenantId === tenant.id && r.period === period
+    );
+    if (memIdx >= 0) allExistingReadings[memIdx] = mapped;
+    else allExistingReadings.push(mapped);
+  }
+
+  bumpRent();
+  return { readings: savedReadings, invoicesCreated, invoicesUpdated };
+}
+
+export async function updateRentMeterReadingById(
+  id: string,
+  patch: Partial<RentMeterReadingInput>
+): Promise<RentMeterReading> {
+  const all = await getRentMeterReadings();
+  const existing = all.find((r) => r.id === id);
+  if (!existing) {
+    throw new Error("Запись показаний не найдена");
+  }
+  const { readings } = await bulkUpsertRentMeterReadings([
+    {
+      id: existing.id,
+      tenantId: patch.tenantId || existing.tenantId,
+      period: patch.period || existing.period,
+      tariff: patch.tariff !== undefined ? patch.tariff : existing.tariff,
+      readingStart:
+        patch.readingStart !== undefined
+          ? patch.readingStart
+          : existing.readingStart,
+      readingEnd:
+        patch.readingEnd !== undefined
+          ? patch.readingEnd
+          : existing.readingEnd,
+      comment:
+        patch.comment !== undefined ? patch.comment : existing.comment,
+      updateTenantTariff: patch.updateTenantTariff ?? false,
+      syncInvoice: patch.syncInvoice ?? true,
+    },
+  ]);
+  return readings[0];
+}
+
+export async function deleteRentMeterReading(id: string): Promise<void> {
+  const db = getAdminDb();
+  const { error } = await db
+    .from("rent_meter_readings")
+    .delete()
+    .eq("id", id);
+  if (error && !isMissingColumnOrTableError(error)) {
+    throw error;
+  }
+  const fb = await getElectricityFallbackState();
+  if (fb.readings?.some((r) => r.id === id)) {
+    await saveElectricityFallbackState({
+      ...fb,
+      readings: fb.readings.filter((r) => r.id !== id),
+    });
+  }
+  bumpRent();
+}
+

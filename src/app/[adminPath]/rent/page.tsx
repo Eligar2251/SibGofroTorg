@@ -17,9 +17,11 @@ import {
   getRentTenants,
   getRentInvoices,
   getRentPayments,
+  getRentMeterReadings,
 } from "@/lib/rent";
 import type {
   RentInvoice,
+  RentMeterReading,
   RentOrg,
   RentPayment,
   RentTenant,
@@ -60,12 +62,14 @@ export default async function RentPage({
   let tenants: RentTenant[] = [];
   let invoices: RentInvoice[] = [];
   let payments: RentPayment[] = [];
+  let meterReadings: RentMeterReading[] = [];
   try {
-    [orgs, tenants, invoices, payments] = await Promise.all([
+    [orgs, tenants, invoices, payments, meterReadings] = await Promise.all([
       getRentOrgs(),
       getRentTenants(),
       getRentInvoices(),
       getRentPayments(),
+      getRentMeterReadings(),
     ]);
   } catch (error) {
     console.error(
@@ -85,6 +89,7 @@ export default async function RentPage({
       tenants={tenants}
       invoices={invoices}
       payments={payments}
+      meterReadings={meterReadings}
       />
     </>
   );
