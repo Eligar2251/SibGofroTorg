@@ -14,6 +14,7 @@ import { GlyphIcon } from "@/components/ui/Glyph";
 import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { ShoppingCart, Package, Clock3, Plus, Minus } from "lucide-react";
 import { ymGoal } from "@/lib/ym";
+import { formatProductSize } from "@/lib/product-size";
 import {
   normalizeProductLabelColor,
   DEFAULT_PRODUCT_LABEL_COLOR,
@@ -89,12 +90,7 @@ export function ProductCardCompact({
   const atMaxStock =
     inCart != null && maxStock != null && inCart.quantity >= maxStock;
 
-  const dims =
-    product.dimensionLength && product.dimensionWidth
-      ? `${product.dimensionLength}×${product.dimensionWidth}${
-          product.dimensionHeight ? `×${product.dimensionHeight}` : ""
-        } ${product.dimensionUnit || "мм"}`
-      : null;
+  const dims = formatProductSize(product);
 
   function cartPayload() {
     return {

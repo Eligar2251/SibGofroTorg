@@ -8506,6 +8506,20 @@ body.cookie-banner-visible .cart-popup {
   transition: color 0.16s ease;
 }
 .sale-card__name:hover { color: var(--green); }
+/* Размер товара — как в карточке каталога: «600×400×400 мм» */
+.sale-card__size {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
 .sale-card__price-row {
   display: flex;
   align-items: baseline;
