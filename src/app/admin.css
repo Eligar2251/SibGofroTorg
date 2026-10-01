@@ -15031,6 +15031,18 @@ a.client-card__contact:hover {
   overflow-wrap: anywhere;
 }
 
+/* Номер своей строки перевозки (накладная, заявка) — рядом с названием */
+.trip-stop__docnum {
+  padding: 1px 6px;
+  border: 1px solid var(--adm-border);
+  border-radius: 999px;
+  background: var(--adm-paper, #fff);
+  color: var(--adm-ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .trip-stop__time {
   width: 96px;
   padding: 3px 6px;
@@ -15249,6 +15261,20 @@ a.client-card__contact:hover {
 
 .transport-builder__hint {
   margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--adm-sand);
+}
+
+/* Пустая строка перевозки: адрес, номер и груз вписываются руками */
+.transport-builder__blank-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.transport-builder__blank-hint {
   font-size: 11.5px;
   color: var(--adm-sand);
 }

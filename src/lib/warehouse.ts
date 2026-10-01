@@ -4985,6 +4985,12 @@ export interface TransportItem {
    */
   receiptId?: string | null;
   receiptNumber?: number | null;
+  /**
+   * Свободный номер своей строки, вписанный руками: накладная, заявка
+   * клиента, номер заказа поставщика. Печатается рядом с контрагентом
+   * в путевом листе и в шапке полоски под УПД.
+   */
+  docLabel?: string | null;
   customerName: string;
   contactName?: string | null;
   address: string | null;
@@ -5431,7 +5437,39 @@ function onlyLoadedTransportItems(items: TransportItem[]): TransportItem[] {
       }
       return { ...item, items: [] };
     })
-    .filter((item) => item.items.length > 0);
+    .filter((item) => {
+      if (item.items.length > 0) return true;
+      // Своя строка перевозки без груза (адрес/номер вписали руками,
+      // груз уточнят позже) — сохраняем: иначе строка исчезала бы
+      // после сохранения, хотя диспетчер её только что добавил.
+      return isManualTransportItem(item) && hasManualRowContent(item);
+    });
+}
+
+/** Своя строка перевозки: не привязана ни к заказу, ни к документам. */
+function isManualTransportItem(item: {
+  dealId?: string | null;
+  wpDocId?: string | null;
+  receiptId?: string | null;
+}): boolean {
+  return !item.dealId && !item.wpDocId && !item.receiptId;
+}
+
+/**
+ * «Пустая строка» перевозки: у своей строки вписан хотя бы адрес, номер
+ * документа или контрагент. Такую строку сохраняем и печатаем, даже если
+ * груз ещё не указан — в бланке под него оставлено место.
+ */
+function hasManualRowContent(item: {
+  address?: string | null;
+  customerName?: string | null;
+  docLabel?: string | null;
+}): boolean {
+  return Boolean(
+    (item.address || "").trim() ||
+      (item.customerName || "").trim() ||
+      (item.docLabel || "").trim()
+  );
 }
 
 /** Точка привязана к приёму/сдаче макулатуры (wp_intakes / wp_shipments). */
@@ -5594,6 +5632,12 @@ export async function completeTransport(
             ? [(ti.items || [])[0]]
             : [];
       if (keepLines.length > 0) postedItems.push({ ...ti, items: keepLines });
+      // «Пустая строка» перевозки: груз так и не вписали, но адрес и номер
+      // есть — строку сохраняем, чтобы она осталась в завершённом бланке
+      // и в истории рейса (склад такая строка не двигает).
+      else if (isManualTransportItem(ti) && hasManualRowContent(ti)) {
+        postedItems.push({ ...ti, items: [] });
+      }
       // Точка поставки: рейс выполнен — принимаем товар на склад с
       // фактическими количествами (диспетчер мог указать их при
       // завершении). Непринятый остаток остаётся в поставке — его

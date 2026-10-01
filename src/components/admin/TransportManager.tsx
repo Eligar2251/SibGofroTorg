@@ -79,6 +79,8 @@ export interface TransportRow {
     phone: string | null;
     deliveryNote?: string | null;
     plannedTime?: string | null;
+    /** Свободный номер своей строки (накладная, заявка клиента). */
+    docLabel?: string | null;
     items: {
       productId: string | null;
       name: string;
@@ -308,20 +310,43 @@ export function TransportManager({
     }
   }
 
+  /**
+   * Пустая строка маршрута: адрес, номер и груз диспетчер вписывает
+   * руками. Строку можно добавить и в уже созданную перевозку —
+   * она попадёт в черновик правок и сохранится кнопкой «Сохранить порядок».
+   */
+  function addBlankStop(t: TransportRow, stops: TripStop[]) {
+    const blank = emptyCustomStop();
+    setStopDraft((prev) => ({ ...prev, [t.id]: [...stops, blank] }));
+    setError("");
+  }
+
   function handlePrint(t: TransportRow, stops: TripStop[]) {
     setPrintData({
       transportNumber: t.number,
       date: t.plannedDate || t.date,
       driverName: t.driverName,
       driverPhone: t.driverPhone,
-      // В бланк попадает только реально выбранный/загруженный груз.
+      // В полоски попадает загруженный груз, а также свои строки,
+      // вписанные руками: у них может ещё не быть груза — тогда в бланке
+      // остаются пустые линии «место под товары».
       items: stops
-        .filter((stop) => stop.lines.length > 0)
+        .filter(
+          (stop) =>
+            stop.lines.length > 0 ||
+            (stop.kind === "custom" &&
+              Boolean(
+                (stop.address || "").trim() ||
+                  (stop.docLabel || "").trim() ||
+                  stop.customerName.trim()
+              ))
+        )
         .map((stop) => ({
           dealNumber: stop.dealNumber ?? 0,
           wpDocKind: stop.wpDocKind,
           wpDocNumber: stop.wpDocNumber,
           receiptNumber: stop.receiptNumber ?? null,
+          docLabel: stop.docLabel ?? null,
           customerName: stop.customerName,
           contactName: stop.contactName,
           address: stop.address,
@@ -482,6 +507,18 @@ export function TransportManager({
                             title={isActive ? "Порядок точек (правки сохраняются кнопкой ниже)" : "Порядок точек маршрута"}
                             hint={isActive ? "Можно поправить количества — попадёт в бланк и в списание" : undefined}
                             showTotals
+                            actions={
+                              isActive ? (
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn--outline admin-btn--sm"
+                                  onClick={() => addBlankStop(t, stops)}
+                                  title="Добавить пустую строку перевозки: впишите адрес, номер, забор или доставку и груз руками"
+                                >
+                                  <Plus size={13} /> Пустая строка
+                                </button>
+                              ) : undefined
+                            }
                           />
                         </div>
 
@@ -834,7 +871,7 @@ function CreateTransportModal({
             <>
               <div className="transport-modal__orders">
                 {deals.length === 0 && wpDocs.length === 0 && receipts.length === 0 ? (
-                  <div className="admin-empty" style={{ padding: 20 }}>Очередь пуста: нет ни заказов, ни макулатуры, ни поставок в перевозку — добавьте свою точку</div>
+                  <div className="admin-empty" style={{ padding: 20 }}>Очередь пуста: нет ни заказов, ни макулатуры, ни поставок в перевозку — добавьте пустую строку ниже</div>
                 ) : (
                   <>
                   {deals.length > 0 && (
@@ -1027,6 +1064,20 @@ function CreateTransportModal({
                 )}
               </div>
 
+              <div className="transport-builder__blank-row">
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--outline admin-btn--sm"
+                  onClick={addCustomStop}
+                  title="Добавить пустую строку перевозки: адрес, номер и груз вписываются руками"
+                >
+                  <Plus size={13} /> Пустая строка перевозки
+                </button>
+                <span className="transport-builder__blank-hint">
+                  нет в очереди — забор или доставка по адресу вручную, груз впишете сами
+                </span>
+              </div>
+
               <div className="transport-builder__hint">
                 Количество груза правится прямо здесь (можно меньше, чем в документе).
                 Пометки «забор / доставка» и порядок точек — на шаге 2.
@@ -1044,10 +1095,10 @@ function CreateTransportModal({
                 onOpenDeal={() => setPanel("deals")}
                 title="Точки маршрута по порядку"
                 hint="тяните за ⠿ — в бланке будет этот порядок; числа в грузе — сколько везём/забираем, можно меньше, чем в документе"
-                emptyText="Пока пусто: отметьте заказы или макулатуру на шаге 1 — или добавьте свою точку"
+                emptyText="Пока пусто: отметьте заказы или макулатуру на шаге 1 — или добавьте пустую строку"
                 actions={
                   <button type="button" className="admin-btn admin-btn--outline admin-btn--sm" onClick={addCustomStop}>
-                    <Plus size={13} /> Своя точка
+                    <Plus size={13} /> Пустая строка
                   </button>
                 }
               />

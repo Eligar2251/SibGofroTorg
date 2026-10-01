@@ -9,9 +9,15 @@ export const dynamic = "force-dynamic";
 export default async function TripSheetPreviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sheet?: string; admin?: string }>;
+  searchParams: Promise<{ sheet?: string; admin?: string; strips?: string }>;
 }) {
   if (process.env.NODE_ENV === "production") notFound();
-  const { sheet, admin } = await searchParams;
-  return <TripSheetPreviewClient autoOpenSheet={sheet === "1"} showManager={admin === "1"} />;
+  const { sheet, admin, strips } = await searchParams;
+  return (
+    <TripSheetPreviewClient
+      autoOpenSheet={sheet === "1"}
+      autoOpenStrips={strips === "1"}
+      showManager={admin === "1"}
+    />
+  );
 }

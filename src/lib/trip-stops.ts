@@ -218,6 +218,12 @@ export interface TripStop {
   deliveryNote: string | null;
   /** Ориентировочное время на точке («09:30») — печатается в бланке */
   plannedTime: string | null;
+  /**
+   * Номер, написанный руками (накладная, счёт, номер заявки клиента).
+   * У точек из документов номера свои (ЗК-/ПМ-/СМ-/ПО-), поэтому поле
+   * имеет смысл для своих точек и печатается рядом с контрагентом.
+   */
+  docLabel?: string | null;
   tripType: TripType;
   lines: TripStopLine[];
   totalSum: number | null;
@@ -255,6 +261,8 @@ export interface TripStopTransportItem {
   phone: string | null;
   deliveryNote?: string | null;
   plannedTime?: string | null;
+  /** Свободный номер своей точки (накладная, заявка) — для бланка. */
+  docLabel?: string | null;
   items: {
     productId: string | null;
     name: string;
@@ -480,8 +488,9 @@ export function emptyCustomStop(): TripStop {
     address: "",
     deliveryNote: "",
     plannedTime: "",
+    docLabel: "",
     tripType: "pickup",
-    lines: [{ productId: null, name: "", qty: 1, orderedQty: null, maxQty: null }],
+    lines: [],
     totalSum: null,
   };
 }
@@ -529,6 +538,7 @@ export function stopFromTransportItem(
     address: item.address ?? null,
     deliveryNote: item.deliveryNote ?? null,
     plannedTime: item.plannedTime ?? null,
+    docLabel: item.docLabel ?? "",
     tripType: normalizeTripType(item.tripType),
     lines: (Array.isArray(item.items) ? item.items : []).map((line) => ({
       productId: line.productId ?? null,
@@ -547,9 +557,13 @@ export function stopsFromTransportItems(items: TripStopTransportItem[] | null | 
 }
 
 /**
- * Точки → items[] перевозки. Пустые точки (без груза) отбрасываем:
- * сервер всё равно их выкидывает, а порядок значим — поэтому чистим
- * заранее, чтобы номерация в бланке совпадала с тем, что сохранится.
+ * Точки → items[] перевозки.
+ *
+ * Пустые точки из документов отбрасываем: сервер всё равно их выкидывает,
+ * а порядок значим — поэтому чистим заранее, чтобы номерация в бланке
+ * совпадала с тем, что сохранится. СВОИ (вписанные руками) строки
+ * сохраняем даже без груза: диспетчер добавляет пустую строку, пишет
+ * адрес и груз по мере поступления — строка не должна исчезать.
  */
 export function stopsToTransportItems(stops: TripStop[]): TripStopTransportItem[] {
   return stops
@@ -573,6 +587,7 @@ export function stopsToTransportItems(stops: TripStop[]): TripStopTransportItem[
         phone: stop.phone?.trim() || null,
         deliveryNote: stop.deliveryNote?.trim() || null,
         plannedTime: stop.plannedTime?.trim() || null,
+        docLabel: stop.docLabel?.trim() || null,
         items: lines.map((line) => ({
           productId: line.productId ?? null,
           name: line.name.trim(),
@@ -584,7 +599,16 @@ export function stopsToTransportItems(stops: TripStop[]): TripStopTransportItem[
         tripType: stop.tripType,
       } satisfies TripStopTransportItem;
     })
-    .filter((item) => item.items.length > 0);
+    .filter((item) => {
+      if (item.items.length > 0) return true;
+      // Своя строка без груза: адрес/номер уже вписаны — строка нужна
+      // в маршруте (груз впишут позже, в том числе от руки в бланке).
+      const isManual = !item.dealId && !item.wpDocId && !item.receiptId;
+      return (
+        isManual &&
+        Boolean(item.address?.trim() || item.customerName.trim() || item.docLabel?.trim())
+      );
+    });
 }
 
 /** Проверка точек перед сохранением. Возвращает текст ошибки или null. */
@@ -596,12 +620,12 @@ export function validateStops(stops: TripStop[]): string | null {
     if (!stop.address || !stop.address.trim()) {
       return `Точка ${num}: укажите адрес — куда ехать водителю`;
     }
+    // Свою (вписанную руками) строку можно сохранить и без груза:
+    // груз уточняют позже — впишут в бланк от руки.
+    if (stop.kind === "custom") continue;
     // Для макулатуры вес может быть неизвестен до приезда и взвешивания.
     if (stopLoadedLines(stop).length === 0 && stop.kind !== "wp_intake" && stop.kind !== "wp_shipment") {
       return `Точка ${num}: укажите груз (что ${tripTypeDef(stop.tripType).cargoLabel.toLowerCase()})`;
-    }
-    if (stop.kind === "custom" && !stop.customerName.trim()) {
-      return `Точка ${num}: укажите контрагента — от кого/кому груз`;
     }
   }
   return null;
