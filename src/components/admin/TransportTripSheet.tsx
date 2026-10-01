@@ -275,6 +275,9 @@ export function TransportTripSheet({
             const note = stop.deliveryNote?.trim() || null;
             const isLast = index === stops.length - 1;
             const wp = isWpStop(stop);
+            // Свою строку без груза тоже печатаем: в ней будет пустая
+            // линия «место под товары» — впишут от руки.
+            const showCargo = stop.lines.length > 0 || stop.kind === "custom";
             return (
               <Fragment key={stop.key}>
               <article className={`tls-strip tls-strip--${type.id}`}>
@@ -356,11 +359,8 @@ export function TransportTripSheet({
                     </div>
                   )}
 
-                  {/* Груз */}
-                  {/* Своя строка без груза тоже печатается — с пустой
-                      линией «место под товары» (см. ветку ниже). */}
-                  {opts.goods !== "none" &&
-                    (stop.lines.length > 0 || stop.kind === "custom") && (
+                  {/* Груз (у своей строки без груза — пустая линия) */}
+                  {opts.goods !== "none" && showCargo && (
                     <div className="tls-strip__cargo">
                       {stop.lines.length === 0 ? (
                         <span className="tls-strip__cargo-line tls-strip__cargo-line--blank">
