@@ -466,6 +466,13 @@ export interface Panel {
   step?: number;
 }
 
+export interface DimensionMark {
+  a: Vec2;
+  b: Vec2;
+  /** подпись размерной линии (если пусто — её длина) */
+  label?: string;
+}
+
 export interface BuiltGeom {
   panels: Panel[];
   /** дополнительные линии (пазы, перфорация, разметка) */
@@ -474,6 +481,10 @@ export interface BuiltGeom {
   holes: Vec2[][];
   /** формулы «как считалось» для вывода в UI */
   derivation: Array<{ label: string; formula: string; value: number; unit?: string }>;
+  /** ручные подписи размеров; шаблонные конструкции поле не заполняют */
+  dimensions?: DimensionMark[];
+  /** пользовательская геометрия: её TECH-линии относятся к изделию, а не к плите */
+  custom?: boolean;
   /** заметки/предупреждения */
   warnings: string[];
   /** для 3D: сколько мм составляет «дно» и где оно */

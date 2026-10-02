@@ -29,6 +29,7 @@
 
 import { fitCoef, predictBlank } from './calibrate';
 import type { Fixture } from './fixtures';
+import type { CustomDrawing } from './custom';
 import {
   CONSTRUCTIONS,
   CLOSURES,
@@ -519,7 +520,7 @@ export interface JobPayload {
   price_per_pcs: number;
   price_with_vat: number;
   /** всё для точного повтора: ввод + справочники + коэффициенты */
-  settings: { input: BoxInput; prices: PriceSettings; profiles: Profile[]; sheets: SheetFormat[] };
+  settings: { input: BoxInput; prices: PriceSettings; profiles: Profile[]; sheets: SheetFormat[]; customDrawing?: CustomDrawing };
   result: Record<string, unknown>;
 }
 
@@ -537,6 +538,7 @@ export function packJob(
     prices: PriceSettings;
     profiles: Profile[];
     sheets: SheetFormat[];
+    customDrawing?: CustomDrawing;
   },
 ): JobPayload {
   const input = res.input;
@@ -564,7 +566,7 @@ export function packJob(
     blank_h: r(res.area.blankH, 1),
     die_w: r(res.area.dieW, 1),
     die_h: r(res.area.dieH, 1),
-    blank_area_m2: r(res.area.bboxAreaM2, 6),
+    blank_area_m2: r(res.area.blankAreaM2, 6),
     knives_m: r(res.knives.totalM, 3),
     per_sheet: Math.max(0, Math.round(res.nest.perSheet)),
     sheets: Math.max(0, Math.round(res.nest.sheets)),
@@ -577,6 +579,7 @@ export function packJob(
       prices: { ...meta.prices },
       profiles: meta.profiles.map((p) => ({ ...p })),
       sheets: meta.sheets.map((s) => ({ ...s })),
+      ...(meta.customDrawing ? { customDrawing: JSON.parse(JSON.stringify(meta.customDrawing)) as CustomDrawing } : {}),
     },
     result: {
       version: MODEL_VERSION,

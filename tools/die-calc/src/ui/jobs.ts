@@ -23,6 +23,7 @@ import {
   type Profile,
   type SheetFormat,
 } from '../core/model';
+import { parseCustomDrawing, type CustomDrawing } from '../core/custom';
 import type { AppState, SettingsState } from './store';
 
 /** строка die_calc_jobs ровно в том виде, в каком её отдаёт API */
@@ -67,6 +68,7 @@ export interface DieCalcJobRow {
     prices?: PriceSettings;
     profiles?: Profile[];
     sheets?: SheetFormat[];
+    customDrawing?: CustomDrawing;
   } | null;
   result?: Record<string, unknown> | null;
 }
@@ -130,6 +132,8 @@ export function jobToPatch(row: DieCalcJobRow): { initial: Partial<AppState>; in
     blankH: num(row.blank_h, num(input?.blankH)),
     blankAreaM2: input?.blankArea ? Math.round((input.blankArea / 1e6) * 1e6) / 1e6 : 0,
   };
+  const customDrawing = row.settings?.customDrawing ? parseCustomDrawing(row.settings.customDrawing) : null;
+  if (customDrawing) initial.customDrawing = customDrawing;
   if (opts) initial.options = { ...opts };
   if (die) initial.die = { ...die };
   if (nesting) initial.nesting = { ...nesting };

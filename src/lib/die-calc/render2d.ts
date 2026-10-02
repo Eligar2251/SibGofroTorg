@@ -13,7 +13,7 @@ import { tileSegs } from './geo';
 import { LAYER_COLOR, LAYER_DASH, LAYER_NAME } from './engine';
 import type { LineKind, Seg } from './geo';
 import { segsToPath } from './geo';
-import type { CalcResult } from './model';
+import type { CalcResult, DimensionMark } from './model';
 
 export interface Render2dOpts {
   /**
@@ -59,11 +59,19 @@ export function renderUnfold(res: CalcResult, o: Render2dOpts = {}): string {
   const fm = Math.max(0, res.input.die.frameMargin);
   const blankW = res.area.blankW;
   const blankH = res.area.blankH;
+  const manualDimPoints = showDims ? (res.geom.dimensions ?? []).flatMap((mark) => [mark.a, mark.b]) : [];
+  const dimBounds = manualDimPoints.reduce((box, point) => ({
+    x0: Math.min(box.x0, point.x),
+    x1: Math.max(box.x1, point.x),
+    y0: Math.min(box.y0, point.y),
+    y1: Math.max(box.y1, point.y),
+  }), { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity });
+  const hasManualDims = manualDimPoints.length > 0;
 
-  const x0 = showDie ? -fm : 0;
-  const x1 = showDie ? blankW + fm : blankW;
-  const y0 = showDie ? -fm : 0;
-  const y1 = showDie ? blankH + fm : blankH;
+  const x0 = Math.min(showDie ? -fm : 0, hasManualDims ? dimBounds.x0 - 8 : Infinity);
+  const x1 = Math.max(showDie ? blankW + fm : blankW, hasManualDims ? dimBounds.x1 + 8 : -Infinity);
+  const y0 = Math.min(showDie ? -fm : 0, hasManualDims ? dimBounds.y0 - 8 : Infinity);
+  const y1 = Math.max(showDie ? blankH + fm : blankH, hasManualDims ? dimBounds.y1 + 8 : -Infinity);
   const padL = showDims ? 42 : 8;
   const padB = showDims ? 46 : 8;
   const padT = showDims ? (showDie ? 56 : 44) : 8;
@@ -113,7 +121,7 @@ export function renderUnfold(res: CalcResult, o: Render2dOpts = {}): string {
   const order: LineKind[] = ['mark', 'tech', 'crease', 'perf', 'cut'];
   for (const kind of order) {
     if (o.layers && o.layers[kind] === false) continue;
-    if (!showDie && (kind === 'mark' || kind === 'tech')) continue;
+    if (!showDie && (kind === 'mark' || (kind === 'tech' && !res.geom.custom))) continue;
     const segs: Seg[] = res.segMap[kind] ?? [];
     if (!segs.length) continue;
     const dash = LAYER_DASH[kind];
@@ -121,7 +129,7 @@ export function renderUnfold(res: CalcResult, o: Render2dOpts = {}): string {
       `<g class="layer layer-${kind}" data-layer="${kind}" data-name="${esc(LAYER_NAME[kind])}" stroke="${LAYER_COLOR[kind]}" stroke-width="${f(sw * (kind === 'cut' ? 1.6 : 1.15))}" fill="none" ${dash !== 'none' ? `stroke-dasharray="${dash}"` : ''} stroke-linecap="butt">`,
     );
     // рамка и техно-углы рисуются по всей плите, их не тиражируем
-    const onPlate = kind === 'mark' || kind === 'tech';
+    const onPlate = kind === 'mark' || (kind === 'tech' && !res.geom.custom);
     const drawn = onPlate ? segs : tileSegs(segs, perDie, stepX);
     const path = `<path d="${segsToPath(drawn.map((s) => ({ ...s, a: { x: s.a.x, y: -Y(s.a.y) }, b: { x: s.b.x, y: -Y(s.b.y) } })))}"/>`;
     parts.push(onPlate ? path : inAllSeats(path));
@@ -164,6 +172,7 @@ export function renderUnfold(res: CalcResult, o: Render2dOpts = {}): string {
         ),
       );
     }
+      for (const mark of res.geom.dimensions ?? []) parts.push(dimensionMark(mark, Y));
     parts.push('</g>');
     if (res.die && showDie) {
       parts.push(
@@ -180,6 +189,29 @@ export function renderUnfold(res: CalcResult, o: Render2dOpts = {}): string {
   );
   parts.push('</svg>');
   return parts.join('\n');
+}
+
+function dimensionMark(mark: DimensionMark, Y: (y: number) => number): string {
+  const x1 = mark.a.x;
+  const y1 = -Y(mark.a.y);
+  const x2 = mark.b.x;
+  const y2 = -Y(mark.b.y);
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.hypot(dx, dy);
+  if (length < 0.01) return '';
+  const nx = -dy / length;
+  const ny = dx / length;
+  const label = mark.label?.trim() || `${num(length)} мм`;
+  const tickSize = 3;
+  const mx = (x1 + x2) / 2 + nx * 5;
+  const my = (y1 + y2) / 2 + ny * 5;
+  return (
+    `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}"/>` +
+    `<line x1="${f(x1 - nx * tickSize)}" y1="${f(y1 - ny * tickSize)}" x2="${f(x1 + nx * tickSize)}" y2="${f(y1 + ny * tickSize)}"/>` +
+    `<line x1="${f(x2 - nx * tickSize)}" y1="${f(y2 - ny * tickSize)}" x2="${f(x2 + nx * tickSize)}" y2="${f(y2 + ny * tickSize)}"/>` +
+    `<text x="${f(mx)}" y="${f(my)}" text-anchor="middle" font-size="9" stroke="none">${esc(label)}</text>`
+  );
 }
 
 function chainH(segs: Array<{ v: number }>, y: number, xStart: number): string {

@@ -32,6 +32,7 @@ import type { LineKind } from '../core/geo';
 import { calibReport, fitAll, type CalibRow } from '../core/calibrate';
 import { geoLessonFor, learnedCoefs, priceFactorFor, type DieCalcModel } from '../core/learn';
 import type { Fixture } from '../core/fixtures';
+import { emptyCustomDrawing, type CustomDrawing } from '../core/custom';
 
 export interface AppState {
   L: number;
@@ -45,6 +46,8 @@ export interface AppState {
   options: Options;
   die: DieSettings;
   nesting: NestingSettings;
+  /** чертёж произвольной штанцформы (сетка, линии, контуры, размеры) */
+  customDrawing: CustomDrawing;
   /** режим «по чертежу матрицы» */
   blankW: number;
   blankH: number;
@@ -88,6 +91,7 @@ export const DEFAULT_STATE: AppState = {
   blankW: 550,
   blankH: 513,
   blankAreaM2: 0,
+  customDrawing: emptyCustomDrawing(),
   customFixtures: [],
   useLearned: true,
   coefs: (() => {

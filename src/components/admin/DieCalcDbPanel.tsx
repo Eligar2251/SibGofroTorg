@@ -19,10 +19,15 @@ import Link from "next/link";
 import { Card, Chk, Num, Sel, fmtMm, fmtRub } from "@/components/admin/die-calc/controls";
 import { JOB_STATUSES, jobTitle, jobToPatch, type DieCalcJobRow } from "@/components/admin/die-calc/jobs";
 import type { UseCalc } from "@/components/admin/die-calc/store";
+import type { CalcResult } from "@/lib/die-calc/model";
 import { applyPriceFactor, describeModel, packJob, type DieCalcModel } from "@/lib/die-calc";
 
 export interface DieCalcDbPanelProps {
   calc: UseCalc;
+  /** пользовательская геометрия, если выбрана вкладка «Своя форма» */
+  customResult?: CalcResult | null;
+  isCustom?: boolean;
+  onCalculationMode?: (isCustom: boolean) => void;
   /** строка, открытая через ?job= (редактируем её, а не плодим новые) */
   job: DieCalcJobRow | null;
   jobId: string | null;
@@ -60,6 +65,9 @@ async function api(path: string, init?: RequestInit): Promise<Record<string, unk
 
 export function DieCalcDbPanel({
   calc,
+  customResult,
+  isCustom = false,
+  onCalculationMode,
   job,
   jobId,
   onJobId,
@@ -69,6 +77,7 @@ export function DieCalcDbPanel({
   jobsHref,
   recent,
 }: DieCalcDbPanelProps): ReactNode {
+  const activeResult = isCustom ? customResult ?? null : calc.result;
   const [meta, setMeta] = useState({
     name: job?.name ?? "",
     customer: job?.customer ?? "",
@@ -101,18 +110,19 @@ export function DieCalcDbPanel({
 
   /** сохранить расчёт: новая строка или правка открытой */
   async function save(): Promise<void> {
-    if (!calc.result) {
-      flash("err", "Расчёт не готов — сначала исправьте размеры");
+    if (!activeResult) {
+      flash("err", "Расчёт не готов — сначала нарисуйте геометрию и проверьте профиль");
       return;
     }
     setBusy("save");
     try {
-      const payload = packJob(calc.result, {
+      const payload = packJob(activeResult, {
         orderNo: calc.state.orderNo,
-        name: meta.name,
+        name: meta.name || (isCustom ? calc.state.customDrawing.name : ""),
         customer: meta.customer || null,
         status: meta.status,
         note: meta.note || null,
+        customDrawing: isCustom ? calc.state.customDrawing : undefined,
         prices: calc.settings.prices,
         profiles: calc.settings.profiles,
         sheets: calc.settings.sheets,
@@ -140,11 +150,11 @@ export function DieCalcDbPanel({
       flash("err", "Сначала сохраните расчёт в базу — факт пишется в строку");
       return;
     }
-    const body: Record<string, unknown> = copyFromCalc && calc.result
+    const body: Record<string, unknown> = copyFromCalc && activeResult
       ? {
-          fact_blank_w: Math.round(calc.result.area.blankW * 10) / 10,
-          fact_blank_h: Math.round(calc.result.area.blankH * 10) / 10,
-          fact_price_per_pcs: Math.round(calc.result.cost.perPcs * 100) / 100,
+          fact_blank_w: Math.round(activeResult.area.blankW * 10) / 10,
+          fact_blank_h: Math.round(activeResult.area.blankH * 10) / 10,
+          fact_price_per_pcs: Math.round(activeResult.cost.perPcs * 100) / 100,
           learned: fact.learned,
         }
       : {
@@ -234,6 +244,7 @@ export function DieCalcDbPanel({
   function loadJob(row: DieCalcJobRow): void {
     const patch = jobToPatch(row);
     calc.hydrate(patch.initial, patch.initialSettings);
+    onCalculationMode?.(!!patch.initial.customDrawing);
     onJobId(row.id);
     setMeta({ name: row.name ?? "", customer: row.customer ?? "", status: row.status ?? "draft", note: row.note ?? "" });
     setFact({
@@ -247,7 +258,7 @@ export function DieCalcDbPanel({
     flash("ok", `Загружен расчёт «${jobTitle(row)}» — можно выбрать другой замок и пересчитать`);
   }
 
-  const res = calc.result;
+  const res = activeResult;
   const cost = res?.cost ?? null;
   const scaled = cost ? applyPriceFactor(cost, calc.learn.priceK) : null;
 

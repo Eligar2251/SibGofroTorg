@@ -11,6 +11,7 @@ export * from './geo';
 export * from './model';
 export * from './templates';
 export * from './engine';
+export * from './custom';
 export * from './nesting';
 export * from './cost';
 export * from './calibrate';
