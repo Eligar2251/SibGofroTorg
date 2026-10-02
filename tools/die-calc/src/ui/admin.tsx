@@ -7,6 +7,7 @@ import { CONSTRUCTIONS, DEFAULT_COEF, DEFAULT_PRICES, type ClosureId, type Coef,
 import type { Fixture } from '../core/fixtures';
 import { calibReport, meanAbsError } from '../core/calibrate';
 import { FIXTURES } from '../core/fixtures';
+import { describeModel } from '../core/learn';
 import { Card, fmtMm, Num, Sel } from './controls';
 import { CoefEditor } from './panels';
 import type { UseCalc } from './store';
@@ -331,6 +332,49 @@ export function SettingsPanel({ calc }: { calc: UseCalc }): ReactNode {
           <span className="dgc-badge">всё хранится локально (localStorage), сервер не нужен</span>
         </div>
       </Card>
+
+      <LearnedModelCard calc={calc} />
     </>
+  );
+}
+
+/**
+ * Что калькулятор умеет сам дорисовывать по сохранённым расчётам. В песочнице
+ * модели нет (нет базы) — карточка честно об этом говорит; в админке сайта
+ * модель приходит пропом `model` и поправку можно выключить одним чекбоксом.
+ */
+export function LearnedModelCard({ calc }: { calc: UseCalc }): ReactNode {
+  const { learn, model } = calc;
+  const lines = describeModel(model);
+  return (
+    <Card
+      title="Обучение на сохранённых расчётах"
+      right={
+        <label className="dgc-check" title="применять выученные припуски и множитель цены к этому расчёту">
+          <input type="checkbox" checked={learn.on} onChange={(e) => learn.setOn(e.target.checked)} />
+          применять
+        </label>
+      }
+    >
+      <ul className="dgc-notes" style={{ margin: 0, paddingLeft: 18 }}>
+        {lines.map((l) => (
+          <li key={l}>{l}</li>
+        ))}
+      </ul>
+      {learn.geo ? (
+        <p className="dgc-notes" style={{ marginTop: 8 }}>
+          Эта конструкция: габарит заготовки уточнён по {learn.geoN} записям, ошибка {learn.errBeforeMm} мм → {learn.errAfterMm} мм.
+        </p>
+      ) : null}
+      {learn.priceN > 0 ? (
+        <p className="dgc-notes" style={{ marginTop: 4 }}>
+          Цена: ×{learn.priceK.toFixed(3)} ({learn.priceLabel}, {learn.priceN} записей, разброс ±{learn.priceSpreadPct} %).
+        </p>
+      ) : null}
+      <p className="dgc-notes" style={{ marginTop: 8 }}>
+        Модель меняет только припуски (таблица коэффициентов) и множитель цены в интерфейсе: развертка, 3D и DXF строятся из тех же
+        коэффициентов, поэтому матрица остаётся единой. Ручную подгонку она не затирает — при выключенном «применять» считается по вашим числам.
+      </p>
+    </Card>
   );
 }

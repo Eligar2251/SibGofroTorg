@@ -30,6 +30,7 @@ import { baseSettings, calcBox, makeInput } from '../core/index';
 import type { CalcResult, CalcSettings } from '../core/index';
 import type { LineKind } from '../core/geo';
 import { calibReport, fitAll, type CalibRow } from '../core/calibrate';
+import { geoLessonFor, learnedCoefs, priceFactorFor, type DieCalcModel } from '../core/learn';
 import type { Fixture } from '../core/fixtures';
 
 export interface AppState {
@@ -52,6 +53,8 @@ export interface AppState {
   coefs: Record<ConstructionId, Coef>;
   /** свои эталонные чертежи для подгонки (L,W,H,профиль, габарит с чертежа) */
   customFixtures: Fixture[];
+  /** применять выученную на сохранённых расчётах модель (см. core/learn.ts) */
+  useLearned: boolean;
   // вью
   showDie: boolean;
   showDims: boolean;
@@ -86,6 +89,7 @@ export const DEFAULT_STATE: AppState = {
   blankH: 513,
   blankAreaM2: 0,
   customFixtures: [],
+  useLearned: true,
   coefs: (() => {
     const o = {} as Record<ConstructionId, Coef>;
     for (const k of Object.keys(DEFAULT_COEF) as ConstructionId[]) o[k] = cloneCoef(DEFAULT_COEF[k]);
@@ -147,21 +151,59 @@ export interface UseCalc {
   calib: { rows: CalibRow[]; run: (extra?: Fixture[]) => void; fitted: boolean };
   resetAll: () => void;
   size: { w: number; h: number };
+  /** обучение: выученная модель (из базы) и то, как она применилось к этому расчёту */
+  model: DieCalcModel | null;
+  learn: {
+    /** включать/выключать поправку, не трогая сами коэффициенты */
+    on: boolean;
+    setOn: (v: boolean) => void;
+    /** поправка по габариту действует на этой конструкции */
+    geo: boolean;
+    geoN: number;
+    errBeforeMm: number;
+    errAfterMm: number;
+    /** множитель цены и откуда он взялся */
+    priceK: number;
+    priceN: number;
+    priceLabel: string;
+    priceSpreadPct: number;
+    /** коэффициенты, с которыми реально считается (с учётом модели) */
+    effectiveCoef: Coef;
+  };
+  /** залить состояние извне (загрузка сохранённого расчёта из базы) */
+  hydrate: (patch: Partial<AppState>, settings?: Partial<SettingsState>) => void;
 }
 
-export function useCalc(): UseCalc {
+export interface UseCalcOptions {
+  /** начальное состояние — напр. сохранённый расчёт из die_calc_jobs */
+  initial?: Partial<AppState> | null;
+  /** начальные ставки/справочники (общий прайс из базы) */
+  initialSettings?: Partial<SettingsState> | null;
+  /** выученная модель: die_calc_models.model */
+  model?: DieCalcModel | null;
+}
+
+export function useCalc(opts: UseCalcOptions = {}): UseCalc {
   const saved = useMemo(() => load(), []);
+  // порядок слияния: дефолт → localStorage → то, что принесли снаружи
+  // (сохранённый расчёт из базы / общий прайс). Снаружи важнее: иначе
+  // «открыть расчёт №1200» показало бы чужой локальный черновик.
+  const initial = opts.initial ?? null;
+  const initialSettings = opts.initialSettings ?? null;
+  const model = opts.model ?? null;
   const [state, setRaw] = useState<AppState>({
     ...DEFAULT_STATE,
     ...(saved.state ?? {}),
-    coefs: { ...DEFAULT_STATE.coefs, ...((saved.state ?? {}).coefs ?? {}) },
-    options: { ...DEFAULT_STATE.options, ...((saved.state ?? {}).options ?? {}) },
-    layers: { ...DEFAULT_STATE.layers, ...((saved.state ?? {}).layers ?? {}) },
+    ...(initial ?? {}),
+    coefs: { ...DEFAULT_STATE.coefs, ...((saved.state ?? {}).coefs ?? {}), ...((initial ?? {}).coefs ?? {}) },
+    options: { ...DEFAULT_STATE.options, ...((saved.state ?? {}).options ?? {}), ...((initial ?? {}).options ?? {}) },
+    layers: { ...DEFAULT_STATE.layers, ...((saved.state ?? {}).layers ?? {}), ...((initial ?? {}).layers ?? {}) },
   });
   const [settings, setSettingsRaw] = useState<SettingsState>({
     ...DEFAULT_SETTINGS,
     ...(saved.settings ?? {}),
-    prices: { ...DEFAULT_SETTINGS.prices, ...((saved.settings ?? {}).prices ?? {}) },
+    ...(initialSettings ?? {}),
+    prices: { ...DEFAULT_SETTINGS.prices, ...((saved.settings ?? {}).prices ?? {}), ...((initialSettings ?? {}).prices ?? {}) },
   });
   const [calibRows, setCalibRows] = useState<CalibRow[] | null>(null);
   const [fitted, setFitted] = useState(false);
@@ -198,6 +240,13 @@ export function useCalc(): UseCalc {
     setFitted(false);
   }, [state.orderNo]);
 
+  // выученная модель перекрывает коэффициенты, но НЕ трогает ручную
+  // подгонку: state.coefs остаётся как есть, поправка применяется на лету
+  const coefsForCalc = useMemo(
+    () => (state.useLearned ? learnedCoefs(state.coefs, model).coefs : state.coefs),
+    [state.coefs, state.useLearned, model],
+  );
+
   const input = useMemo<BoxInput>(() => {
     const cons = CONSTRUCTIONS.find((c) => c.id === state.construction) as (typeof CONSTRUCTIONS)[number];
     const base = makeInput({
@@ -215,10 +264,10 @@ export function useCalc(): UseCalc {
       options: state.options,
       die: state.die,
       nesting: state.nesting,
-      coef: state.coefs[state.construction] ?? DEFAULT_COEF[state.construction],
+      coef: coefsForCalc[state.construction] ?? DEFAULT_COEF[state.construction],
       blankArea: state.blankAreaM2 > 0 ? Math.round(state.blankAreaM2 * 1e6) : undefined,
     };
-  }, [state]);
+  }, [state, coefsForCalc]);
 
   const calcSettings = useMemo<CalcSettings>(() => {
     const bs = baseSettings({ prices: settings.prices, profiles: settings.profiles, labelSize: settings.labelSize });
@@ -244,6 +293,38 @@ export function useCalc(): UseCalc {
     [settings.profiles, state.customFixtures],
   );
 
+  const hydrate = useCallback((patch: Partial<AppState>, extra?: Partial<SettingsState>) => {
+    setRaw((s) => ({
+      ...s,
+      ...patch,
+      coefs: { ...s.coefs, ...(patch.coefs ?? {}) },
+      options: { ...s.options, ...(patch.options ?? {}) },
+    }));
+    if (extra) setSettingsRaw((x) => ({ ...x, ...extra, prices: { ...x.prices, ...(extra.prices ?? {}) } }));
+  }, []);
+
+  const learn = useMemo(() => {
+    const geo = state.useLearned ? geoLessonFor(model, state.construction) : null;
+    const pf = priceFactorFor(state.useLearned ? model : null, {
+      construction: state.construction,
+      closure: state.closure,
+      profileId: state.profileId,
+    });
+    return {
+      on: state.useLearned,
+      setOn: (v: boolean) => setRaw((s) => ({ ...s, useLearned: v })),
+      geo: !!geo,
+      geoN: geo?.n ?? 0,
+      errBeforeMm: geo?.errBeforeMm ?? 0,
+      errAfterMm: geo?.errAfterMm ?? 0,
+      priceK: pf.k,
+      priceN: pf.n,
+      priceLabel: pf.label,
+      priceSpreadPct: pf.spreadPct,
+      effectiveCoef: coefsForCalc[state.construction] ?? DEFAULT_COEF[state.construction],
+    };
+  }, [coefsForCalc, model, state.construction, state.closure, state.profileId, state.useLearned]);
+
   const size = useMemo(() => {
     const p = settings.profiles.find((x) => x.id === state.profileId) ?? settings.profiles[0];
     void p;
@@ -265,6 +346,9 @@ export function useCalc(): UseCalc {
     calib: { rows: calibRows ?? defaultRows(settings), run, fitted },
     resetAll,
     size,
+    model,
+    learn,
+    hydrate,
   };
 }
 

@@ -401,3 +401,56 @@
   padding: 8px;
   font-size: 12px;
 }
+
+
+/* ── слот приложения (в сайте: «База и обучение») ──────────────
+   Содержимое рисует само приложение через props.slots, поэтому стили
+   лежат здесь: два столбца, как в остальных вкладках, плюс служебные
+   плашки сообщения и «-muted» подписи. */
+.dgc-slot {
+  display: block;
+}
+.dgc-db__cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.dgc-note {
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+.dgc-note--ok {
+  border: 1px solid var(--dgc-green);
+  background: rgba(26, 127, 55, 0.08);
+  color: var(--dgc-green);
+}
+.dgc-note--err {
+  border: 1px solid var(--dgc-bad);
+  background: rgba(201, 42, 42, 0.08);
+  color: var(--dgc-bad);
+}
+.dgc-muted {
+  color: var(--dgc-muted);
+  font-size: 11px;
+}
+.dgc-db textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--dgc-line);
+  border-radius: 8px;
+  background: var(--dgc-bg);
+  color: inherit;
+}
+@media (max-width: 1240px) {
+  .dgc-db__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

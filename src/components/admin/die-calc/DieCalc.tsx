@@ -18,17 +18,36 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { CONSTRUCTIONS } from '@/lib/die-calc/model';
 import { renderUnfold } from '@/lib/die-calc/render2d';
 import { exportCsv, exportDxf, exportJsonFallback, exportPng, exportReport, exportSvg, printPdf } from './exports';
-import { useCalc, type AppState } from './store';
+import { useCalc, type AppState, type SettingsState, type UseCalc } from './store';
 import { Card, fmtMm } from './controls';
 import { FormPanel, ResultPanel, DerivationView } from './panels';
 import { FoldView, NestView, UnfoldView } from './views';
 import { CalibrationPanel, SettingsPanel } from './admin';
+import type { DieCalcModel } from '@/lib/die-calc/learn';
 import '@/app/admin-die-calc.css';
 
-export type DieCalcTab = 'unfold' | 'fold' | 'sheet' | 'formula' | 'calib' | 'settings';
+type KnownTab = 'unfold' | 'fold' | 'sheet' | 'formula' | 'calib' | 'settings';
+/** известные вкладки + любые свои (слоты приложения: «База и обучение») */
+export type DieCalcTab = KnownTab | (string & {});
+
+/**
+ * Слот — вкладка, которую рисует приложение (не ядро и не UI-песочница).
+ * Так админка сайта получает доступ к живому состоянию калькулятора
+ * (calc.state / calc.result / calc.hydrate), не смешивая Supabase с расчётом.
+ */
+export interface DieCalcSlot {
+  id: string;
+  name: string;
+  render: (p: { calc: UseCalc; tab: DieCalcTab; setTab: (t: DieCalcTab) => void }) => ReactNode;
+}
 
 export interface DieCalcProps {
+  /** состояние «как на экране» — им можно загрузить сохранённый расчёт */
   initial?: Partial<AppState>;
+  /** общие ставки/справочники (в сайте — из die_calc_settings) */
+  initialSettings?: Partial<SettingsState>;
+  /** выученная модель по сохранённым расчётам (core/learn.ts) */
+  model?: DieCalcModel | null;
   tab?: DieCalcTab;
   dark?: boolean;
   /** какие вкладки показывать (по умолчанию все) */
@@ -36,6 +55,8 @@ export interface DieCalcProps {
   /** заголовок шапки */
   title?: string;
   subtitle?: string;
+  /** дополнительные вкладки (сохранение, обучение, журнал) */
+  slots?: DieCalcSlot[];
 }
 
 const ALL_TABS: Array<{ id: DieCalcTab; name: string }> = [
@@ -48,7 +69,7 @@ const ALL_TABS: Array<{ id: DieCalcTab; name: string }> = [
 ];
 
 export function DieCalc(props: DieCalcProps): ReactNode {
-  const calc = useCalc();
+  const calc = useCalc({ initial: props.initial, initialSettings: props.initialSettings, model: props.model });
   const [tab, setTab] = useState<DieCalcTab>(props.tab ?? 'unfold');
   const dark = !!props.dark;
   const { state, setState, result, error, settings } = calc;
@@ -77,7 +98,11 @@ export function DieCalc(props: DieCalcProps): ReactNode {
     [result, state, name],
   );
 
-  const tabs = ALL_TABS.filter((t) => !props.tabs || props.tabs.includes(t.id));
+  const slots = props.slots ?? [];
+  const tabs = ALL_TABS.concat(slots.map((s) => ({ id: s.id, name: s.name }))).filter(
+    (t) => !props.tabs || props.tabs.includes(t.id),
+  );
+  const activeSlot = slots.find((s) => s.id === tab);
 
   return (
     <div className={'dgc-root' + (dark ? ' dark' : '')}>
@@ -96,6 +121,12 @@ export function DieCalc(props: DieCalcProps): ReactNode {
           </span>
           <span className="dgc-badge">{result ? `${result.nest.perSheet} шт/лист` : '—'}</span>
           <span className="dgc-badge">{profile ? `${profile.priceM2} ₽/м²` : '—'}</span>
+          {calc.learn.geo || calc.learn.priceN > 0 ? (
+            <span className="dgc-badge dgc-badge--learned" title="к расчёту применена модель, выученная на сохранённых расчётах">
+              обучение: {calc.learn.geoN > 0 ? `габарит ±${calc.learn.errAfterMm} мм` : 'габарит — нет'}
+              {calc.learn.priceN > 0 ? `, цена ×${calc.learn.priceK.toFixed(3)}` : ''}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -109,7 +140,11 @@ export function DieCalc(props: DieCalcProps): ReactNode {
         ))}
       </div>
 
-      {result && (tab === 'unfold' || tab === 'fold' || tab === 'sheet' || tab === 'formula') ? (
+      {activeSlot ? (
+        <div className="dgc-slot">{activeSlot.render({ calc, tab, setTab })}</div>
+      ) : null}
+
+      {result && !activeSlot && (tab === 'unfold' || tab === 'fold' || tab === 'sheet' || tab === 'formula') ? (
         <div className="dgc-shell">
           <div className="dgc-col">
             <FormPanel calc={calc} />
@@ -141,7 +176,7 @@ export function DieCalc(props: DieCalcProps): ReactNode {
         </div>
       ) : null}
 
-      {result && tab === 'calib' ? (
+      {result && !activeSlot && tab === 'calib' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.15fr) minmax(0,1fr)', gap: 12, alignItems: 'start' }} className="dgc-calib">
           <CalibrationPanel calc={calc} />
           <div className="dgc-col">
@@ -150,7 +185,7 @@ export function DieCalc(props: DieCalcProps): ReactNode {
         </div>
       ) : null}
 
-      {tab === 'settings' ? (
+      {!activeSlot && tab === 'settings' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 12, alignItems: 'start' }} className="dgc-settings">
           <SettingsPanel calc={calc} />
           <div className="dgc-col">

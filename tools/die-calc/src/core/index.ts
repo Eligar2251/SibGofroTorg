@@ -19,6 +19,7 @@ export { renderUnfold, type Render2dOpts } from './render2d';
 export { renderFold, foldTransforms, type V3, type Fold3dOpts } from './render3d';
 export { toDxf, DXF_LAYER } from './export/dxf';
 export { specText, specCsv, quickCard } from './export/report';
+export * from './learn';
 
 import { calcBox, type CalcSettings } from './engine';
 import {
