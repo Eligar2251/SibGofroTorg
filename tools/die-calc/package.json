@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "esbuild test/*.test.ts --bundle --platform=node --format=esm --outdir=.tmp/test --log-level=warning && node --test .tmp/test/*.test.js",
     "check": "esbuild scripts/selfcheck.ts --bundle --platform=node --format=esm --outfile=.tmp/selfcheck.mjs --external:@resvg/resvg-js --log-level=warning && node .tmp/selfcheck.mjs",
-    "preview:svg": "esbuild scripts/preview.ts --bundle --platform=node --format=esm --outfile=.tmp/preview.mjs --external:@resvg/resvg-js --log-level=warning && node .tmp/preview.mjs"
+    "preview:svg": "esbuild scripts/preview.ts --bundle --platform=node --format=esm --outfile=.tmp/preview.mjs --external:@resvg/resvg-js --log-level=warning && node .tmp/preview.mjs",
+    "sync:site": "node scripts/sync-site.mjs",
+    "sync:check": "node scripts/sync-site.mjs --check"
   },
   "peerDependencies": {
     "react": ">=18",
@@ -34,6 +36,8 @@
     "typecheck": "tsc --noEmit по strict",
     "test": "тесты (esbuild → node --test)",
     "check": "сверка с 9 эталонными чертежами + отчёт калибровки",
-    "preview:svg": "сгенерировать SVG/PNG превью в .tmp/preview"
+    "preview:svg": "сгенерировать SVG/PNG превью в .tmp/preview",
+    "sync:site": "скопировать ядро/UI в приложение (src/lib/die-calc, src/components/admin/die-calc)",
+    "sync:check": "проверить, что копии в приложении не отстали"
   }
 }

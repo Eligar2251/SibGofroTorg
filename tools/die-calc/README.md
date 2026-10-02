@@ -78,7 +78,8 @@ npm run dev          # standalone-превью на :5173 (0.0.0.0)
 npm run typecheck    # tsc --noEmit, strict
 npm test             # 31 тест: геометрия, раскладка, деньги, экспорт
 npm run check        # сверка с 9 чертежами + инварианты + JSON для дефолтов
-npm run preview:svg  # PNG-превью развёрток/сборки в .tmp/preview (нужен @resvg/resvg-js)
+npm run preview:svg  # PNG-превью в .tmp/preview: заготовка, штамп, 3D 100/70/35%
+npm run sync:site    # перенести ядро+UI в приложение (src/lib/die-calc, src/components/admin/die-calc)
 npm run build        # статичный билд в dist/
 ```
 
@@ -104,69 +105,64 @@ const txt = specText(res, '0427');
 E = 36 ₽/м², B = 38 ₽/м²; `DEFAULT_PRICES` — всё остальное). Форматы листа —
 `DEFAULT_SHEETS`.
 
-## Вставка в Next.js (App Router)
+## Что показано на экране
 
-1. Скопировать папку целиком, например в `src/features/die-calc/`:
+* **Развертка** = только **вырезанная заготовка** коробки: контур реза, биговка,
+  перфорация, вырезы замка и размеры. Плита штампа (рамка, техно-уголки, рамка
+  маркировки) по умолчанию скрыта — включается чекбоксом «как штамп» (он же
+  включает рамку в SVG/PNG; `npm run preview:svg` кладёт рядом `-die.png`).
+* **Сборка 3D** = та же коробка: дерево панелей гнётся вокруг линий биговки,
+  каждый клапан держится за своего родителя, послойный зазор 0,035 мм на шаг
+  сборки — поэтому перехлёсты лежат друг на друге, а не «мерцают» и не висят
+  в воздухе. Свойство закреплено тестом (`npm test` → «панели соединены по
+  линиям сгиба»): линия сгиба каждой панели лежит на контуре родителя, общий
+  край в сборке расходится меньше чем на 1,6 мм, стенки вертикальны, крышка
+  лежит на стенках на высоте Hp.
+* **Раскладка по листу** — штуки с листа в двух ориентациях + гильотинные
+  комбинации, цвет по остаткам.
+
+## Где это в сайте
+
+Расчёт живёт **только в админке**: `/[adminPath]/die-calc` (пункт меню
+«Штанцформа», иконка-ножовка; доступен admin/owner/manager, юристу и
+макулатурщику — нет, см. `canAccessAdminPage`). Публичных страниц нет,
+`src/app/(сайт)` не тронут.
+
+В приложении лежат **копии**, которые генерирует скрипт:
+
+| в сайте | откуда |
+|---|---|
+| `src/lib/die-calc/**` | `tools/die-calc/src/core/**` |
+| `src/components/admin/die-calc/**` | `tools/die-calc/src/ui/**` |
+| `src/app/admin-die-calc.css` | `tools/die-calc/src/ui/ui.css` |
 
 ```bash
-cp -r tools/die-calc/src/core tools/die-calc/src/ui src/features/die-calc/
-cp tools/die-calc/src/ui/ui.css src/features/die-calc/ui/ui.css   # уже внутри
+cd tools/die-calc && npm run sync:site    # перенести правки в приложение
+npm run sync:check                          # проверка, что копии не отстали
 ```
 
-   Нужны только `core/` и `ui/` — `test/`, `scripts/`, `index.html`, `vite.config.mjs`
-   в приложение не копируются.
+Скрипт меняет только пути импортов (`../core/x` → `@/lib/die-calc/x`,
+`./ui.css` → `@/app/admin-die-calc.css`) и ставит сверху баннер «не правьте в
+src/». Стили калькулятора полностью под `.dgc-root`, глобальных селекторов
+(`body`, `*`, `@page`) там нет — вёрстку админки не трогают. Проверено
+`node_modules/.bin/tsc --noEmit`, `eslint` и `next build` (роут
+`ƒ /[adminPath]/die-calc` собирается).
 
-2. Никаких npm-зависимостей не добавлять: `react`, `react-dom` уже есть,
-   `package.json` тулзы — только для standalone-режима.
+### Если нужен второй вход (свой сайт, прайс, мобильное приложение)
 
-3. Страница (`src/ui/DieCalc.tsx` помечен `'use client'`, поэтому серверная
-   обёртка не трогает расчёты на сервере):
+Копируете те же папки (`core` + `ui`), ставите `'use client'`-обёртку и
+рендерите `<DieCalc />`. Зависимости — только `react`/`react-dom`. Для
+расчёта на сервере ядро вызывается напрямую:
 
-```tsx
-// src/app/kalkulyator-shtancformy/page.tsx
-import { DieCalc } from '@/features/die-calc/ui/DieCalc';
-
-export const metadata = { title: 'Калькулятор штанцформы — СибГофроТорг' };
-
-export default function Page() {
-  return <DieCalc tab="unfold" initial={{ L: 240, W: 180, H: 60, profileId: 'E' }} />;
-}
+```ts
+import { quickEstimate } from '@/lib/die-calc';
+const q = quickEstimate({ L: 240, W: 180, H: 60, profile: 'E', construction: 'lastochkin', closure: 'tuck', qty: 5000 });
 ```
 
-   Если нужен ленивый импорт (тяжёлый SVG на больших тиражах):
-
-```tsx
-'use client';
-import dynamic from 'next/dynamic';
-const DieCalc = dynamic(() => import('@/features/die-calc/ui/DieCalc').then((m) => m.DieCalc), { ssr: false });
-```
-
-4. Стили. `DieCalc.tsx` сам импортирует `./ui.css` (обычный CSS-модуль не
-   используется, селекторы в префиксе `.dgc-`, так что Tailwind v4 их не
-   перекроет). Если сборка заропщет на импорт CSS из компонента —
-   `import '@/features/die-calc/ui/ui.css';` в `app/layout.tsx`.
-
-5. Тёмная тема/подложка: `<DieCalc dark />` или обернуть в свой контейнер —
-   переменные `--dgc-*` можно переопределить в глобальных стилях, цвета бренда
-   подхватываются из `globals.css` (`--green`).
-
-6. **Связка с корзиной.** Готовый объект для позиции:
-
-```tsx
-import { resultJson } from '@/features/die-calc/ui/exports';   // сериализация расчёта
-// или соберите сами:
-const line = {
-  sku: `ШТ-${res.area.blankW}x${res.area.blankH}`,
-  qty: res.input.qty,
-  price: res.cost.perPcs,          // ₽/шт без оснастки
-  withDie: res.cost.perPcsWithDie, // ₽/шт с амортизацией штампа
-  note: `${res.input.L}×${res.input.W}×${res.input.H}, ${profile.flute}, ${construction.name}`,
-};
-```
-
-   Заказ/Супабейз — по желанию: сохраните `resultJson(res)` в `jsonb`-колонку,
-   чтобы пересобрать чертёж и цену позже по той же точке. В самом калькуляторе
-   запросов к бэкенду нет.
+Связка с корзиной/базой (по желанию): сериализуйте результат в `jsonb` через
+`resultJson(res)` из `src/components/admin/die-calc/exports.ts` — этого хватает,
+чтобы позже восстановить и чертёж, и цену по той же точке. Сейчас калькулятор
+ничего не пишет в базу и не ходит в сеть.
 
 ## Калибровка по чертежам
 
@@ -196,7 +192,8 @@ L×W×H, профиль, конструкция, закрытие, габари�
 
 * Длины ножа по модели на 3–20% ниже чертёжных: на штампе ножи ставят с запасом
   и общими участками — для расчёта стоимости это консервативно в плюс.
-* 3D-сборка — иллюстративная (ортографическая, без физики самосбора).
+* 3D-сборка — иллюстративная: ортография со слабой перспективой, без физики
+  самосбора (углы всегда ровно `fold` градусов, без пружинения гофры).
 * DXF — R12, скругления нарезаны короткими `LINE` (R12 не умеет LWPOLYLINE с
   дугами); открывается в AutoCAD/LibreCAD/Rhino/VisorCAM.
 * Площадь заготовки — по контуру высечки; в листе считается «слот» (габарит),

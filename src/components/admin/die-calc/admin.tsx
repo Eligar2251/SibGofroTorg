@@ -1,12 +1,14 @@
+// Этот файл скопирован из tools/die-calc скриптом `node tools/die-calc/scripts/sync-site.mjs`.
+// Не правьте его в src/ — правьте оригинал и запускайте синхронизацию.
 /**
  * admin.tsx — калибровка по эталонным чертежам и настройки (справочники, цены).
  */
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { CONSTRUCTIONS, DEFAULT_COEF, DEFAULT_PRICES, type ClosureId, type Coef, type ConstructionId } from '../core/model';
-import type { Fixture } from '../core/fixtures';
-import { calibReport, meanAbsError } from '../core/calibrate';
-import { FIXTURES } from '../core/fixtures';
+import { CONSTRUCTIONS, DEFAULT_COEF, DEFAULT_PRICES, type ClosureId, type Coef, type ConstructionId } from '@/lib/die-calc/model';
+import type { Fixture } from '@/lib/die-calc/fixtures';
+import { calibReport, meanAbsError } from '@/lib/die-calc/calibrate';
+import { FIXTURES } from '@/lib/die-calc/fixtures';
 import { Card, fmtMm, Num, Sel } from './controls';
 import { CoefEditor } from './panels';
 import type { UseCalc } from './store';

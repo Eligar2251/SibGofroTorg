@@ -1,3 +1,5 @@
+// Этот файл скопирован из tools/die-calc скриптом `node tools/die-calc/scripts/sync-site.mjs`.
+// Не правьте его в src/ — правьте оригинал и запускайте синхронизацию.
 /**
  * store.ts — состояние калькулятора + настройки (справочники, цены).
  * Никаких библиотек: useState + localStorage. При интеграции в Next.js
@@ -25,12 +27,12 @@ import {
   type PriceSettings,
   type Profile,
   type SheetFormat,
-} from '../core/model';
-import { baseSettings, calcBox, makeInput } from '../core/index';
-import type { CalcResult, CalcSettings } from '../core/index';
-import type { LineKind } from '../core/geo';
-import { calibReport, fitAll, type CalibRow } from '../core/calibrate';
-import type { Fixture } from '../core/fixtures';
+} from '@/lib/die-calc/model';
+import { baseSettings, calcBox, makeInput } from '@/lib/die-calc';
+import type { CalcResult, CalcSettings } from '@/lib/die-calc';
+import type { LineKind } from '@/lib/die-calc/geo';
+import { calibReport, fitAll, type CalibRow } from '@/lib/die-calc/calibrate';
+import type { Fixture } from '@/lib/die-calc/fixtures';
 
 export interface AppState {
   L: number;

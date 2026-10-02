@@ -1,3 +1,5 @@
+// Этот файл скопирован из tools/die-calc скриптом `node tools/die-calc/scripts/sync-site.mjs`.
+// Не правьте его в src/ — правьте оригинал и запускайте синхронизацию.
 /**
  * views.tsx — три канваса: развертка (2D), сборка (3D) и раскладка по листу.
  * Канвасы — обёртки над чистыми функциями ядра (renderUnfold / renderFold);
@@ -5,12 +7,12 @@
  */
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { LAYER_COLOR, LAYER_NAME } from '../core/engine';
-import { renderUnfold, type Render2dOpts } from '../core/render2d';
-import { renderFold } from '../core/render3d';
-import { allNests } from '../core/nesting';
-import type { CalcResult, SheetFormat } from '../core/model';
-import type { LineKind } from '../core/geo';
+import { LAYER_COLOR, LAYER_NAME } from '@/lib/die-calc/engine';
+import { renderUnfold, type Render2dOpts } from '@/lib/die-calc/render2d';
+import { renderFold } from '@/lib/die-calc/render3d';
+import { allNests } from '@/lib/die-calc/nesting';
+import type { CalcResult, SheetFormat } from '@/lib/die-calc/model';
+import type { LineKind } from '@/lib/die-calc/geo';
 import type { AppState } from './store';
 import { Card, Chk, fmtMm, Slider } from './controls';
 

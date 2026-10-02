@@ -19,6 +19,8 @@ import {
   cleanPoly,
   mergeCollinear,
   ensureCCW,
+  foldTransforms,
+  type V3,
   v,
 } from '../src/core/index';
 
@@ -116,4 +118,62 @@ test('режим «по чертежу матрицы» берёт габари�
 test('некорректные размеры дают предупреждение, а не падение', () => {
   const res = calcBox({ input: makeInput({ L: 20, W: 20, H: 5 }), settings: baseSettings() });
   assert.ok(res.warnings.some((w) => w.includes('Минимальные размеры')));
+});
+
+test('сборка: панели соединены по линиям сгиба, ничего не висит в воздухе', () => {
+  const res = demo();
+  const byId = new Map(res.geom.panels.map((q) => [q.id, q]));
+  const distToPolyline = (pt: { x: number; y: number }, pts: Array<{ x: number; y: number }>): number => {
+    let best = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const l2 = dx * dx + dy * dy || 1e-6;
+      const tt = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / l2));
+      best = Math.min(best, Math.hypot(pt.x - (a.x + tt * dx), pt.y - (a.y + tt * dy)));
+    }
+    return best;
+  };
+  // 1) в плоском чертеже линия сгиба каждого клапана лежит на контуре родителя
+  for (const q of res.geom.panels) {
+    if (!q.hinge || !q.parent) continue;
+    const par = byId.get(q.parent);
+    assert.ok(par, `${q.id}: нет родителя ${q.parent}`);
+    assert.ok(distToPolyline(q.hinge.p, par.pts) < 0.6, `${q.id}: сгиб не на кромке ${q.parent}`);
+    assert.ok(distToPolyline(q.hinge.q, par.pts) < 0.6, `${q.id}: сгиб не на кромке ${q.parent}`);
+  }
+  // 2) в собранном виде общий край не расходится (толщина картона + послойный зазор)
+  for (const prog of [0.5, 1]) {
+    const xf = foldTransforms(res, prog);
+    for (const q of res.geom.panels) {
+      if (!q.hinge || !q.parent || !q.fold) continue;
+      const T = xf.get(q.id)!;
+      const P = xf.get(q.parent)!;
+      const at = (h: { x: number; y: number }): V3 => ({ x: h.x, y: h.y, z: 0 });
+      for (const h of [q.hinge.p, q.hinge.q]) {
+        const a = T(at(h));
+        const b = P(at(h));
+        assert.ok(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 1.6, `${q.id} при ${prog}: расхождение краёв ${(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)).toFixed(2)} мм`);
+      }
+    }
+  }
+  // 3) стенки стоят вертикально вверх, а не вбок/вниз
+  const f1 = foldTransforms(res, 1);
+  for (const q of res.geom.panels.filter((s) => (s.step ?? 0) > 0 && (s.step ?? 0) <= 2)) {
+    const T = f1.get(q.id)!;
+    const zs = q.pts.map((pt) => T({ x: pt.x, y: pt.y, z: 0 }).z);
+    assert.ok(Math.min(...zs) > -0.01, `${q.id}: стенка уходит под дно`);
+    assert.ok(Math.max(...zs) > res.geom.meta.Hp * 0.95, `${q.id}: стенка не поднялась`);
+  }
+  // 4) крышка лежит НА коробке (z ≈ Hp), а не болтается выше/ниже
+  const lid = res.geom.panels.find((q) => q.role === 'lid');
+  if (lid) {
+    const T = f1.get(lid.id)!;
+    for (const pt of lid.pts) {
+      const z = T({ x: pt.x, y: pt.y, z: 0 }).z;
+      assert.ok(Math.abs(z - res.geom.meta.Hp) < 1.5, `крышка на z=${z.toFixed(1)} вместо ${res.geom.meta.Hp}`);
+    }
+  }
 });

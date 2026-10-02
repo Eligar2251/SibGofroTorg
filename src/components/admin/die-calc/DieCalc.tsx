@@ -1,3 +1,5 @@
+// Этот файл скопирован из tools/die-calc скриптом `node tools/die-calc/scripts/sync-site.mjs`.
+// Не правьте его в src/ — правьте оригинал и запускайте синхронизацию.
 'use client';
 /**
  * DieCalc.tsx — готовый компонент калькулятора.
@@ -13,15 +15,15 @@
  */
 
 import { useCallback, useState, type ReactNode } from 'react';
-import { CONSTRUCTIONS } from '../core/model';
-import { renderUnfold } from '../core/render2d';
+import { CONSTRUCTIONS } from '@/lib/die-calc/model';
+import { renderUnfold } from '@/lib/die-calc/render2d';
 import { exportCsv, exportDxf, exportJsonFallback, exportPng, exportReport, exportSvg, printPdf } from './exports';
 import { useCalc, type AppState } from './store';
 import { Card, fmtMm } from './controls';
 import { FormPanel, ResultPanel, DerivationView } from './panels';
 import { FoldView, NestView, UnfoldView } from './views';
 import { CalibrationPanel, SettingsPanel } from './admin';
-import './ui.css';
+import '@/app/admin-die-calc.css';
 
 export type DieCalcTab = 'unfold' | 'fold' | 'sheet' | 'formula' | 'calib' | 'settings';
 

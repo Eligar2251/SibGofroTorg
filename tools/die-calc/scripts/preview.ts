@@ -48,8 +48,11 @@ for (const c of cases) {
     input: makeInput({ L: c.L, W: c.W, H: c.H, profile: c.profile, construction: c.cons, closure: c.closure, handle: c.handle, qty: 1000 }),
     settings,
   });
-  png(renderUnfold(res, { showDie: true, showDims: true, theme: 'light' }), `.tmp/preview/${c.name}.png`);
+  // развертка = ВЫРЕЗАННАЯ ЗАГОТОВКА (без плиты штампа); -die.png — для сравнения
+  png(renderUnfold(res, { showDims: true, theme: 'light' }), `.tmp/preview/${c.name}.png`);
+  png(renderUnfold(res, { showDie: true, showDims: true, theme: 'light' }), `.tmp/preview/${c.name}-die.png`);
   png(renderFold(res, { progress: 1, size: 900 }), `.tmp/preview/${c.name}-3d.png`, 900);
-  png(renderFold(res, { progress: 0.45, size: 900 }), `.tmp/preview/${c.name}-3d-mid.png`, 900);
+  png(renderFold(res, { progress: 0.7, size: 900 }), `.tmp/preview/${c.name}-3d-70.png`, 900);
+  png(renderFold(res, { progress: 0.35, size: 900 }), `.tmp/preview/${c.name}-3d-mid.png`, 900);
   console.log(`  ${c.name}: заготовка ${res.area.blankW}×${res.area.blankH} мм, ${res.nest.perSheet} шт/лист, ножи ${res.knives.totalM} м`);
 }
