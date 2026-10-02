@@ -59,7 +59,11 @@ export function HomeOrderProductsSection({ products }: { products: OrderProduct[
           </Link>
         </div>
 
-        <div className="products-grid-4 order-products-grid">
+        {/* Плитки — как везде по сайту: стандартная сетка каталога
+            (.product-grid-compact, auto-fill minmax(170px, 1fr)), а не
+            products-grid-4. Раньше на всю ширину контейнера вставало 4
+            карточки — плитки выходили ~350 px, вдвое крупнее каталожных. */}
+        <div className="product-grid-compact order-products-grid">
           {products.map((product) => (
             <ProductCardCompact
               key={product.id}

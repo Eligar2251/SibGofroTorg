@@ -7902,6 +7902,21 @@ body.is-col-resizing * {
   }
 }
 
+/* Вкладка «Товары под заказ» — предпросмотр секции с главной, а там
+   плитка каталожная (.product-grid-compact = auto-fill minmax(170px,
+   1fr), gap 10px). Принудительные 4 колонки на широких мониторах её
+   «раздували» до ~350 px, поэтому для этой вкладки откатываем сетку
+   обратно к компактной — превью совпадает с сайтом вплоть до gap. */
+.featured-sort-grid--order {
+  gap: 10px;
+}
+
+@media (min-width: 1500px) {
+  .featured-sort-grid--order {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  }
+}
+
 .featured-sort__item {
   position: relative;
   border-radius: 12px;
