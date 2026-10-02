@@ -1,0 +1,625 @@
+/* =========================================================
+   FILE: src/components/admin/AdminNavCustomizer.module.css
+   Модалка «Настройка меню»: порядок разделов, скрытие,
+   группы-выпадашки (заголовок + иконка + состав).
+   ========================================================= */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(10, 12, 16, 0.6);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: ncfFadeIn 0.16s ease;
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: min(86vh, 860px);
+  background: var(--adm-card, #fff);
+  color: var(--adm-ink, #1a1a18);
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.1));
+  border-radius: calc(var(--adm-r, 8px) + 4px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+  animation: ncfPopIn 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  outline: none;
+}
+
+@keyframes ncfFadeIn {
+  from { opacity: 0; }
+}
+@keyframes ncfPopIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+}
+
+/* ── Шапка ── */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--adm-border, rgba(0, 0, 0, 0.08));
+}
+
+.headIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--adm-r-sm, 6px);
+  background: var(--adm-kraft-pale, rgba(200, 134, 10, 0.12));
+  color: var(--adm-kraft, #c8860a);
+}
+
+.headTexts {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+}
+
+.subtitle {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--adm-ink-muted, rgba(0, 0, 0, 0.5));
+  line-height: 1.35;
+}
+
+.closeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--adm-r-sm, 6px);
+  background: transparent;
+  color: var(--adm-ink-soft, #444);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.closeBtn:hover {
+  background: var(--adm-paper-warm, rgba(0, 0, 0, 0.04));
+  color: var(--adm-ink, #1a1a18);
+}
+
+/* ── Тело ── */
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: thin;
+}
+
+.sectionLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 2px 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--adm-ink-muted, rgba(0, 0, 0, 0.5));
+}
+
+/* ── Строки списка ── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  min-height: 42px;
+  background: var(--adm-paper, rgba(0, 0, 0, 0.015));
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--adm-r-sm, 6px);
+  transition: border-color 0.15s, background 0.15s, opacity 0.15s, box-shadow 0.15s;
+}
+.row:hover {
+  border-color: var(--adm-border-mid, rgba(0, 0, 0, 0.18));
+}
+.rowDragging {
+  opacity: 0.45;
+  border-style: dashed;
+}
+.rowDragging .grip {
+  color: var(--adm-kraft, #c8860a);
+}
+
+.grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 30px;
+  flex-shrink: 0;
+  color: var(--adm-ink-muted, rgba(0, 0, 0, 0.35));
+  cursor: grab;
+  border-radius: 4px;
+  touch-action: none;
+}
+.grip:active {
+  cursor: grabbing;
+}
+
+.rowIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--adm-r-sm, 6px);
+  background: var(--adm-card, #fff);
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.08));
+  color: var(--adm-ink-soft, #555);
+}
+
+.rowLabel {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.miniBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--adm-r-sm, 6px);
+  background: transparent;
+  color: var(--adm-ink-muted, rgba(0, 0, 0, 0.45));
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.miniBtn:hover:not(:disabled) {
+  background: var(--adm-paper-warm, rgba(0, 0, 0, 0.05));
+  color: var(--adm-ink, #1a1a18);
+  border-color: var(--adm-border, rgba(0, 0, 0, 0.1));
+}
+.miniBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.miniBtnDanger:hover:not(:disabled) {
+  color: var(--adm-rust, #b3402a);
+  background: var(--adm-rust-pale, rgba(179, 64, 42, 0.08));
+  border-color: transparent;
+}
+
+/* Выбор группы у раздела */
+.groupSelect {
+  max-width: 150px;
+  padding: 5px 24px 5px 8px;
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--adm-ink-soft, #444);
+  background: var(--adm-card, #fff);
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--adm-r-sm, 6px);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  transition: border-color 0.15s;
+}
+.groupSelect:hover {
+  border-color: var(--adm-kraft, #c8860a);
+}
+.groupSelectInGroup {
+  border-color: color-mix(in srgb, var(--adm-kraft, #c8860a) 45%, transparent);
+}
+
+/* ── Группа (контейнер) ── */
+.groupRow {
+  border: 1px solid color-mix(in srgb, var(--adm-kraft, #c8860a) 40%, var(--adm-border, rgba(0, 0, 0, 0.1)));
+  border-radius: calc(var(--adm-r-sm, 6px) + 2px);
+  background: color-mix(in srgb, var(--adm-kraft-pale, rgba(200, 134, 10, 0.1)) 45%, var(--adm-card, #fff));
+  overflow: hidden;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+}
+
+.groupIconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 1px dashed color-mix(in srgb, var(--adm-kraft, #c8860a) 55%, transparent);
+  border-radius: var(--adm-r-sm, 6px);
+  background: var(--adm-card, #fff);
+  color: var(--adm-kraft, #c8860a);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.12s;
+}
+.groupIconBtn:hover {
+  background: var(--adm-kraft-pale, rgba(200, 134, 10, 0.12));
+  transform: scale(1.05);
+}
+
+.groupTitleInput {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--adm-ink, #1a1a18);
+  background: var(--adm-card, #fff);
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--adm-r-sm, 6px);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.groupTitleInput:focus {
+  outline: none;
+  border-color: var(--adm-kraft, #c8860a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--adm-kraft, #c8860a) 18%, transparent);
+}
+
+.groupMeta {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--adm-kraft, #c8860a);
+  background: var(--adm-card, #fff);
+  border: 1px solid color-mix(in srgb, var(--adm-kraft, #c8860a) 35%, transparent);
+  padding: 2px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.groupMembers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 10px 10px 22px;
+  padding-left: 14px;
+  border-left: 2px solid color-mix(in srgb, var(--adm-kraft, #c8860a) 35%, transparent);
+}
+
+.memberRow {
+  background: var(--adm-card, #fff);
+}
+
+.groupEmpty {
+  margin: 0 10px 10px 22px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  color: var(--adm-ink-muted, rgba(0, 0, 0, 0.5));
+  border: 1px dashed var(--adm-border-mid, rgba(0, 0, 0, 0.18));
+  border-radius: var(--adm-r-sm, 6px);
+  background: color-mix(in srgb, var(--adm-card, #fff) 60%, transparent);
+}
+
+/* ── Добавить группу ── */
+.addGroupBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--adm-kraft, #c8860a);
+  background: transparent;
+  border: 1.5px dashed color-mix(in srgb, var(--adm-kraft, #c8860a) 50%, transparent);
+  border-radius: calc(var(--adm-r-sm, 6px) + 2px);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.addGroupBtn:hover {
+  background: var(--adm-kraft-pale, rgba(200, 134, 10, 0.08));
+  border-color: var(--adm-kraft, #c8860a);
+}
+
+/* ── Скрытые разделы ── */
+.hiddenBlock {
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.08));
+  border-radius: calc(var(--adm-r-sm, 6px) + 2px);
+  background: color-mix(in srgb, var(--adm-paper-warm, rgba(0, 0, 0, 0.03)) 70%, var(--adm-card, #fff));
+  overflow: hidden;
+}
+
+.hiddenHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink-soft, #444);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.hiddenHead:hover {
+  color: var(--adm-ink, #1a1a18);
+}
+
+.hiddenCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--adm-ink-muted, rgba(0, 0, 0, 0.55));
+  background: var(--adm-card, #fff);
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.1));
+  border-radius: 99px;
+}
+
+.hiddenChevron {
+  margin-left: auto;
+  transition: transform 0.2s ease;
+  color: var(--adm-ink-muted, rgba(0, 0, 0, 0.4));
+}
+.hiddenChevronOpen {
+  transform: rotate(180deg);
+}
+
+.hiddenList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 10px 10px;
+}
+
+.hiddenRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  min-height: 38px;
+  background: var(--adm-card, #fff);
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.07));
+  border-radius: var(--adm-r-sm, 6px);
+  opacity: 0.75;
+}
+
+.restoreBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--adm-kraft, #c8860a);
+  background: var(--adm-kraft-pale, rgba(200, 134, 10, 0.1));
+  border: none;
+  border-radius: var(--adm-r-sm, 6px);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.restoreBtn:hover {
+  background: color-mix(in srgb, var(--adm-kraft, #c8860a) 22%, transparent);
+}
+
+/* ── Подвал ── */
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--adm-border, rgba(0, 0, 0, 0.08));
+  background: color-mix(in srgb, var(--adm-paper-warm, rgba(0, 0, 0, 0.02)) 60%, var(--adm-card, #fff));
+}
+
+.statusNote {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--adm-ink-muted, rgba(0, 0, 0, 0.5));
+}
+.statusError {
+  color: var(--adm-rust, #b3402a);
+}
+.statusSaved {
+  color: #1a7f4b;
+}
+
+.resetBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--adm-ink-soft, #444);
+  background: transparent;
+  border: 1px solid var(--adm-border-mid, rgba(0, 0, 0, 0.16));
+  border-radius: var(--adm-r-sm, 6px);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.resetBtn:hover {
+  color: var(--adm-rust, #b3402a);
+  border-color: var(--adm-rust, #b3402a);
+  background: var(--adm-rust-pale, rgba(179, 64, 42, 0.06));
+}
+
+.saveBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 750;
+  color: #fff;
+  background: var(--adm-kraft, #c8860a);
+  border: none;
+  border-radius: var(--adm-r-sm, 6px);
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.12s;
+  white-space: nowrap;
+}
+.saveBtn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.saveBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.saveBtn:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+/* ── Выбор иконки группы ── */
+.pickerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(10, 12, 16, 0.45);
+  animation: ncfFadeIn 0.14s ease;
+}
+
+.picker {
+  width: min(380px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--adm-card, #fff);
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.1));
+  border-radius: calc(var(--adm-r, 8px) + 4px);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  padding: 16px;
+  animation: ncfPopIn 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.pickerTitle {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.pickerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 6px;
+}
+
+.pickerItem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: 1px solid var(--adm-border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--adm-r-sm, 6px);
+  background: var(--adm-paper, rgba(0, 0, 0, 0.015));
+  color: var(--adm-ink-soft, #444);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s, transform 0.1s;
+}
+.pickerItem:hover {
+  border-color: var(--adm-kraft, #c8860a);
+  color: var(--adm-kraft, #c8860a);
+  background: var(--adm-kraft-pale, rgba(200, 134, 10, 0.1));
+  transform: translateY(-1px);
+}
+.pickerItemActive {
+  border-color: var(--adm-kraft, #c8860a);
+  color: var(--adm-kraft, #c8860a);
+  background: var(--adm-kraft-pale, rgba(200, 134, 10, 0.14));
+  box-shadow: 0 0 0 1px var(--adm-kraft, #c8860a);
+}
+
+.spinner {
+  animation: ncfSpin 1s linear infinite;
+}
+@keyframes ncfSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Узкие экраны ── */
+@media (max-width: 560px) {
+  .overlay {
+    padding: 8px;
+    align-items: flex-end;
+  }
+  .modal {
+    max-height: 92vh;
+    border-radius: 14px;
+  }
+  .groupSelect {
+    max-width: 110px;
+  }
+  .rowLabel {
+    font-size: 12.5px;
+  }
+  .foot {
+    flex-wrap: wrap;
+  }
+  .statusNote {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .resetBtn {
+    margin-left: auto;
+  }
+}

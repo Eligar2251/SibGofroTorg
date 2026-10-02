@@ -15840,3 +15840,343 @@ a.client-card__contact:hover {
     width: 100%;
   }
 }
+
+/* =========================================================
+   ГРУППЫ НАВИГАЦИИ (персональная настройка меню)
+   Группа — «выпадающий список»: заголовок с иконкой, по клику
+   ниже плавно раскрывается интерфейсный список разделов
+   (анимация высоты + поочерёдное появление пунктов). Живёт в
+   сайдбаре (.admin-sidebar__nav), верхнем меню (раскладка
+   «sidebar-top») и панели планшета (.admin-mobile-bar__nav).
+   ========================================================= */
+
+.admin-nav-group {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Заголовок группы — выглядит как обычный пункт меню. */
+.admin-nav-group__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: var(--adm-r-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--adm-sidebar-text);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+
+.admin-nav-group__head svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.admin-nav-group__head:hover {
+  color: var(--adm-sidebar-text-hover);
+  background: var(--adm-sidebar-hover-bg);
+}
+
+.admin-nav-group__head:hover svg {
+  opacity: 1;
+  color: var(--adm-kraft-mid);
+}
+
+.admin-nav-group--open > .admin-nav-group__head,
+.admin-nav-group--here > .admin-nav-group__head {
+  color: var(--adm-sidebar-text-active);
+}
+
+.admin-nav-group--open > .admin-nav-group__head svg,
+.admin-nav-group--here > .admin-nav-group__head svg {
+  opacity: 1;
+  color: var(--adm-kraft-mid);
+}
+
+.admin-nav-group__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Счётчик разделов в группе. */
+.admin-nav-group__count {
+  flex-shrink: 0;
+  min-width: 17px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.09);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  color: var(--adm-sidebar-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.admin-nav-group--open .admin-nav-group__count {
+  background: color-mix(in srgb, var(--adm-kraft) 24%, transparent);
+  color: var(--adm-kraft-mid);
+}
+
+.admin-nav-group__chevron {
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: transform 0.22s cubic-bezier(0.32, 0.72, 0.16, 1), opacity 0.15s;
+}
+
+.admin-nav-group--open .admin-nav-group__chevron {
+  transform: rotate(180deg);
+  opacity: 0.9;
+}
+
+/* Тело группы: раскрытие высотой через grid-rows (плавно и без
+   измерения контента). Закрытое тело полностью недоступно. */
+.admin-nav-group__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows 0.24s cubic-bezier(0.32, 0.72, 0.16, 1),
+    opacity 0.18s ease, visibility 0s linear 0.24s;
+}
+
+.admin-nav-group--open .admin-nav-group__body {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition: grid-template-rows 0.24s cubic-bezier(0.32, 0.72, 0.16, 1),
+    opacity 0.18s ease, visibility 0s;
+}
+
+.admin-nav-group__clip {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Вложенный список: направляющая линия слева + отступ. */
+.admin-nav-group__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 4px 6px 19px;
+  padding-left: 10px;
+  position: relative;
+}
+
+.admin-nav-group__list::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 1.5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-nav-group--open .admin-nav-group__list::before {
+  background: color-mix(in srgb, var(--adm-kraft) 45%, transparent);
+}
+
+.admin-nav-group__link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border-radius: var(--adm-r-sm);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--adm-sidebar-text);
+  text-decoration: none;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: color 0.15s, background 0.15s;
+}
+
+.admin-nav-group__link svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.admin-nav-group__link:hover {
+  color: var(--adm-sidebar-text-hover);
+  background: var(--adm-sidebar-hover-bg);
+}
+
+.admin-nav-group__link:hover svg {
+  opacity: 1;
+  color: var(--adm-kraft-mid);
+}
+
+.admin-nav-group__link--active {
+  color: var(--adm-sidebar-text-active);
+  background: var(--adm-sidebar-active-bg);
+  font-weight: 600;
+}
+
+.admin-nav-group__link--active::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 5px;
+  bottom: 5px;
+  width: 2px;
+  background: var(--adm-kraft);
+  border-radius: 2px;
+}
+
+.admin-nav-group__link--active svg {
+  opacity: 1;
+  color: var(--adm-kraft-mid);
+}
+
+/* Поочерёдное появление пунктов при раскрытии. */
+.admin-nav-group--open .admin-nav-group__link {
+  animation: adm-nav-group-item-in 0.26s cubic-bezier(0.32, 0.72, 0.16, 1) both;
+  animation-delay: calc(var(--adm-ng-i, 0) * 24ms);
+}
+
+@keyframes adm-nav-group-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Группа в панели планшета (иконки в ряд) ──
+   Заголовок — ячейка-иконка, список выпадает карточкой ниже. */
+.admin-mobile-bar__nav .admin-nav-group__head {
+  width: auto;
+  height: 40px;
+  padding: 0 8px;
+  justify-content: center;
+}
+
+.admin-mobile-bar__nav .admin-nav-group__title,
+.admin-mobile-bar__nav .admin-nav-group__count {
+  display: none;
+}
+
+.admin-mobile-bar__nav .admin-nav-group__chevron {
+  width: 11px;
+  height: 11px;
+}
+
+.admin-mobile-bar__nav .admin-nav-group__body {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 232px;
+  z-index: 70;
+  background: var(--adm-sidebar-bg);
+  border: 1px solid var(--adm-sidebar-line);
+  border-top: 2px solid var(--adm-kraft);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+}
+
+.admin-mobile-bar__nav .admin-nav-group__list {
+  margin: 0;
+  padding-left: 12px;
+}
+
+/* ── Раскладка «Верхнее меню»: группы выпадают вниз ── */
+@media (min-width: 1024px) {
+  [data-admin-layout="sidebar-top"] .admin-nav-group__head {
+    width: auto;
+    padding: 7px 10px;
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  [data-admin-layout="sidebar-top"] .admin-nav-group__count {
+    line-height: 14px;
+    min-width: 15px;
+    font-size: 9px;
+  }
+
+  [data-admin-layout="sidebar-top"] .admin-nav-group__body {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 236px;
+    z-index: 300;
+    background: var(--adm-sidebar-bg);
+    border: 1px solid var(--adm-sidebar-line);
+    border-top: 2px solid var(--adm-kraft);
+    border-radius: 10px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    padding: 6px;
+  }
+
+  [data-admin-layout="sidebar-top"] .admin-nav-group__list {
+    margin: 0;
+    padding-left: 12px;
+  }
+}
+
+/* ── Компактный сайдбар: у групп остаются только иконки ── */
+@media (min-width: 1024px) {
+  [data-admin-layout="compact"] .admin-nav-group__chevron {
+    display: none;
+  }
+
+  [data-admin-layout="compact"] .admin-nav-group__head {
+    justify-content: center;
+    padding: 9px 0;
+  }
+
+  [data-admin-layout="compact"] .admin-nav-group__list {
+    margin: 2px 0 6px;
+    padding-left: 0;
+  }
+
+  [data-admin-layout="compact"] .admin-nav-group__list::before {
+    display: none;
+  }
+
+  [data-admin-layout="compact"] .admin-nav-group__link {
+    justify-content: center;
+    padding: 8px 0;
+    gap: 0;
+  }
+
+  [data-admin-layout="compact"] .admin-nav-group__link--active::before {
+    display: none;
+  }
+}
+
+/* Планшеты ≤1023px: горизонтальная лента иконок скроллится
+   (overflow-x: auto обрезает вертикаль), поэтому выпадающий
+   список группы крепим фиксированно под самой панелью —
+   по центру экрана, как нативное меню. */
+@media (max-width: 1023px) {
+  .admin-mobile-bar__nav .admin-nav-group__body {
+    position: fixed;
+    top: 112px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(320px, calc(100vw - 24px));
+  }
+}

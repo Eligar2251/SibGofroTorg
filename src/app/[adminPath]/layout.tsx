@@ -7,6 +7,7 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { verifySession } from "@/lib/auth";
+import { getAdminNavSettings } from "@/lib/admin-nav-store";
 // Стили админки грузятся только здесь, а не на всём сайте (раньше
 // admin.css импортировался в globals.css и попадал в бандл каждой страницы).
 import "../admin.css";
@@ -100,6 +101,13 @@ export default async function AdminLayout({
 
   const session = await verifySession();
 
+  // Персональная настройка навигации пользователя (порядок разделов,
+  // скрытые пункты, группы). Читается по логину из БД; при любой
+  // ошибке (таблица ещё не создана, сеть) меню остаётся стандартным.
+  const navSettings = session
+    ? await getAdminNavSettings(session.username).catch(() => null)
+    : null;
+
   return (
     <>
       <AdminThemeProvider>
@@ -107,6 +115,7 @@ export default async function AdminLayout({
           adminPath={ADMIN_PATH}
           role={session?.role ?? null}
           displayName={session?.displayName ?? null}
+          navSettings={navSettings}
         >
           {children}
         </AdminShell>

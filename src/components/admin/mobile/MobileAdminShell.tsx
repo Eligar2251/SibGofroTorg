@@ -36,7 +36,12 @@ import { RealtimeStatusIndicator } from "@/components/admin/RealtimeStatusIndica
 import { AdminNotifications } from "@/components/admin/AdminNotifications";
 import { AdminRequestAlerts } from "@/components/admin/AdminRequestAlerts";
 import { AdminSupplyPlans } from "@/components/admin/AdminSupplyPlans";
-import { MobileTabBar, type MobileNavItem } from "./MobileTabBar";
+import {
+  flattenNavModel,
+  isNavHrefActive,
+  type NavModelEntry,
+} from "@/lib/admin-nav";
+import { MobileTabBar } from "./MobileTabBar";
 import styles from "./MobileAdminShell.module.css";
 
 const ROLE_LABELS: Record<AdminRole, string> = {
@@ -57,14 +62,20 @@ export function MobileAdminShell({
   adminPath,
   role,
   displayName,
-  items,
+  entries,
+  onCustomizeNav,
 }: {
   children: ReactNode;
   adminPath: string;
   role: AdminRole | null;
   displayName: string | null;
-  /** Доступные разделы (уже отфильтрованы по роли в AdminShell). */
-  items: MobileNavItem[];
+  /**
+   * Доступные разделы с пользовательской настройкой (порядок, скрытые,
+   * группы) — уже отфильтрованы по роли в AdminShell.
+   */
+  entries: NavModelEntry[];
+  /** Открыть модалку «Настройка меню». */
+  onCustomizeNav?: () => void;
 }) {
   const pathname = usePathname() || "";
   // Двойная проверка: оболочку рендерит только телефон. Хук дешёвый
@@ -75,8 +86,8 @@ export function MobileAdminShell({
   // Определяем текущий раздел по pathname (как в сайдбаре):
   // точное совпадение для корня, префикс с «/» — для вложенных страниц.
   const current =
-    items.find(
-      (item) => item.href === pathname || pathname.startsWith(`${item.href}/`),
+    flattenNavModel(entries).find((item) =>
+      isNavHrefActive(item.href, pathname, adminPath),
     ) ?? null;
 
   const roleLabel = role ? ROLE_LABELS[role] : "";
@@ -123,7 +134,12 @@ export function MobileAdminShell({
           (admin-h1, admin-card, …) продолжает работать. */}
       <main ref={mainRef} className={`admin-main ${styles.main}`}>{children}</main>
 
-      <MobileTabBar items={items} pathname={pathname} adminPath={adminPath} />
+      <MobileTabBar
+        entries={entries}
+        pathname={pathname}
+        adminPath={adminPath}
+        onCustomizeNav={onCustomizeNav}
+      />
     </div>
   );
 }

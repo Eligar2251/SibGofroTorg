@@ -10,25 +10,34 @@
 //     затемнение фона — opacity, скролл листа не тянет страницу
 //     (overscroll-behavior: contain).
 //
-// Заменяет прежний AdminBottomNav (тёмная «полоса без воздуха»).
-// Старый файл удалён: на планшетах 769–1024px остаётся прежняя
-// панель с бургером, телефону она больше не нужна.
+// Навигация приходит уже с пользовательской настройкой (порядок,
+// скрытые разделы, группы). В листе «Ещё» группы — раскрывающиеся
+// секции: заголовок с иконкой, ниже плитками вложенные разделы.
 // =========================================================
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { ExternalLink, Grid2x2, LogOut, X } from "lucide-react";
+import {
+  ChevronDown,
+  ExternalLink,
+  Grid2x2,
+  LogOut,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import { useBodyLock } from "@/hooks/use-body-lock";
+import {
+  flattenNavModel,
+  getNavIcon,
+  isNavHrefActive,
+  type NavGroupModel,
+  type NavItemModel,
+  type NavModelEntry,
+} from "@/lib/admin-nav";
 import styles from "./MobileTabBar.module.css";
-
-export type MobileNavItem = {
-  href: string;
-  label: string;
-  icon: React.ReactNode;
-};
 
 /** Разделы нижней панели (если доступны роли). Порядок = частоте use. */
 const PRIMARY_PATHS = [
@@ -57,13 +66,17 @@ function shortLabel(label: string): string {
 }
 
 export function MobileTabBar({
-  items,
+  entries,
   pathname,
   adminPath,
+  onCustomizeNav,
 }: {
-  items: MobileNavItem[];
+  /** Навигация с пользовательской настройкой (порядок/скрытие/группы). */
+  entries: NavModelEntry[];
   pathname: string;
   adminPath: string;
+  /** Открыть модалку «Настройка меню». */
+  onCustomizeNav?: () => void;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -92,19 +105,20 @@ export function MobileTabBar({
     return () => window.removeEventListener("keydown", onKey);
   }, [moreOpen]);
 
+  // Плоский список (порядок и скрытие пользователя учтены) — для
+  // нижних плиток; группы в нижнюю панель не раскрываются.
+  const items = useMemo(() => flattenNavModel(entries), [entries]);
+
   if (items.length === 0) return null;
 
   // Корень админки активен ТОЛЬКО при точном совпадении — иначе
   // префикс «/admin/» подсвечивал бы «Панель» на всех страницах.
-  const root = `/${adminPath}`;
-  const isActive = (href: string) =>
-    href === root
-      ? pathname === href
-      : href === pathname || pathname.startsWith(`${href}/`);
+  const isActive = (href: string) => isNavHrefActive(href, pathname, adminPath);
 
+  const root = `/${adminPath}`;
   const primary = PRIMARY_PATHS.map((suffix) =>
     items.find((item) => item.href === `${root}${suffix}`),
-  ).filter((item): item is MobileNavItem => Boolean(item));
+  ).filter((item): item is NavItemModel => Boolean(item));
 
   // Роли без «полного» доступа: добираем первые доступные разделы.
   const seen = new Set(primary);
@@ -127,6 +141,7 @@ export function MobileTabBar({
 
       <nav className={styles.bar} aria-label="Основная навигация админ-панели">
         {primary.map((item) => {
+          const Icon = getNavIcon(item.icon);
           const active = isActive(item.href);
           return (
             <Link
@@ -136,7 +151,9 @@ export function MobileTabBar({
               className={`${styles.tab}${active ? ` ${styles.tabActive}` : ""}`}
               aria-current={active ? "page" : undefined}
             >
-              <span className={styles.tabIcon}>{item.icon}</span>
+              <span className={styles.tabIcon}>
+                <Icon size={22} strokeWidth={1.9} aria-hidden="true" />
+              </span>
               <span className={styles.tabLabel}>{shortLabel(item.label)}</span>
               {active && <span className={styles.tabIndicator} aria-hidden="true" />}
             </Link>
@@ -169,13 +186,104 @@ export function MobileTabBar({
           <MoreSheet
             open={moreOpen}
             onClose={() => setMoreOpen(false)}
-            items={items}
+            entries={entries}
             isActive={isActive}
             adminPath={adminPath}
+            onCustomizeNav={onCustomizeNav}
           />,
           document.body,
         )}
     </>
+  );
+}
+
+/* ── Группа в листе «Ещё»: заголовок + раскрывающиеся плитки ── */
+
+const GROUP_OPEN_PREFIX = "adm-nav-group-open:";
+
+function SheetGroup({
+  group,
+  isActive,
+  onClose,
+}: {
+  group: NavGroupModel;
+  isActive: (href: string) => boolean;
+  onClose: () => void;
+}) {
+  const containsActive = group.items.some((item) => isActive(item.href));
+  const [open, setOpen] = useState(containsActive);
+
+  // Тот же ключ раскрытия, что у сайдбара: выбор пользователя един.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(`${GROUP_OPEN_PREFIX}${group.id}`);
+      if (saved === "1") setOpen(true);
+      else if (saved === "0") setOpen(false);
+    } catch {
+      /* localStorage недоступен */
+    }
+  }, [group.id]);
+
+  useEffect(() => {
+    if (containsActive) setOpen(true);
+  }, [containsActive]);
+
+  function toggle() {
+    setOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(`${GROUP_OPEN_PREFIX}${group.id}`, next ? "1" : "0");
+      } catch {
+        /* localStorage недоступен */
+      }
+      return next;
+    });
+  }
+
+  const Icon = getNavIcon(group.icon);
+  return (
+    <div
+      className={`${styles.sheetGroup}${open ? ` ${styles.sheetGroupOpen}` : ""}`}
+    >
+      <button
+        type="button"
+        className={styles.sheetGroupHead}
+        onClick={toggle}
+        aria-expanded={open}
+      >
+        <span className={styles.sheetGroupIcon}>
+          <Icon size={16} aria-hidden="true" />
+        </span>
+        <span className={styles.sheetGroupTitle}>{group.title}</span>
+        <span className={styles.sheetGroupCount}>{group.items.length}</span>
+        <ChevronDown size={15} className={styles.sheetGroupChevron} aria-hidden="true" />
+      </button>
+      <div className={styles.sheetGroupBody} inert={!open} aria-hidden={!open}>
+        <div className={styles.sheetGroupClip}>
+          <div className={styles.grid}>
+            {group.items.map((item) => {
+              const ItemIcon = getNavIcon(item.icon);
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  prefetch={false}
+                  className={`${styles.tile}${active ? ` ${styles.tileActive}` : ""}`}
+                  aria-current={active ? "page" : undefined}
+                  onClick={onClose}
+                >
+                  <span className={styles.tileIcon}>
+                    <ItemIcon size={20} aria-hidden="true" />
+                  </span>
+                  <span className={styles.tileLabel}>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -184,15 +292,17 @@ export function MobileTabBar({
 function MoreSheet({
   open,
   onClose,
-  items,
+  entries,
   isActive,
   adminPath,
+  onCustomizeNav,
 }: {
   open: boolean;
   onClose: () => void;
-  items: MobileNavItem[];
+  entries: NavModelEntry[];
   isActive: (href: string) => boolean;
   adminPath: string;
+  onCustomizeNav?: () => void;
 }) {
   // Лист живёт в DOM, пока идёт анимация закрытия (state «closing»).
   const [render, setRender] = useState(open);
@@ -247,26 +357,52 @@ function MoreSheet({
           </button>
         </div>
 
-        <div className={styles.grid}>
-          {items.map((item) => {
-            const active = isActive(item.href);
+        <div className={styles.sheetEntries}>
+          {entries.map((entry) => {
+            if (entry.kind === "group") {
+              return (
+                <SheetGroup
+                  key={`sheet-group-${entry.id}`}
+                  group={entry}
+                  isActive={isActive}
+                  onClose={onClose}
+                />
+              );
+            }
+            const Icon = getNavIcon(entry.icon);
+            const active = isActive(entry.href);
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                key={entry.key}
+                href={entry.href}
                 prefetch={false}
                 className={`${styles.tile}${active ? ` ${styles.tileActive}` : ""}`}
                 aria-current={active ? "page" : undefined}
                 onClick={onClose}
               >
-                <span className={styles.tileIcon}>{item.icon}</span>
-                <span className={styles.tileLabel}>{item.label}</span>
+                <span className={styles.tileIcon}>
+                  <Icon size={20} aria-hidden="true" />
+                </span>
+                <span className={styles.tileLabel}>{entry.label}</span>
               </Link>
             );
           })}
         </div>
 
         <div className={styles.sheetActions}>
+          {onCustomizeNav && (
+            <button
+              type="button"
+              className={styles.sheetAction}
+              onClick={() => {
+                onClose();
+                onCustomizeNav();
+              }}
+            >
+              <SlidersHorizontal size={16} aria-hidden="true" />
+              <span>Настроить меню</span>
+            </button>
+          )}
           <Link
             href="/"
             prefetch={false}

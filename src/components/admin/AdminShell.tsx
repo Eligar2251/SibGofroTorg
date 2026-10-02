@@ -1,37 +1,17 @@
 // src/components/admin/AdminShell.tsx
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Package,
-  ClipboardList,
-  Settings,
-  LayoutDashboard,
   ExternalLink,
   LogOut,
-  Megaphone,
-  TrendingUp,
-  Star,
-  Boxes,
-  Truck,
-  QrCode,
-  ShieldCheck,
   PanelLeftClose,
   ChevronRight,
-  Headset,
-  UserSquare,
-  Recycle,
-  Building2,
-  DoorOpen,
-  Printer,
-  Ruler,
-  Scissors,
-  Table2,
   Menu,
   X,
-  Database,
+  SlidersHorizontal,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
@@ -42,7 +22,19 @@ import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
 import { RealtimeStatusIndicator } from "./RealtimeStatusIndicator";
+import { AdminNavGroup } from "./AdminNavGroup";
+import { AdminNavCustomizer } from "./AdminNavCustomizer";
 import { canAccessAdminPage, type AdminRole } from "@/lib/admin-rbac";
+import {
+  ADMIN_NAV_ITEMS,
+  buildNavModel,
+  flattenNavModel,
+  getNavIcon,
+  isNavHrefActive,
+  navItemHref,
+  type AdminNavItemDef,
+  type AdminNavSettingsDto,
+} from "@/lib/admin-nav";
 
 const SIDEBAR_PREF_KEY = "admin-sidebar-hidden";
 
@@ -51,17 +43,21 @@ export function AdminShell({
   adminPath,
   role,
   displayName,
+  navSettings,
 }: {
   children: ReactNode;
   adminPath: string;
   role: AdminRole | null;
   displayName: string | null;
+  /** Персональные настройки навигации пользователя (порядок/скрытие/группы). */
+  navSettings: AdminNavSettingsDto | null;
 }) {
   const pathname = usePathname() || "";
   const isLogin = pathname === `/${adminPath}/login`;
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileDrawerEnabled, setMobileDrawerEnabled] = useState(false);
+  const [customizerOpen, setCustomizerOpen] = useState(false);
   // Телефон или нет — решает, рендерить ли мобильное нижнее меню.
   // Десктопная оболочка (сайдбар + верхняя панель) при этом не меняется:
   // мобильная навигация — отдельный компонент рядом с оригиналом.
@@ -73,6 +69,19 @@ export function AdminShell({
   // Текущая раскладка (data-admin-layout на <html>): в «Верхнем меню»
   // панель обязана быть видна всегда, даже если раньше её сворачивали.
   const [layout, setLayout] = useState("sidebar-left");
+
+  // Персональные настройки меню: приходят с сервера (БД) и дальше
+  // живут в состоянии — настройщик обновляет их без перезагрузки.
+  const [navSettingsState, setNavSettingsState] = useState<AdminNavSettingsDto | null>(navSettings);
+  useEffect(() => {
+    // Повторная загрузка страницы/навигация могла принести свежие
+    // настройки из БД — применяем, если они отличаются от текущих.
+    setNavSettingsState((prev) =>
+      JSON.stringify(prev ?? null) === JSON.stringify(navSettings ?? null)
+        ? prev
+        : navSettings
+    );
+  }, [navSettings]);
 
   useEffect(() => {
     // Минимальный service worker делает админку устанавливаемым PWA.
@@ -92,7 +101,7 @@ export function AdminShell({
     const readLayout = () =>
       setLayout(
         document.documentElement.getAttribute("data-admin-layout") ||
-          "sidebar-left",
+          "sidebar-left"
       );
     readLayout();
     // Раскладку меняет кастомайзер в Настройках (атрибут на <html>) —
@@ -128,6 +137,15 @@ export function AdminShell({
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  // Страница «Настройки» может открыть настройщик меню этим событием
+  // (состояние модалки живёт здесь, в оболочке).
+  useEffect(() => {
+    const onOpenCustomizer = () => setCustomizerOpen(true);
+    window.addEventListener("admin-open-nav-customizer", onOpenCustomizer);
+    return () =>
+      window.removeEventListener("admin-open-nav-customizer", onOpenCustomizer);
+  }, []);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -165,139 +183,37 @@ export function AdminShell({
   }
 
   // ── Навигация ──
-  // Список нужен и сайдбару (десктоп), и планшетной панели, и мобильной
-  // оболочке, поэтому считается до ветки рендера.
-  const nav = [
-    {
-      href: `/${adminPath}`,
-      label: "Панель",
-      icon: <LayoutDashboard size={18} />,
-    },
-    {
-      href: `/${adminPath}/products`,
-      label: "Товары и категории",
-      icon: <Package size={18} />,
-    },
-    {
-      href: `/${adminPath}/promotions`,
-      label: "Акции и окна",
-      icon: <Megaphone size={18} />,
-    },
-    {
-      // Расчёт выгоды продаж за период: прибыль своего производства
-      // против закупки у конкурента + печать сводки на A4.
-      href: `/${adminPath}/profit-report`,
-      label: "Выгода продаж",
-      icon: <TrendingUp size={18} />,
-    },
-    {
-      href: `/${adminPath}/reviews`,
-      label: "Отзывы",
-      icon: <Star size={18} />,
-    },
-    {
-      href: `/${adminPath}/orders`,
-      label: "Заявки",
-      icon: <ClipboardList size={18} />,
-    },
-    {
-      href: `/${adminPath}/client-requests`,
-      label: "Заявки клиентов",
-      icon: <Headset size={18} />,
-    },
-    {
-      // Кабинет клиента глазами клиента + ручное управление его заявками.
-      href: `/${adminPath}/user-cabinet`,
-      label: "Кабинет клиента",
-      icon: <UserSquare size={18} />,
-    },
-    {
-      href: `/${adminPath}/warehouse`,
-      // Учёт СибГофроТорг (гофротара): склад, заказы, банк. Не путать
-      // с учётом аренды и макулатуры — у них свои разделы ниже.
-      label: "Учёт СибГофроТорг",
-      icon: <Boxes size={18} />,
-    },
-    {
-      // Управленческий учёт аренды: банк аренды, арендаторы, просрочки.
-      // Юристу доступен только просмотр дашборда (canAccessAdminPage).
-      href: `/${adminPath}/rent`,
-      label: "Аренда",
-      icon: <Building2 size={18} />,
-    },
-    {
-      // Отдельный учёт макулатуры: виден admin и макулатурщику
-      // (остальным пункт скроет canAccessAdminPage).
-      href: `/${adminPath}/wastepaper-account`,
-      label: "Учёт макулатура",
-      icon: <Recycle size={18} />,
-    },
-    {
-      href: `/${adminPath}/duty-schedule`,
-      label: "Охрана",
-      icon: <ShieldCheck size={18} />,
-    },
-    {
-      // Отдельная страница сканера /admin/scan (без [code] — это
-      // просто точка входа: открывается пустая форма поиска +
-      // доступ к камере, можно начать ввод кода).
-      href: `/${adminPath}/scan`,
-      label: "Сканер",
-      icon: <QrCode size={18} />,
-    },
-    {
-      // Редактор таблицы для печати на А4 (шрифт, размеры, поля).
-      href: `/${adminPath}/print-sheet`,
-      label: "Печать А4",
-      icon: <Printer size={18} />,
-    },
-    {
-      // Табличка на дверь: A4 landscape, крупный телефон, ч/б печать.
-      href: `/${adminPath}/door-sign`,
-      label: "Табличка на дверь",
-      icon: <DoorOpen size={18} />,
-    },
-    {
-      // Подбор ближайшей коробки по габаритам Д×Ш×В (мм).
-      href: `/${adminPath}/box-finder`,
-      label: "Подбор коробки",
-      icon: <Ruler size={18} />,
-    },
-    {
-      // Калькулятор штанцформы: развертка вырезанной заготовки, сборка 3D,
-      // раскладка по листу, длины ножей и цена штампа/тиража. Расчёт ведёт
-      // ядро src/lib/die-calc (без БД), а сохранение в die_calc_jobs — уже
-      // через серверные маршруты /api/admin/die-calc/*.
-      href: `/${adminPath}/die-calc`,
-      label: "Штанцформа",
-      icon: <Scissors size={18} />,
-    },
-    {
-      // Журнал сохранённых расчётов: правка всех полей, подтверждение факта
-      // (габарит с матрицы, реальная цена) и «обучить по базе».
-      href: `/${adminPath}/die-calc/jobs`,
-      label: "Расчёты штанцформ",
-      icon: <Table2 size={18} />,
-    },
-    {
-      // Все таблицы базы данных: просмотр и правка значений без SQL.
-      // Пункт видят только admin и owner (см. canAccessAdminPage).
-      href: `/${adminPath}/database`,
-      label: "База Данных",
-      icon: <Database size={18} />,
-    },
-    {
-      href: `/${adminPath}/settings`,
-      label: "Настройки",
-      icon: <Settings size={18} />,
-    },
-  ].filter((item) =>
-    role ? canAccessAdminPage(role, item.href, adminPath) : false,
+  // Реестр фильтруется по роли, затем к нему применяются персональные
+  // настройки пользователя (порядок, скрытые разделы, группы). Модель
+  // нужна сайдбару (десктоп), планшетной панели, мобильной оболочке
+  // и нижнему меню — считается один раз до ветки рендера.
+  const availableItems = useMemo<AdminNavItemDef[]>(() => {
+    if (!role) return [];
+    return ADMIN_NAV_ITEMS.filter((item) =>
+      canAccessAdminPage(role, navItemHref(adminPath, item.key), adminPath)
+    );
+  }, [role, adminPath]);
+
+  const navModel = useMemo(
+    () => buildNavModel(availableItems, navSettingsState, adminPath),
+    [availableItems, navSettingsState, adminPath]
   );
+  const flatNav = useMemo(() => flattenNavModel(navModel), [navModel]);
 
   if (isLogin) {
     return <div data-admin="true">{children}</div>;
   }
+
+  // Модалка «Настройка меню»: одна на все варианты оболочки.
+  const customizer = role ? (
+    <AdminNavCustomizer
+      open={customizerOpen}
+      availableItems={availableItems}
+      settings={navSettingsState}
+      onClose={() => setCustomizerOpen(false)}
+      onSaved={setNavSettingsState}
+    />
+  ) : null;
 
   // ── Телефон: отдельная оболочка «как нативное приложение» ──
   // Шапка с заголовком раздела + нижние вкладки + лист «Ещё».
@@ -306,18 +222,18 @@ export function AdminShell({
   // телефон получает собственный интерфейс.
   if (isPhone) {
     return (
-      <MobileAdminShell
-        adminPath={adminPath}
-        role={role}
-        displayName={displayName}
-        items={nav.map((link) => ({
-          href: link.href,
-          label: link.label,
-          icon: link.icon,
-        }))}
-      >
-        {children}
-      </MobileAdminShell>
+      <>
+        <MobileAdminShell
+          adminPath={adminPath}
+          role={role}
+          displayName={displayName}
+          entries={navModel}
+          onCustomizeNav={() => setCustomizerOpen(true)}
+        >
+          {children}
+        </MobileAdminShell>
+        {customizer}
+      </>
     );
   }
 
@@ -368,22 +284,30 @@ export function AdminShell({
         </div>
 
         <nav className="admin-sidebar__nav">
-          {nav.map((link) => {
-            const active =
-              link.href === `/${adminPath}`
-                ? pathname === link.href
-                : pathname.startsWith(link.href);
+          {navModel.map((entry) => {
+            if (entry.kind === "group") {
+              return (
+                <AdminNavGroup
+                  key={`group-${entry.id}`}
+                  group={entry}
+                  pathname={pathname}
+                  adminPath={adminPath}
+                />
+              );
+            }
+            const Icon = getNavIcon(entry.icon);
+            const active = isNavHrefActive(entry.href, pathname, adminPath);
             return (
               <Link
-                key={link.href}
-                href={link.href}
-                title={link.label}
+                key={entry.key}
+                href={entry.href}
+                title={entry.label}
                 className={`admin-sidebar__link${active ? " admin-sidebar__link--active" : ""}`}
               >
-                {link.icon}
+                <Icon size={18} aria-hidden="true" />
                 {/* Подпись обёрнута в span: в «компактной» раскладке
                     CSS прячет текст и оставляет только иконки. */}
-                <span className="admin-sidebar__label">{link.label}</span>
+                <span className="admin-sidebar__label">{entry.label}</span>
               </Link>
             );
           })}
@@ -393,6 +317,15 @@ export function AdminShell({
           {/* Переключателя темы здесь больше нет: вся кастомизация
               (темы, раскладка, стиль, плотность, анимации) живёт
               в Настройках → «Кастомизация оформления». */}
+          <button
+            type="button"
+            className="admin-sidebar__footer-link"
+            onClick={() => setCustomizerOpen(true)}
+            title="Порядок разделов, скрытие ненужных и группы"
+          >
+            <SlidersHorizontal size={13} aria-hidden="true" />{" "}
+            <span className="admin-sidebar__label">Настроить меню</span>
+          </button>
           <Link
             href="/"
             prefetch={false}
@@ -422,11 +355,8 @@ export function AdminShell({
         aria-label="Навигация админ-панели"
       >
         <span className="admin-mobile-bar__title" aria-live="polite">
-          {nav.find((link) =>
-            link.href === `/${adminPath}`
-              ? pathname === link.href
-              : pathname.startsWith(link.href),
-          )?.label || "Управление"}
+          {flatNav.find((item) => isNavHrefActive(item.href, pathname, adminPath))
+            ?.label || "Управление"}
         </span>
         <button
           type="button"
@@ -449,31 +379,54 @@ export function AdminShell({
             <span>{displayName || roleLabel || "Админ-панель"}</span>
           </div>
           <div className="admin-mobile-bar__nav">
-            {nav.map((link) => {
-              const active =
-                link.href === `/${adminPath}`
-                  ? pathname === link.href
-                  : pathname.startsWith(link.href);
+            {navModel.map((entry) => {
+              if (entry.kind === "group") {
+                return (
+                  <AdminNavGroup
+                    key={`menu-group-${entry.id}`}
+                    group={entry}
+                    pathname={pathname}
+                    adminPath={adminPath}
+                    variant="menu"
+                    onNavigate={() => setMobileMenuOpen(false)}
+                  />
+                );
+              }
+              const Icon = getNavIcon(entry.icon);
+              const active = isNavHrefActive(entry.href, pathname, adminPath);
               return (
                 <Link
-                  key={link.href}
-                  href={link.href}
+                  key={entry.key}
+                  href={entry.href}
                   prefetch={false}
                   className={`admin-mobile-bar__link${
                     active ? " admin-mobile-bar__link--active" : ""
                   }`}
-                  title={link.label}
-                  aria-label={link.label}
+                  title={entry.label}
+                  aria-label={entry.label}
                   aria-current={active ? "page" : undefined}
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {link.icon}
-                  <span>{link.label}</span>
+                  <Icon size={17} aria-hidden="true" />
+                  <span>{entry.label}</span>
                 </Link>
               );
             })}
           </div>
           <div className="admin-mobile-bar__actions">
+            <button
+              type="button"
+              className="admin-mobile-bar__action"
+              aria-label="Настроить меню"
+              title="Порядок разделов, скрытие ненужных и группы"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                setCustomizerOpen(true);
+              }}
+            >
+              <SlidersHorizontal size={17} aria-hidden="true" />
+              <span>Настроить меню</span>
+            </button>
             <Link
               href="/"
               prefetch={false}
@@ -552,19 +505,26 @@ export function AdminShell({
 
         {/* Мобильная навигация: нижнее меню + лист «Ещё».
             Рендерится только на телефоне (useIsMobile), на десктопе
-            компонент не создаётся вовсе. */}
+            компонент не создаётся вовсе. Группы в нижнем меню не
+            раскрываются — туда попадает плоский список с учётом
+            пользовательского порядка и скрытых разделов. */}
         {isMobile && (
           <AdminBottomNav
-            items={nav.map((link) => ({
-              href: link.href,
-              label: link.label,
-              icon: link.icon,
-            }))}
+            items={flatNav.map((item) => {
+              const Icon = getNavIcon(item.icon);
+              return {
+                href: item.href,
+                label: item.label,
+                icon: <Icon size={20} aria-hidden="true" />,
+              };
+            })}
             pathname={pathname}
             adminPath={adminPath}
           />
         )}
       </div>
+
+      {customizer}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { SettingsForm } from "@/components/admin/SettingsForm";
 import { ExcelDataManager } from "@/components/admin/ExcelDataManager";
 import { AdminUsersManager } from "@/components/admin/AdminUsersManager";
 import { ThemeCustomizer } from "@/components/admin/AdminTheme";
+import { NavCustomizerLauncher } from "@/components/admin/NavCustomizerLauncher";
 import { OwnerMoneyPanel } from "@/components/admin/OwnerMoneyPanel";
 import { redirect } from "next/navigation";
 import { hasPermission, verifySession } from "@/lib/auth";
@@ -45,6 +46,23 @@ export default async function AdminSettingsPage() {
           </div>
         </div>
       )}
+
+      <div className="admin-card" style={{ marginBottom: "1.5rem" }}>
+        <div className="admin-card__head">
+          <h2 className="admin-card__title">🧭 Меню админ-панели</h2>
+        </div>
+        <div className="admin-card__pad">
+          <p className="admin-muted" style={{ marginBottom: 12 }}>
+            Персональная настройка навигации: уберите ненужные разделы,
+            расставьте остальные в удобном порядке и соберите связанные
+            разделы в группы-выпадашки (заголовок + иконка). Настройка
+            сохраняется для вашей учётной записи и действует на всех
+            устройствах. Кнопка «Настроить меню» также есть внизу боковой
+            панели на любой странице.
+          </p>
+          <NavCustomizerLauncher />
+        </div>
+      </div>
 
       <div className="admin-card" style={{ marginBottom: "1.5rem" }}>
         <div className="admin-card__head">
