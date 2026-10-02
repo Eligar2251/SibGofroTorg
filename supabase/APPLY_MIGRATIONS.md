@@ -1,5 +1,20 @@
 # Миграции ветки (что применить на боевой базе)
 
+> **Ветка `arena/01a0faba-sibgofrotorg` (PR #122, штанцформы)** — одна
+> миграция: `supabase/migration_die_calc.sql`. Она создаёт `die_calc_jobs`
+> (сохранённые расчёты), `die_calc_models` (выученная модель),
+> `die_calc_settings` (общий прайс калькулятора) и вьюху `die_calc_job_stats`.
+> Больше этот PR файлов миграций не добавляет. Идемпотентна; без неё
+> калькулятор работает по-старому (localStorage), а журнал расчётов и
+> переобучение — нет. Проверка:
+>
+> ```sql
+> SELECT 'die_calc_jobs'   AS t, EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='die_calc_jobs')
+> UNION ALL SELECT 'die_calc_models',  EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='die_calc_models')
+> UNION ALL SELECT 'die_calc_settings',EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='die_calc_settings')
+> UNION ALL SELECT 'die_calc_job_stats',EXISTS (SELECT 1 FROM information_schema.views WHERE table_name='die_calc_job_stats');
+> ```
+
 Все файлы **идемпотентны** — можно запускать повторно, ничего не сломается
 (`IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`, `ON CONFLICT DO NOTHING`).
 

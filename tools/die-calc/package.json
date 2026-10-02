@@ -1,0 +1,43 @@
+{
+  "name": "sibgofro-die-calc",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Калькулятор штанцформы: развертка, 3D, площадь заготовки, раскладка по листу, длины ножей и стоимость. Ядро (src/core) — чистый TypeScript без зависимостей.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5173",
+    "typecheck": "tsc --noEmit",
+    "test": "esbuild test/*.test.ts --bundle --platform=node --format=esm --outdir=.tmp/test --log-level=warning && node --test .tmp/test/*.test.js",
+    "check": "esbuild scripts/selfcheck.ts --bundle --platform=node --format=esm --outfile=.tmp/selfcheck.mjs --external:@resvg/resvg-js --log-level=warning && node .tmp/selfcheck.mjs",
+    "preview:svg": "esbuild scripts/preview.ts --bundle --platform=node --format=esm --outfile=.tmp/preview.mjs --external:@resvg/resvg-js --log-level=warning && node .tmp/preview.mjs",
+    "sync:site": "node scripts/sync-site.mjs",
+    "sync:check": "node scripts/sync-site.mjs --check"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4"
+  },
+  "scripts_desc": {
+    "dev": "standalone-превью (Vite, порт 5173)",
+    "build": "статичный билд в dist/",
+    "typecheck": "tsc --noEmit по strict",
+    "test": "тесты (esbuild → node --test)",
+    "check": "сверка с 9 эталонными чертежами + отчёт калибровки",
+    "preview:svg": "сгенерировать SVG/PNG превью в .tmp/preview",
+    "sync:site": "скопировать ядро/UI в приложение (src/lib/die-calc, src/components/admin/die-calc)",
+    "sync:check": "проверить, что копии в приложении не отстали"
+  }
+}

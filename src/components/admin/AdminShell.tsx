@@ -27,6 +27,8 @@ import {
   DoorOpen,
   Printer,
   Ruler,
+  Scissors,
+  Table2,
   Menu,
   X,
   Database,
@@ -260,6 +262,22 @@ export function AdminShell({
       href: `/${adminPath}/box-finder`,
       label: "Подбор коробки",
       icon: <Ruler size={18} />,
+    },
+    {
+      // Калькулятор штанцформы: развертка вырезанной заготовки, сборка 3D,
+      // раскладка по листу, длины ножей и цена штампа/тиража. Расчёт ведёт
+      // ядро src/lib/die-calc (без БД), а сохранение в die_calc_jobs — уже
+      // через серверные маршруты /api/admin/die-calc/*.
+      href: `/${adminPath}/die-calc`,
+      label: "Штанцформа",
+      icon: <Scissors size={18} />,
+    },
+    {
+      // Журнал сохранённых расчётов: правка всех полей, подтверждение факта
+      // (габарит с матрицы, реальная цена) и «обучить по базе».
+      href: `/${adminPath}/die-calc/jobs`,
+      label: "Расчёты штанцформ",
+      icon: <Table2 size={18} />,
     },
     {
       // Все таблицы базы данных: просмотр и правка значений без SQL.

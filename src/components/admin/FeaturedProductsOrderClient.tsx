@@ -474,7 +474,14 @@ export function FeaturedProductsOrderClient({
                   </span>
                 </div>
               ) : (
-                <div className="featured-sort-grid">
+                <div
+                  className={`featured-sort-grid${
+                    isFeaturedTab ? "" : " featured-sort-grid--order"
+                  }`}
+                >
+                  {/* Вкладка «под заказ» — точь-в-точь секция на главной
+                      (компактная сетка каталога), поэтому без 4 колонок
+                      на широких мониторах: иначе плитки «здоровые». */}
                   {products.map((product, index) => (
                     <FeaturedCard
                       key={product.id}
