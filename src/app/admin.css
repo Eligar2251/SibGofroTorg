@@ -15651,3 +15651,192 @@ a.client-card__contact:hover {
   .receipt-debt-row__amount { min-width: 115px; }
   .receipt-debt-row__amount > strong { font-size: 14px; }
 }
+
+
+/* ══════════════════════════════════════════════════════════
+   РАСЧЁТЫ ШТАНЦФОРМ (die-calc): журнал сохранённых расчётов
+   Классы .dcj-* — только страница /[adminPath]/die-calc/jobs.
+   ══════════════════════════════════════════════════════════ */
+.dcj__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.dcj__search {
+  position: relative;
+  flex: 1 1 260px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dcj__search > svg {
+  position: absolute;
+  left: 10px;
+  color: var(--adm-ink-muted);
+  pointer-events: none;
+}
+
+.dcj__search .admin-input {
+  padding-left: 30px;
+  width: 100%;
+}
+
+.dcj__count {
+  font-size: 12px;
+  color: var(--adm-muted);
+}
+
+.dcj__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dcj__learn .admin-card__pad {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.dcj__notes {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--adm-ink-soft);
+}
+
+.dcj__hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--adm-muted);
+}
+
+.dcj__msg {
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.dcj__msg--ok {
+  background: var(--adm-pine-pale, rgba(22, 101, 52, 0.08));
+  border: 1px solid var(--adm-pine-line, rgba(22, 101, 52, 0.22));
+  color: var(--adm-pine, #166534);
+}
+
+.dcj__msg--err {
+  background: var(--adm-rust-pale, rgba(180, 53, 26, 0.08));
+  border: 1px solid var(--adm-rust-line, rgba(180, 53, 26, 0.24));
+  color: var(--adm-rust, #9a3412);
+}
+
+/* широкая таблица: листаем по горизонтали, колонки не плющат инпуты */
+.dcj-table {
+  min-width: 1500px;
+}
+
+.dcj__sizes,
+.dcj__selects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dcj__selects {
+  margin-top: 6px;
+}
+
+.dcj-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dcj-field > span {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--adm-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dcj-input {
+  height: 28px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.dcj-input--name {
+  height: 26px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.dcj-input--note {
+  height: 24px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--adm-ink-soft);
+}
+
+.dcj-select {
+  height: 28px;
+  font-size: 12px;
+}
+
+.dcj__calc {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--adm-ink-soft);
+}
+
+.dcj__calc b {
+  color: var(--adm-ink, #1a1a18);
+}
+
+.dcj__meta {
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--adm-muted);
+}
+
+.dcj__delta {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dcj__none {
+  color: var(--adm-muted);
+  font-size: 11px;
+}
+
+.dcj__learn-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--adm-ink-soft);
+}
+
+.dcj__row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dcj-row--changed {
+  background: rgba(200, 134, 10, 0.07);
+}
+
+/* на телефоне таблицу не «складываем» карточкой: она горизонтальная */
+@media (max-width: 900px) {
+  .dcj__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+}
