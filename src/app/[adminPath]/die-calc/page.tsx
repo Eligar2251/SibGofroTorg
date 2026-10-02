@@ -77,7 +77,7 @@ export default async function AdminDieCalcPage({
   return (
     <DieCalcWorkbench
       title="Калькулятор штанцформы"
-      subtitle="Развертка вырезанной заготовки, сборка, лист, ножи, цена · сохранение в базу и обучение на подтверждённых расчётах"
+      subtitle="Готовые конструкции или своя развертка по сетке и фото · лист, ножи, размеры, стоимость · сохранение в базу и экспорт DXF/SVG"
       adminPath={adminPath}
       job={job}
       model={model}

@@ -59,7 +59,7 @@ export function DieCalcWorkbench({
   // модель обновляется без перезагрузки после «обучить по базе»
   const [currentModel, setCurrentModel] = useState<DieCalcModel | null>(model ?? null);
   const [jobId, setJobId] = useState<string | null>(job?.id ?? null);
-  const tab: DieCalcTab = job ? "db" : "unfold";
+  const tab: DieCalcTab = job ? (job.settings?.customDrawing ? "custom" : "db") : "unfold";
 
   return (
     <DieCalc
@@ -73,9 +73,12 @@ export function DieCalcWorkbench({
         {
           id: "db",
           name: "База и обучение",
-          render: ({ calc }) => (
+          render: ({ calc, customResult, isCustomCalculation, setCustomCalculation }) => (
             <DieCalcDbPanel
               calc={calc}
+              customResult={customResult}
+              isCustom={isCustomCalculation}
+              onCalculationMode={setCustomCalculation}
               job={job ?? null}
               jobId={jobId}
               onJobId={setJobId}

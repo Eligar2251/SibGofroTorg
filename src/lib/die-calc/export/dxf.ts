@@ -30,7 +30,18 @@ export function toDxf(res: CalcResult, opts: { label?: string; includeDie?: bool
   // чертежа занимает [-fm … die - fm]; держим это в уме для EXTMIN/EXTMAX и надписи
   const fm = Math.max(0, res.input.die.frameMargin);
   const plate = { x0: -fm, y0: -fm, x1: res.die.x1 - fm, y1: res.die.y1 - fm };
-  const layers = KINDS.filter((k) => (withDie ? true : k === 'cut' || k === 'crease' || k === 'perf'));
+  const dimensionMarks = res.geom.dimensions ?? [];
+  const customGeometry = !!res.geom.custom;
+  const layers = KINDS.filter((k) => (withDie ? true : k === 'cut' || k === 'crease' || k === 'perf' || (customGeometry && k === 'tech')));
+  const ext = dimensionMarks.reduce(
+    (box, mark) => ({
+      x0: Math.min(box.x0, mark.a.x, mark.b.x),
+      y0: Math.min(box.y0, mark.a.y, mark.b.y),
+      x1: Math.max(box.x1, mark.a.x, mark.b.x),
+      y1: Math.max(box.y1, mark.a.y, mark.b.y),
+    }),
+    { ...plate },
+  );
   const out: string[] = [];
   const pair = (code: number, value: string | number): void => {
     out.push(String(code), String(value));
@@ -43,9 +54,9 @@ export function toDxf(res: CalcResult, opts: { label?: string; includeDie?: bool
   pair(9, '$INSBASE');
   out.push('10', '0', '20', '0', '30', '0');
   pair(9, '$EXTMIN');
-  out.push('10', rt(plate.x0), '20', rt(plate.y0), '30', '0');
+  out.push('10', rt(ext.x0), '20', rt(ext.y0), '30', '0');
   pair(9, '$EXTMAX');
-  out.push('10', rt(plate.x1), '20', rt(plate.y1), '30', '0');
+  out.push('10', rt(ext.x1), '20', rt(ext.y1), '30', '0');
   pair(9, '$LUNITS');
   pair(70, 2);
   pair(9, '$LUPREC');
@@ -55,9 +66,10 @@ export function toDxf(res: CalcResult, opts: { label?: string; includeDie?: bool
   out.push('0', 'ENDSEC');
 
   // ————— TABLES / LAYER
-  out.push('0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', String(layers.length + 1));
+  out.push('0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', String(layers.length + (dimensionMarks.length ? 1 : 0) + 1));
   layerRow('0', 7);
   for (const k of layers) layerRow(DXF_LAYER[k].name, DXF_LAYER[k].color);
+  if (dimensionMarks.length) layerRow('DIM', 9);
   out.push('0', 'ENDTAB', '0', 'ENDSEC');
 
   // ————— ENTITIES
@@ -68,19 +80,27 @@ export function toDxf(res: CalcResult, opts: { label?: string; includeDie?: bool
   const stepX = res.bbox.x1 - res.bbox.x0 + (res.input.options.diePitch || 0);
   for (const k of KINDS) {
     if (!layers.includes(k)) continue;
-    const segs = k === 'cut' || k === 'crease' || k === 'perf' ? tileSegs(res.segMap[k], perDie, stepX) : res.segMap[k];
+    const isProductLayer = k === 'cut' || k === 'crease' || k === 'perf' || (customGeometry && k === 'tech');
+    const segs = isProductLayer ? tileSegs(res.segMap[k], perDie, stepX) : res.segMap[k];
     for (const s of segs) {
       out.push('0', 'LINE', '8', DXF_LAYER[k].name);
       out.push('10', rt(s.a.x), '20', rt(s.a.y), '30', '0');
       out.push('11', rt(s.b.x), '21', rt(s.b.y), '31', '0');
     }
   }
+  for (const mark of dimensionMarks) {
+    const label = mark.label?.trim() || `${num(Math.hypot(mark.b.x - mark.a.x, mark.b.y - mark.a.y))} мм`;
+    out.push('0', 'LINE', '8', 'DIM');
+    out.push('10', rt(mark.a.x), '20', rt(mark.a.y), '30', '0');
+    out.push('11', rt(mark.b.x), '21', rt(mark.b.y), '31', '0');
+    out.push('0', 'TEXT', '8', 'DIM', '10', rt((mark.a.x + mark.b.x) / 2), '20', rt((mark.a.y + mark.b.y) / 2 + 5), '30', '0', '40', '6', '1', safe(label));
+  }
   const label =
     opts.label ??
     `${res.input.construction}-${num(res.input.L)}*${num(res.input.W)}*${num(res.input.H)}-${
       res.input.profileId
     } | ${num(res.area.blankW)}×${num(res.area.blankH)} мм | ножи ${res.knives.totalM.toFixed(2)} м`;
-  out.push('0', 'TEXT', '8', DXF_LAYER.mark.name, '10', rt(plate.x0 + 10), '20', rt(plate.y1 - 24), '30', '0', '40', '8', '1', safe(label));
+  if (withDie) out.push('0', 'TEXT', '8', DXF_LAYER.mark.name, '10', rt(plate.x0 + 10), '20', rt(plate.y1 - 24), '30', '0', '40', '8', '1', safe(label));
   out.push('0', 'ENDSEC', '0', 'EOF');
   return out.join('\n');
 

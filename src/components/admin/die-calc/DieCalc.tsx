@@ -14,8 +14,9 @@
  * кроме react/react-dom.
  */
 
-import { useCallback, useState, type ReactNode } from 'react';
-import { CONSTRUCTIONS } from '@/lib/die-calc/model';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { calculateCustomDrawing } from '@/lib/die-calc/custom';
+import { CONSTRUCTIONS, type CalcResult } from '@/lib/die-calc/model';
 import { renderUnfold } from '@/lib/die-calc/render2d';
 import { exportCsv, exportDxf, exportJsonFallback, exportPng, exportReport, exportSvg, printPdf } from './exports';
 import { useCalc, type AppState, type SettingsState, type UseCalc } from './store';
@@ -24,6 +25,7 @@ import { FormPanel, ResultPanel, DerivationView } from './panels';
 import { FoldView, NestView, UnfoldView } from './views';
 import { CalibrationPanel, SettingsPanel } from './admin';
 import type { DieCalcModel } from '@/lib/die-calc/learn';
+import { CustomDieEditor } from './custom';
 import '@/app/admin-die-calc.css';
 
 type KnownTab = 'unfold' | 'fold' | 'sheet' | 'formula' | 'calib' | 'settings';
@@ -38,7 +40,7 @@ export type DieCalcTab = KnownTab | (string & {});
 export interface DieCalcSlot {
   id: string;
   name: string;
-  render: (p: { calc: UseCalc; tab: DieCalcTab; setTab: (t: DieCalcTab) => void }) => ReactNode;
+  render: (p: { calc: UseCalc; tab: DieCalcTab; setTab: (t: DieCalcTab) => void; customResult: CalcResult | null; isCustomCalculation: boolean; setCustomCalculation: (isCustom: boolean) => void }) => ReactNode;
 }
 
 export interface DieCalcProps {
@@ -61,6 +63,7 @@ export interface DieCalcProps {
 
 const ALL_TABS: Array<{ id: DieCalcTab; name: string }> = [
   { id: 'unfold', name: 'Развертка' },
+  { id: 'custom', name: 'Своя форма' },
   { id: 'fold', name: 'Сборка 3D' },
   { id: 'sheet', name: 'Раскладка по листу' },
   { id: 'formula', name: 'Как считалось' },
@@ -70,12 +73,28 @@ const ALL_TABS: Array<{ id: DieCalcTab; name: string }> = [
 
 export function DieCalc(props: DieCalcProps): ReactNode {
   const calc = useCalc({ initial: props.initial, initialSettings: props.initialSettings, model: props.model });
-  const [tab, setTab] = useState<DieCalcTab>(props.tab ?? 'unfold');
+  const [tab, setTabRaw] = useState<DieCalcTab>(props.tab ?? 'unfold');
+  const [customCalculation, setCustomCalculation] = useState(props.tab === 'custom');
+  const setTab = useCallback((next: DieCalcTab): void => {
+    if (next === 'custom') setCustomCalculation(true);
+    else if (['unfold', 'fold', 'sheet', 'formula', 'calib', 'settings'].includes(next)) setCustomCalculation(false);
+    setTabRaw(next);
+  }, []);
   const dark = !!props.dark;
   const { state, setState, result, error, settings } = calc;
   const cons = CONSTRUCTIONS.find((c) => c.id === state.construction);
   const name = `${state.construction === 'blank' ? 'заготовка' : `${cons?.code}-${state.L}*${state.W}*${state.H}-${state.profileId}`}`;
   const profile = settings.profiles.find((p) => p.id === state.profileId) ?? settings.profiles[0];
+  const customResult = useMemo<CalcResult | null>(() => {
+    const drawing = state.customDrawing;
+    if (!drawing || (!drawing.lines.length && !drawing.polygons.length)) return null;
+    const selectedSheets = state.sheetId === 'auto' ? settings.sheets : settings.sheets.filter((sheet) => sheet.id === state.sheetId);
+    try {
+      return calculateCustomDrawing(drawing, calc.input, { ...settings, sheets: selectedSheets.length ? selectedSheets : settings.sheets });
+    } catch {
+      return null;
+    }
+  }, [state.customDrawing, state.sheetId, calc.input, settings]);
 
   const onExport = useCallback(
     (kind: 'svg' | 'dxf' | 'png' | 'pdf' | 'csv' | 'txt' | 'json') => {
@@ -115,13 +134,24 @@ export function DieCalc(props: DieCalcProps): ReactNode {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span className="dgc-badge">заказ {state.orderNo || '—'}</span>
-          <span className="dgc-badge">
-            {fmtMm(result?.area.blankW ?? 0)}×{fmtMm(result?.area.blankH ?? 0)} мм
-          </span>
-          <span className="dgc-badge">{result ? `${result.nest.perSheet} шт/лист` : '—'}</span>
-          <span className="dgc-badge">{profile ? `${profile.priceM2} ₽/м²` : '—'}</span>
-          {calc.learn.geo || calc.learn.priceN > 0 ? (
+          {tab === 'custom' ? (
+            <>
+              <span className="dgc-badge">заказ {state.orderNo || '—'}</span>
+              <span className="dgc-badge">{customResult ? `${fmtMm(customResult.area.blankW)}×${fmtMm(customResult.area.blankH)} мм` : 'нарисуйте геометрию'}</span>
+              <span className="dgc-badge">{customResult ? `${customResult.nest.perSheet} шт/лист` : '—'}</span>
+              <span className="dgc-badge">{profile ? `${profile.priceM2} ₽/м²` : '—'}</span>
+            </>
+          ) : (
+            <>
+              <span className="dgc-badge">заказ {state.orderNo || '—'}</span>
+              <span className="dgc-badge">
+                {fmtMm(result?.area.blankW ?? 0)}×{fmtMm(result?.area.blankH ?? 0)} мм
+              </span>
+              <span className="dgc-badge">{result ? `${result.nest.perSheet} шт/лист` : '—'}</span>
+              <span className="dgc-badge">{profile ? `${profile.priceM2} ₽/м²` : '—'}</span>
+            </>
+          )}
+          {tab !== 'custom' && (calc.learn.geo || calc.learn.priceN > 0) ? (
             <span className="dgc-badge dgc-badge--learned" title="к расчёту применена модель, выученная на сохранённых расчётах">
               обучение: {calc.learn.geoN > 0 ? `габарит ±${calc.learn.errAfterMm} мм` : 'габарит — нет'}
               {calc.learn.priceN > 0 ? `, цена ×${calc.learn.priceK.toFixed(3)}` : ''}
@@ -141,7 +171,7 @@ export function DieCalc(props: DieCalcProps): ReactNode {
       </div>
 
       {activeSlot ? (
-        <div className="dgc-slot">{activeSlot.render({ calc, tab, setTab })}</div>
+        <div className="dgc-slot">{activeSlot.render({ calc, tab, setTab, customResult, isCustomCalculation: customCalculation, setCustomCalculation })}</div>
       ) : null}
 
       {result && !activeSlot && (tab === 'unfold' || tab === 'fold' || tab === 'sheet' || tab === 'formula') ? (
@@ -175,6 +205,8 @@ export function DieCalc(props: DieCalcProps): ReactNode {
           </div>
         </div>
       ) : null}
+
+      {!activeSlot && tab === 'custom' ? <CustomDieEditor calc={calc} result={customResult} /> : null}
 
       {result && !activeSlot && tab === 'calib' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.15fr) minmax(0,1fr)', gap: 12, alignItems: 'start' }} className="dgc-calib">
