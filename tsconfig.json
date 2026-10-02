@@ -37,6 +37,10 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    // tools/ — автономная песочница (свой tsconfig, свои dev-зависимости:
+    // vite, esbuild, @resvg). В установку сайта она не входит, поэтому в
+    // общий typecheck/next build не пускаем — иначе свежий клон не соберётся.
+    "tools"
   ]
 }
