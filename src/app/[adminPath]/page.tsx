@@ -848,7 +848,7 @@ export default async function AdminDashboard() {
             badge={rentSummary.overdueSum > 0 ? `просрочено ${money(rentSummary.overdueSum)}` : "ок"}
             sideContent={
               <Link href={`/${ADMIN_PATH}/rent`} className="admin-btn admin-btn--ghost admin-btn--sm" prefetch={false}>
-                <ExternalLink size={12} /> Аренда
+                <ExternalLink size={12} /> Учёт аренды
               </Link>
             }
           >

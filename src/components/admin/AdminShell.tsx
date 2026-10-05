@@ -222,7 +222,7 @@ export function AdminShell({
       // Управленческий учёт аренды: банк аренды, арендаторы, просрочки.
       // Юристу доступен только просмотр дашборда (canAccessAdminPage).
       href: `/${adminPath}/rent`,
-      label: "Аренда",
+      label: "Учёт аренды",
       icon: <Building2 size={18} />,
     },
     {

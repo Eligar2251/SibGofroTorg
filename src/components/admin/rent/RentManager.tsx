@@ -1,24 +1,25 @@
 // =========================================================
 // FILE: src/components/admin/rent/RentManager.tsx
 // Учёт аренды: оболочка с вкладками.
-//   Дашборд   — финансы, просрочки, напоминания (видит и юрист)
-//   Арендаторы— договоры, офисы, периоды, отсрочки
-//   Схема     — план здания, этажи, офисы с арендаторами
-//   Начисления— счета за периоды аренды
-//   Банк      — отдельный банк аренды (БАУ и ИП Пакин) в стиле приложения
+//   Дашборд    — стартовая страница: счета, сбор месяца, просрочки
+//   Арендаторы — договоры, офисы, периоды, отсрочки
+//   Схема      — планировки этажей по клеткам (стены, двери, помещения)
+//   Электроэнергия — счётчики, тарифы, начисления
+//   Начисления — счета за периоды аренды
+//   Банк       — банк аренды: операции, проведение, история
 // =========================================================
 
 "use client";
 
 import { useState, type ReactNode } from "react";
 import {
-  LayoutDashboard,
-  Users,
-  FileText,
-  Wallet,
-  Settings2,
-  Zap,
   Building2,
+  FileText,
+  LayoutDashboard,
+  Settings2,
+  Users,
+  Wallet,
+  Zap,
 } from "lucide-react";
 import type {
   RentInvoice,
@@ -27,7 +28,7 @@ import type {
   RentPayment,
   RentTenant,
 } from "@/lib/rent-shared";
-import type { RentBuilding, RentOfficeUnit } from "@/lib/rent-building";
+import type { RentBuilding, RentFloorPlan } from "@/lib/rent-building";
 import { RentDashboard } from "./RentDashboard";
 import { RentTenants } from "./RentTenants";
 import { RentElectricity } from "./RentElectricity";
@@ -38,7 +39,7 @@ import { RentOrgSettings } from "./RentOrgSettings";
 
 export type RentMode = "full" | "readonly" | "dashboard";
 
-type RentTab = "dashboard" | "tenants" | "scheme" | "electricity" | "invoices" | "bank";
+export type RentTabKey = "dashboard" | "tenants" | "scheme" | "electricity" | "invoices" | "bank";
 
 export function RentManager({
   adminPath,
@@ -50,7 +51,7 @@ export function RentManager({
   payments,
   meterReadings,
   initialBuildings,
-  initialOffices,
+  initialPlans,
 }: {
   adminPath: string;
   mode: RentMode;
@@ -61,26 +62,29 @@ export function RentManager({
   payments: RentPayment[];
   meterReadings: RentMeterReading[];
   initialBuildings: RentBuilding[];
-  initialOffices: RentOfficeUnit[];
+  initialPlans: RentFloorPlan[];
 }) {
   const readOnly = mode !== "full";
-  const allowedTabs: RentTab[] =
+  const allowedTabs: RentTabKey[] =
     mode === "dashboard"
       ? ["dashboard"]
       : ["dashboard", "tenants", "scheme", "electricity", "invoices", "bank"];
 
-  const [tab, setTab] = useState<RentTab>(() =>
-    allowedTabs.includes(initialTab as RentTab) ? (initialTab as RentTab) : "dashboard"
+  const [tab, setTab] = useState<RentTabKey>(() =>
+    allowedTabs.includes(initialTab as RentTabKey) ? (initialTab as RentTabKey) : "dashboard"
   );
   const [orgSettingsOpen, setOrgSettingsOpen] = useState(false);
 
-  const tabs: { key: RentTab; label: string; icon: ReactNode }[] = [
-    { key: "dashboard", label: "Дашборд", icon: <LayoutDashboard size={13} /> },
-    { key: "tenants", label: "Арендаторы", icon: <Users size={13} /> },
+  const pendingPayments = payments.filter((p) => !p.isPaid).length;
+  const awaitingInvoices = invoices.filter((i) => i.status === "awaiting").length;
+
+  const tabs: { key: RentTabKey; label: string; icon: ReactNode; badge?: number }[] = [
+    { key: "dashboard", label: "Обзор", icon: <LayoutDashboard size={13} /> },
+    { key: "tenants", label: "Арендаторы", icon: <Users size={13} />, badge: tenants.filter((t) => t.status === "active").length },
     { key: "scheme", label: "Схема здания", icon: <Building2 size={13} /> },
     { key: "electricity", label: "Электроэнергия", icon: <Zap size={13} /> },
-    { key: "invoices", label: "Начисления", icon: <FileText size={13} /> },
-    { key: "bank", label: "Банк аренды", icon: <Wallet size={13} /> },
+    { key: "invoices", label: "Начисления", icon: <FileText size={13} />, badge: awaitingInvoices },
+    { key: "bank", label: "Банк аренды", icon: <Wallet size={13} />, badge: pendingPayments },
   ];
 
   return (
@@ -89,8 +93,8 @@ export function RentManager({
         <div>
           <h1 className="admin-h1">Учёт аренды</h1>
           <p className="admin-block__desc">
-            БАУ и ИП Пакин: арендаторы, договоры, начисления и отдельный банк
-            аренды.{" "}
+            БАУ и ИП Пакин: арендаторы и договоры, планировки зданий, начисления,
+            электроэнергия и банк аренды.{" "}
             {mode === "dashboard"
               ? "Вам доступен просмотр отчётности, финансов и просрочек."
               : mode === "readonly"
@@ -125,6 +129,9 @@ export function RentManager({
               >
                 {t.icon}
                 {t.label}
+                {typeof t.badge === "number" && t.badge > 0 ? (
+                  <span className="rent-tab-badge">{t.badge}</span>
+                ) : null}
               </button>
             ))}
         </div>
@@ -138,6 +145,9 @@ export function RentManager({
           tenants={tenants}
           invoices={invoices}
           payments={payments}
+          onOpenTab={(next) => {
+            if (allowedTabs.includes(next)) setTab(next);
+          }}
         />
       )}
       {tab === "tenants" && (
@@ -176,7 +186,7 @@ export function RentManager({
       {tab === "scheme" && (
         <RentBuildingScheme
           initialBuildings={initialBuildings}
-          initialOffices={initialOffices}
+          initialPlans={initialPlans}
           tenants={tenants}
           invoices={invoices}
           orgs={orgs}
