@@ -4,9 +4,9 @@
 // FILE: src/components/admin/DatabaseBrowser.tsx
 // Раздел «База Данных»: все таблицы в одном месте.
 //
-// Упрощённо и безопасно: без SQL, без выдачи прав, без создания и
-// удаления строк. Только просмотр уже существующих данных и правка
-// значений прямо в красиво оформленной таблице.
+// Просмотр уже существующих данных, правка значений прямо в таблице
+// и удаление строки кнопкой с подтверждением (параллельно DELETE в
+// Supabase). Без SQL и без выдачи прав.
 // =========================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,11 +23,15 @@ import {
   Search,
   ShieldCheck,
   Table2,
+  Trash2,
+  X,
 } from "lucide-react";
 import type {
   DatabaseColumn,
   DatabaseTableMeta,
 } from "@/lib/admin-database";
+import { ModalPortal } from "@/components/admin/ModalPortal";
+import { useEscapeClose } from "@/hooks/use-escape-close";
 
 type CellValue = unknown;
 
@@ -301,6 +305,44 @@ export function DatabaseBrowser() {
   const page = Math.floor(offset / pageSize) + 1;
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const canEditTable = Boolean(data?.editable && pk);
+  const canDelete = Boolean(pk);
+
+  // Удаление строки с подтверждением
+  const [deleteTarget, setDeleteTarget] = useState<{ rowKey: string; row: Record<string, CellValue> } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  useEscapeClose(() => setDeleteTarget(null), !!deleteTarget);
+
+  async function confirmDelete() {
+    if (!deleteTarget || !data) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/database/${encodeURIComponent(data.table)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: deleteTarget.rowKey }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Не удалось удалить запись");
+      // Убираем строку из локального состояния без перезагрузки
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              rows: prev.rows.filter((r) => keyOf(r, prev.primaryKey) !== deleteTarget.rowKey),
+              total: Math.max(0, prev.total - 1),
+            }
+          : prev
+      );
+      setDeleteTarget(null);
+      setSuccess("Запись удалена из базы и Supabase");
+      setTimeout(() => setSuccess(""), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось удалить запись");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="db-browser">
@@ -443,6 +485,7 @@ export function DatabaseBrowser() {
                       </button>
                     </th>
                   ))}
+                  {canDelete && <th style={{ width: 46, textAlign: "center" }}>⋯</th>}
                 </tr>
               </thead>
               <tbody>
@@ -450,7 +493,7 @@ export function DatabaseBrowser() {
                   <tr>
                     <td
                       className="db-browser__empty"
-                      colSpan={data.columns.length + 1}
+                      colSpan={data.columns.length + (canDelete ? 2 : 1)}
                     >
                       Ничего не найдено
                     </td>
@@ -556,6 +599,24 @@ export function DatabaseBrowser() {
                             </td>
                           );
                         })}
+                        {canDelete && (
+                          <td className="db-browser__cell db-browser__cell--action" style={{ padding: "4px 6px", textAlign: "center", whiteSpace: "nowrap" }}>
+                            <button
+                              type="button"
+                              className="admin-btn admin-btn--icon admin-btn--ghost"
+                              style={{ width: 28, height: 28, borderRadius: 7 }}
+                              title={rowKey ? `Удалить запись ${rowKey}` : "Удалить"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!rowKey) return;
+                                setDeleteTarget({ rowKey, row });
+                              }}
+                              disabled={!rowKey}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -587,10 +648,13 @@ export function DatabaseBrowser() {
           </button>
           <span className="db-browser__spacer" />
           <span className="db-browser__legend" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-            {canEditTable ? (
+            {canDelete ? (
               <>
-                <Pencil size={12} /> Нажмите на ячейку, чтобы отредактировать. Строки не
-                создаются и не удаляются — только правка существующих данных.
+                <Trash2 size={12} /> Удаление — кнопкой <Trash2 size={10} style={{ verticalAlign: "-1px" }} /> справа от строки с подтверждением. Данные удаляются из Supabase параллельно.
+              </>
+            ) : canEditTable ? (
+              <>
+                <Pencil size={12} /> Нажмите на ячейку, чтобы отредактировать.
               </>
             ) : (
               <>
@@ -600,6 +664,52 @@ export function DatabaseBrowser() {
           </span>
         </div>
       </section>
+
+      {deleteTarget && (
+        <ModalPortal>
+          <div className="admin-modal-overlay" data-admin="true" onClick={() => !deleting && setDeleteTarget(null)}>
+            <div className="admin-modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+              <div className="admin-modal__head">
+                <h3 className="admin-modal__title" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <Trash2 size={16} style={{ color: "var(--adm-rust)" }} />
+                  Удалить запись?
+                </h3>
+                <button className="admin-modal__close" onClick={() => !deleting && setDeleteTarget(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="admin-modal__desc" style={{ lineHeight: 1.5 }}>
+                Таблица <b style={{ color: "var(--adm-ink)" }}>{data?.label || data?.table}</b>
+                {pk ? (
+                  <>
+                    {" "}
+                    · ключ <code>{pk} = {deleteTarget.rowKey}</code>
+                  </>
+                ) : null}
+                <br />
+                Запись будет <b style={{ color: "var(--adm-rust)" }}>удалена навсегда</b> из Supabase. Действие необратимо — при ошибке со связями
+                база вернёт ошибку (например, арендатор с начислениями).
+              </div>
+              <div style={{ background: "var(--adm-paper)", border: "1px solid var(--adm-border)", borderRadius: 8, padding: 10, margin: "0 20px", maxHeight: 160, overflow: "auto" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--adm-muted)", marginBottom: 6 }}>Содержимое строки</div>
+                <pre style={{ margin: 0, fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, monospace", color: "var(--adm-ink-soft)" }}>
+                  {JSON.stringify(deleteTarget.row, null, 2).slice(0, 900)}
+                  {JSON.stringify(deleteTarget.row, null, 2).length > 900 ? "\n… (обрезано)" : ""}
+                </pre>
+              </div>
+              <div className="admin-modal__actions">
+                <button className="admin-btn admin-btn--ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                  Отмена
+                </button>
+                <button className="admin-btn admin-btn--danger" onClick={confirmDelete} disabled={deleting} style={{ minWidth: 140 }}>
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  {deleting ? "Удаляем…" : "Удалить навсегда"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
     </div>
   );
 }

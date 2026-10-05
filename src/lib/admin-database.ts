@@ -477,3 +477,18 @@ export async function updateTableCell(input: CellUpdateInput): Promise<Record<st
   if (readError) throw readError;
   return stripSensitiveColumns((data || {}) as Record<string, unknown>);
 }
+
+/** Удаление строки по первичному ключу — параллельно в Supabase. */
+export async function deleteTableRow(input: {
+  table: string;
+  schema: DatabaseTableSchema;
+  keyColumn: string;
+  keyValue: string;
+}): Promise<void> {
+  const db = getAdminDb();
+  const { error } = await db
+    .from(input.table)
+    .delete()
+    .eq(input.keyColumn, input.keyValue);
+  if (error) throw error;
+}

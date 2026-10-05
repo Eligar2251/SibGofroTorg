@@ -3,8 +3,9 @@
 // Учёт аренды: оболочка с вкладками.
 //   Дашборд   — финансы, просрочки, напоминания (видит и юрист)
 //   Арендаторы— договоры, офисы, периоды, отсрочки
+//   Схема     — план здания, этажи, офисы с арендаторами
 //   Начисления— счета за периоды аренды
-//   Банк      — отдельный банк аренды (БАУ и ИП Пакин)
+//   Банк      — отдельный банк аренды (БАУ и ИП Пакин) в стиле приложения
 // =========================================================
 
 "use client";
@@ -17,6 +18,7 @@ import {
   Wallet,
   Settings2,
   Zap,
+  Building2,
 } from "lucide-react";
 import type {
   RentInvoice,
@@ -25,16 +27,18 @@ import type {
   RentPayment,
   RentTenant,
 } from "@/lib/rent-shared";
+import type { RentBuilding, RentOfficeUnit } from "@/lib/rent-building";
 import { RentDashboard } from "./RentDashboard";
 import { RentTenants } from "./RentTenants";
 import { RentElectricity } from "./RentElectricity";
 import { RentInvoices } from "./RentInvoices";
 import { RentBank } from "./RentBank";
+import { RentBuildingScheme } from "./RentBuildingScheme";
 import { RentOrgSettings } from "./RentOrgSettings";
 
 export type RentMode = "full" | "readonly" | "dashboard";
 
-type RentTab = "dashboard" | "tenants" | "electricity" | "invoices" | "bank";
+type RentTab = "dashboard" | "tenants" | "scheme" | "electricity" | "invoices" | "bank";
 
 export function RentManager({
   adminPath,
@@ -45,6 +49,8 @@ export function RentManager({
   invoices,
   payments,
   meterReadings,
+  initialBuildings,
+  initialOffices,
 }: {
   adminPath: string;
   mode: RentMode;
@@ -54,12 +60,14 @@ export function RentManager({
   invoices: RentInvoice[];
   payments: RentPayment[];
   meterReadings: RentMeterReading[];
+  initialBuildings: RentBuilding[];
+  initialOffices: RentOfficeUnit[];
 }) {
   const readOnly = mode !== "full";
   const allowedTabs: RentTab[] =
     mode === "dashboard"
       ? ["dashboard"]
-      : ["dashboard", "tenants", "electricity", "invoices", "bank"];
+      : ["dashboard", "tenants", "scheme", "electricity", "invoices", "bank"];
 
   const [tab, setTab] = useState<RentTab>(() =>
     allowedTabs.includes(initialTab as RentTab) ? (initialTab as RentTab) : "dashboard"
@@ -69,6 +77,7 @@ export function RentManager({
   const tabs: { key: RentTab; label: string; icon: ReactNode }[] = [
     { key: "dashboard", label: "Дашборд", icon: <LayoutDashboard size={13} /> },
     { key: "tenants", label: "Арендаторы", icon: <Users size={13} /> },
+    { key: "scheme", label: "Схема здания", icon: <Building2 size={13} /> },
     { key: "electricity", label: "Электроэнергия", icon: <Zap size={13} /> },
     { key: "invoices", label: "Начисления", icon: <FileText size={13} /> },
     { key: "bank", label: "Банк аренды", icon: <Wallet size={13} /> },
@@ -162,6 +171,16 @@ export function RentManager({
           tenants={tenants}
           invoices={invoices}
           payments={payments}
+        />
+      )}
+      {tab === "scheme" && (
+        <RentBuildingScheme
+          initialBuildings={initialBuildings}
+          initialOffices={initialOffices}
+          tenants={tenants}
+          invoices={invoices}
+          orgs={orgs}
+          readOnly={readOnly}
         />
       )}
       {tab === "bank" && (

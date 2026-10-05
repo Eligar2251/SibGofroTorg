@@ -19,6 +19,7 @@ import {
   getRentPayments,
   getRentMeterReadings,
 } from "@/lib/rent";
+import { getRentBuildingScheme } from "@/lib/rent-building";
 import type {
   RentInvoice,
   RentMeterReading,
@@ -26,6 +27,7 @@ import type {
   RentPayment,
   RentTenant,
 } from "@/lib/rent-shared";
+import type { RentBuilding, RentOfficeUnit } from "@/lib/rent-building";
 import { RentManager, type RentMode } from "@/components/admin/rent/RentManager";
 import { RentRealtime } from "@/components/admin/RentRealtime";
 
@@ -63,6 +65,8 @@ export default async function RentPage({
   let invoices: RentInvoice[] = [];
   let payments: RentPayment[] = [];
   let meterReadings: RentMeterReading[] = [];
+  let buildings: RentBuilding[] = [{ id: "main", name: "Главный корпус", address: null, floors: 3 }];
+  let offices: RentOfficeUnit[] = [];
   try {
     [orgs, tenants, invoices, payments, meterReadings] = await Promise.all([
       getRentOrgs(),
@@ -71,6 +75,11 @@ export default async function RentPage({
       getRentPayments(),
       getRentMeterReadings(),
     ]);
+    try {
+      const scheme = await getRentBuildingScheme();
+      buildings = scheme.buildings;
+      offices = scheme.offices;
+    } catch {}
   } catch (error) {
     console.error(
       "rent: не удалось загрузить данные (применена ли миграция migration_rent_accounting.sql?):",
@@ -90,6 +99,8 @@ export default async function RentPage({
       invoices={invoices}
       payments={payments}
       meterReadings={meterReadings}
+      initialBuildings={buildings}
+      initialOffices={offices}
       />
     </>
   );

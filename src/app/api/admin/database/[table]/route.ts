@@ -1,10 +1,9 @@
 // =========================================================
 // FILE: src/app/api/admin/database/[table]/route.ts
-// Просмотр строк таблицы и правка отдельной ячейки.
-//
-// Разрешено ровно две операции: чтение существующих строк и изменение
-// значения в существующей строке. Никаких INSERT/DELETE и никакого SQL
-// от пользователя: имя таблицы и колонки сверяются со схемой базы.
+// Просмотр строк таблицы, правка отдельной ячейки и удаление
+// строки (с подтверждением на клиенте и параллельным DELETE в
+// Supabase). Никаких INSERT и никакого SQL от пользователя: имя
+// таблицы и колонки сверяются со схемой базы.
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,6 +13,7 @@ import { logAdminAction } from "@/lib/activity-log";
 import {
   buildColumnsFromRows,
   coerceCellValue,
+  deleteTableRow,
   fetchTableRows,
   getTableSchema,
   isOwnerOnlyTable,
@@ -256,5 +256,77 @@ export async function PATCH(
       },
       { status: 500 }
     );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ table: string }> }
+) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+  if (!hasPermission(auth, "manage_database")) {
+    return noStoreJson({ error: "Недостаточно прав" }, { status: 403 });
+  }
+
+  const { table: rawTable } = await params;
+  const resolved = await resolveTable(rawTable, auth.role);
+  if (resolved instanceof NextResponse) return resolved;
+
+  try {
+    const schema = (await getTableSchema(resolved.table))!;
+    if (!schema.primaryKey) {
+      return noStoreJson(
+        { error: "В этой таблице нельзя удалять строки (нет ключа)" },
+        { status: 400 }
+      );
+    }
+    // Ключ приходит либо в JSON-теле, либо query-параметром ?key=
+    let keyValue = "";
+    try {
+      const body = await request.json();
+      if (body && typeof body.key === "string") keyValue = String(body.key).trim();
+      else if (body && body.key != null) keyValue = String(body.key).trim();
+    } catch {
+      // нет тела — пробуем query
+    }
+    if (!keyValue) {
+      const url = new URL(request.url);
+      keyValue = String(url.searchParams.get("key") || "").trim();
+    }
+    if (!keyValue) {
+      return noStoreJson({ error: "Не хватает ключа записи для удаления" }, { status: 400 });
+    }
+
+    await deleteTableRow({
+      table: resolved.table,
+      schema,
+      keyColumn: schema.primaryKey,
+      keyValue,
+    });
+
+    await logAdminAction(
+      auth.displayName,
+      auth.role,
+      "delete",
+      "database",
+      `${resolved.table}:${keyValue}`,
+      `База данных: удалена запись · ${schema.label}`,
+      {
+        table: resolved.table,
+        key: keyValue,
+        ip: clientIp(request),
+      }
+    );
+
+    return noStoreJson({ ok: true, key: keyValue });
+  } catch (error: any) {
+    console.error("Database delete error:", error);
+    const msg =
+      error?.message ||
+      (error?.code === "23503"
+        ? "Нельзя удалить: запись связана с другими данными"
+        : "Не удалось удалить запись");
+    return noStoreJson({ error: msg }, { status: 500 });
   }
 }
