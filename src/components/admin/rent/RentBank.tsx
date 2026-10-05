@@ -1,8 +1,9 @@
 // =========================================================
 // FILE: src/components/admin/rent/RentBank.tsx
-// Банк аренды — полноценный, но отдельный от складского.
-// Счета БАУ и ИП Пакин: балансы (безнал + наличные), ожидание
-// и проведение платежей, история по месяцам.
+// Банк аренды — в стиле мобильного банковского приложения.
+// Отдельный от складского: счета БАУ и ИП Пакин, балансы,
+// ожидание и проведение платежей, история по месяцам.
+// На десктопе показывается как телефон, на мобильном — на всю ширину.
 // =========================================================
 
 "use client";
@@ -23,6 +24,10 @@ import {
   Trash2,
   Wallet,
   X,
+  Smartphone,
+  ArrowLeftRight,
+  Receipt,
+  MoreHorizontal,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import {
@@ -105,8 +110,6 @@ export function RentBank({
   }, [list]);
 
   const orgName = (id: string) => orgs.find((o) => o.id === id)?.shortName || id;
-  const tenantName = (id: string | null) =>
-    id ? tenants.find((t) => t.id === id)?.name || "" : "";
 
   async function postPayment(p: RentPayment) {
     setBusyId(p.id);
@@ -168,259 +171,258 @@ export function RentBank({
     0
   );
 
+  // Данные для верхней карусели карт
+  const activeBalance = orgFilter === "all"
+    ? { bankBalance: accountOrgs.reduce((s, o) => s + (balances[o.id]?.bankBalance || 0), 0), cashBalance: accountOrgs.reduce((s, o) => s + (balances[o.id]?.cashBalance || 0), 0), balance: totalBalance }
+    : balances[orgFilter] || { bankBalance: 0, cashBalance: 0, balance: 0, expectedIn: 0, expectedOut: 0, monthIn: 0, monthOut: 0 };
+
   return (
-    <div className="admin-stack">
-      {/* Балансы */}
-      <div className="rent-balances">
-        {accountOrgs.map((org) => {
-          const b = balances[org.id] || {
-            bankBalance: 0, cashBalance: 0, balance: 0, expectedIn: 0, expectedOut: 0, monthIn: 0, monthOut: 0,
-          };
-          return (
-            <div key={org.id} className="bank-hero">
-              <div className="bank-hero__main">
+    <div className="rent-bank-app">
+      {/* Внешний контейнер — на десктопе как телефон, на мобильном на всю ширину */}
+      <div className="rent-bank-phone">
+        {/* Статус-бар телефона */}
+        <div className="rent-bank-phone__status">
+          <span className="rent-bank-phone__time">9:41</span>
+          <Smartphone size={12} style={{ opacity: 0.5 }} />
+          <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.6, display: "flex", gap: 4, alignItems: "center" }}>
+            <span style={{ width: 14, height: 8, border: "1px solid currentColor", borderRadius: 2, display: "inline-block", position: "relative" }}>
+              <span style={{ position: "absolute", inset: 1, background: "currentColor", opacity: 0.9, width: "70%" }} />
+            </span>
+            LTE
+          </span>
+        </div>
+
+        {/* Шапка баланса — как в банковском приложении */}
+        <div className="rent-bank-phone__header">
+          <div className="rent-bank-phone__header-top">
+            <div>
+              <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: ".06em", textTransform: "uppercase", fontWeight: 700 }}>Банк аренды</div>
+              <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>{orgFilter === "all" ? "Все счета" : orgs.find((o) => o.id === orgFilter)?.name || orgFilter}</div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {accountOrgs.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setOrgFilter(o.id)}
+                  className={`rent-bank-phone__org-chip ${orgFilter === o.id ? "rent-bank-phone__org-chip--active" : ""}`}
+                  title={o.name}
+                >
+                  {o.shortName}
+                </button>
+              ))}
+              <button onClick={() => setOrgFilter("all")} className={`rent-bank-phone__org-chip ${orgFilter === "all" ? "rent-bank-phone__org-chip--active" : ""}`}>Все</button>
+            </div>
+          </div>
+
+          {/* Карта баланса */}
+          <div className="rent-bank-phone__card">
+            <div className="rent-bank-phone__card-bg" />
+            <div className="rent-bank-phone__card-content">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
-                  <div className="bank-hero__label">
-                    <CreditCard size={14} /> {org.name} · р/с
-                  </div>
-                  <div className="bank-hero__value" style={{ color: "#fff" }}>
-                    {rentFmt(b.bankBalance)} ₽
+                  <div style={{ fontSize: 11, opacity: 0.85, letterSpacing: ".06em", textTransform: "uppercase" }}>Доступно</div>
+                  <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-.02em", marginTop: 4, fontFamily: "var(--adm-font-head)" }}>{rentFmt(activeBalance.balance)} ₽</div>
+                  <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4, display: "flex", gap: 10 }}>
+                    <span>Безнал <b>{rentFmt(activeBalance.bankBalance)} ₽</b></span>
+                    <span>Нал <b>{rentFmt(activeBalance.cashBalance)} ₽</b></span>
                   </div>
                 </div>
-                <div>
-                  <div className="bank-hero__label">
-                    <Banknote size={14} /> Наличные
-                  </div>
-                  <div className="bank-hero__value" style={{ color: "#fff" }}>
-                    {rentFmt(b.cashBalance)} ₽
-                  </div>
-                  <div className="cash-carryover-hero">
-                    <span>Итого: <b>{rentFmt(b.balance)} ₽</b></span>
-                    <span>За месяц: <b>+{rentFmt(b.monthIn)} / −{rentFmt(b.monthOut)} ₽</b></span>
-                  </div>
+                <CreditCard size={20} style={{ opacity: 0.9 }} />
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                <div style={{ flex: 1, background: "rgba(255,255,255,.14)", borderRadius: 10, padding: "8px 10px", backdropFilter: "blur(6px)" }}>
+                  <div style={{ fontSize: 10, opacity: 0.8, textTransform: "uppercase", letterSpacing: ".06em" }}>Ожидаем</div>
+                  <div style={{ fontWeight: 700, marginTop: 2, color: "#7dd181" }}>+{rentFmt(orgFilter === "all" ? accountOrgs.reduce((s, o) => s + (balances[o.id]?.expectedIn || 0), 0) : (balances[orgFilter]?.expectedIn || 0))} ₽</div>
+                </div>
+                <div style={{ flex: 1, background: "rgba(255,255,255,.14)", borderRadius: 10, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 10, opacity: 0.8, textTransform: "uppercase", letterSpacing: ".06em" }}>К оплате</div>
+                  <div style={{ fontWeight: 700, marginTop: 2, color: "#ffb4a8" }}>-{rentFmt(orgFilter === "all" ? accountOrgs.reduce((s, o) => s + (balances[o.id]?.expectedOut || 0), 0) : (balances[orgFilter]?.expectedOut || 0))} ₽</div>
                 </div>
               </div>
-              <div className="bank-hero__stats">
-                <div className="bank-hero__stat" style={{ color: "#7dd181" }}>
-                  <ArrowDownLeft size={16} />
-                  <div>
-                    <span style={{ color: "rgba(125,209,129,0.7)", fontWeight: 700 }}>Ожидаем</span>
-                    <strong style={{ fontSize: 20 }}>+{rentFmt(b.expectedIn)} ₽</strong>
-                  </div>
-                </div>
-                <div className="bank-hero__stat" style={{ color: "#ef8f76" }}>
-                  <ArrowUpRight size={16} />
-                  <div>
-                    <span style={{ color: "rgba(239,143,118,0.7)", fontWeight: 700 }}>К оплате</span>
-                    <strong style={{ fontSize: 20 }}>−{rentFmt(b.expectedOut)} ₽</strong>
-                  </div>
-                </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 12, opacity: 0.9 }}>
+                <span style={{ width: 26, height: 4, borderRadius: 999, background: "rgba(255,255,255,.9)" }} />
+                <span style={{ width: 26, height: 4, borderRadius: 999, background: "rgba(255,255,255,.35)" }} />
+                <span style={{ width: 26, height: 4, borderRadius: 999, background: "rgba(255,255,255,.25)" }} />
               </div>
             </div>
-          );
-        })}
-        <div className="bank-hero__note" style={{ alignSelf: "center", fontSize: 14 }}>
-          Все счета аренды: <strong style={{ color: "#7dd181" }}>{rentFmt(totalBalance)} ₽</strong>
+          </div>
+
+          {/* Быстрые действия как в приложении */}
+          <div className="rent-bank-phone__actions">
+            <button className="rent-bank-phone__action" onClick={() => !readOnly && setCreating(true)}>
+              <span className="rent-bank-phone__action-icon" style={{ background: "var(--adm-pine)", color: "#fff" }}><Plus size={16} /></span>
+              Пополнить
+            </button>
+            <button className="rent-bank-phone__action" onClick={() => !readOnly && setCreating(true)}>
+              <span className="rent-bank-phone__action-icon" style={{ background: "var(--adm-steel)", color: "#fff" }}><ArrowLeftRight size={16} /></span>
+              Перевод
+            </button>
+            <button className="rent-bank-phone__action" onClick={() => setSub(sub === "pending" ? "history" : "pending")}>
+              <span className="rent-bank-phone__action-icon" style={{ background: "var(--adm-kraft)", color: "#fff" }}><Receipt size={16} /></span>
+              {sub === "pending" ? "История" : "Ожидают"}
+            </button>
+            <button className="rent-bank-phone__action">
+              <span className="rent-bank-phone__action-icon" style={{ background: "var(--adm-ink-deep)", color: "#fff" }}><MoreHorizontal size={16} /></span>
+              Ещё
+            </button>
+          </div>
         </div>
-      </div>
 
-      {error && <div className="admin-error">{error}</div>}
-
-      <div className="admin-filters admin-filters--sub">
-        <button
-          className={`admin-filter${orgFilter === "all" ? " admin-filter--active" : ""}`}
-          onClick={() => setOrgFilter("all")}
-        >
-          Все счета
-        </button>
-        {accountOrgs.map((o) => (
-          <button
-            key={o.id}
-            className={`admin-filter${orgFilter === o.id ? " admin-filter--active" : ""}`}
-            onClick={() => setOrgFilter(o.id)}
-          >
-            {o.shortName}
-          </button>
-        ))}
-        <span style={{ flex: 1 }} />
-        <button
-          className={`admin-filter${sub === "pending" ? " admin-filter--active" : ""}`}
-          onClick={() => setSub("pending")}
-        >
-          <Wallet size={12} /> Ожидают ({pending.length})
-        </button>
-        <button
-          className={`admin-filter${sub === "history" ? " admin-filter--active" : ""}`}
-          onClick={() => setSub("history")}
-        >
-          <History size={12} /> История
-        </button>
-        <div className="admin-field" style={{ position: "relative", minWidth: 200, marginBottom: 0 }}>
-          <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", opacity: 0.5 }} />
-          <input
-            className="admin-input"
-            style={{ paddingLeft: 32 }}
-            placeholder="Поиск: контрагент, №, комментарий"
-            value={bankQuery}
-            onChange={(e) => setBankQuery(e.target.value)}
-          />
+        {/* Поиск и фильтры внутри телефона */}
+        <div className="rent-bank-phone__toolbar">
+          <div style={{ position: "relative", flex: 1 }}>
+            <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", opacity: 0.45 }} />
+            <input className="admin-input" style={{ paddingLeft: 32, height: 36, borderRadius: 12, background: "var(--adm-paper)", fontSize: 13 }} placeholder="Поиск по контрагенту, №, комменту" value={bankQuery} onChange={(e) => setBankQuery(e.target.value)} />
+          </div>
+          {!readOnly && (
+            <button className="admin-btn admin-btn--primary" style={{ height: 36, borderRadius: 12 }} onClick={() => setCreating(true)}>
+              <Plus size={14} /> Платёж
+            </button>
+          )}
         </div>
-        {!readOnly && (
-          <button className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setCreating(true)}>
-            <Plus size={14} /> Платёж
-          </button>
-        )}
-      </div>
 
-      {/* Ожидают проведения */}
-      {sub === "pending" && (
-        <div className="admin-card">
-          <div className="admin-card__pad">
-            {pending.length === 0 ? (
-              <div className="admin-empty">Ожидающих платежей нет</div>
+        {error && <div className="admin-error" style={{ margin: "0 12px" }}>{error}</div>}
+
+        {/* Переключатель ожидают / история — как сегмент-контрол iOS */}
+        <div className="rent-bank-phone__segment">
+          <button className={sub === "pending" ? "rent-bank-phone__segment-btn rent-bank-phone__segment-btn--active" : "rent-bank-phone__segment-btn"} onClick={() => setSub("pending")}>
+            <Wallet size={13} /> Ожидают <span className="rent-bank-phone__count">{pending.length}</span>
+          </button>
+          <button className={sub === "history" ? "rent-bank-phone__segment-btn rent-bank-phone__segment-btn--active" : "rent-bank-phone__segment-btn"} onClick={() => setSub("history")}>
+            <History size={13} /> История
+          </button>
+        </div>
+
+        {/* Лента операций */}
+        <div className="rent-bank-phone__feed">
+          {sub === "pending" ? (
+            pending.length === 0 ? (
+              <div className="rent-bank-phone__empty">
+                <Wallet size={22} style={{ opacity: 0.4 }} />
+                <div>Ожидающих платежей нет</div>
+                <div className="admin-muted" style={{ fontSize: 11 }}>Создайте платёж — он появится здесь до проведения</div>
+              </div>
             ) : (
-              <div className="rent-rows">
+              <div className="rent-bank-phone__list">
                 {pending.map((p) => (
-                  <div key={p.id} className="rent-row">
-                    <div className="bank-pay__icon" style={{
-                      width: 32, height: 32, borderRadius: 8, display: "flex",
-                      alignItems: "center", justifyContent: "center", flexShrink: 0,
-                      background: p.direction === "incoming" ? "var(--adm-pine-pale)" : "var(--adm-rust-pale)",
-                      color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)",
-                    }}>
-                      {p.method === "cash" ? <Banknote size={15} /> : <CreditCard size={15} />}
+                  <div key={p.id} className="rent-bank-phone__item">
+                    <div className="rent-bank-phone__item-icon" style={{ background: p.direction === "incoming" ? "var(--adm-pine-pale)" : "var(--adm-rust-pale)", color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)", borderColor: p.direction === "incoming" ? "var(--adm-pine-line)" : "var(--adm-rust-line)" }}>
+                      {p.method === "cash" ? <Banknote size={16} /> : <CreditCard size={16} />}
                     </div>
-                    <div className="rent-row__main">
-                      <div className="rent-row__title">
+                    <div className="rent-bank-phone__item-main">
+                      <div className="rent-bank-phone__item-title">
                         {p.counterparty}
-                        <span className="admin-badge admin-badge--muted">{orgName(p.accountOrgId)}</span>
-                        <span className="admin-badge admin-badge--muted">
-                          {RENT_PAYMENT_KIND_LABELS[p.kind] || p.kind}
-                        </span>
-                        {p.invoiceNumber && <span className="admin-badge admin-badge--blue">{p.invoiceNumber}</span>}
+                        <span className="rent-bank-phone__badge">{orgName(p.accountOrgId)}</span>
                       </div>
-                      <div className="admin-muted" style={{ fontSize: 12 }}>
-                        АП-{p.number} · {rentFmtDate(p.date)} · {p.method === "cash" ? "наличка" : "безнал"}
-                        {p.comment ? ` · ${p.comment}` : ""}
+                      <div className="rent-bank-phone__item-sub">
+                        АП-{p.number} · {rentFmtDate(p.date)} · {p.method === "cash" ? "наличка" : "безнал"} {p.invoiceNumber ? `· ${p.invoiceNumber}` : ""} {p.comment ? `· ${p.comment}` : ""}
                       </div>
+                      <div className="rent-bank-phone__item-kind">{RENT_PAYMENT_KIND_LABELS[p.kind] || p.kind}</div>
                     </div>
-                    <div className="rent-row__side">
+                    <div className="rent-bank-phone__item-side">
                       <strong style={{ color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)" }}>
-                        {p.direction === "incoming" ? "+" : "−"}{rentFmt(p.amount)} ₽
+                        {p.direction === "incoming" ? "+" : "-"}{rentFmt(p.amount)} ₽
                       </strong>
                       {!readOnly && (
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button
-                            className="admin-btn admin-btn--primary admin-btn--sm"
-                            title="Провести платёж"
-                            disabled={busyId === p.id}
-                            onClick={() => postPayment(p)}
-                          >
-                            {busyId === p.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                            Провести
+                        <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                          <button className="admin-btn admin-btn--primary admin-btn--sm" style={{ height: 28, borderRadius: 8, padding: "0 10px", fontSize: 11 }} disabled={busyId === p.id} onClick={() => postPayment(p)}>
+                            {busyId === p.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Провести
                           </button>
-                          <button
-                            className="admin-btn admin-btn--icon admin-btn--ghost"
-                            title="Редактировать"
-                            onClick={() => setEditing(p)}
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            className="admin-btn admin-btn--icon admin-btn--ghost"
-                            title="Удалить"
-                            onClick={() => removePayment(p)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <button className="admin-btn admin-btn--icon admin-btn--ghost" style={{ width: 28, height: 28 }} onClick={() => setEditing(p)}><Pencil size={12} /></button>
+                          <button className="admin-btn admin-btn--icon admin-btn--ghost" style={{ width: 28, height: 28 }} onClick={() => removePayment(p)}><Trash2 size={12} /></button>
                         </div>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* История по месяцам */}
-      {sub === "history" && (
-        <div className="admin-stack">
-          {historyGroups.length === 0 && (
-            <div className="admin-card">
-              <div className="admin-card__pad">
-                <div className="admin-empty">Проведённых платежей нет</div>
-              </div>
+            )
+          ) : historyGroups.length === 0 ? (
+            <div className="rent-bank-phone__empty">
+              <History size={22} style={{ opacity: 0.4 }} />
+              <div>Проведённых платежей нет</div>
             </div>
-          )}
-          {historyGroups.map(([month, items]) => {
-            const monthIn = items.filter((p) => p.direction === "incoming").reduce((s, p) => s + p.amount, 0);
-            const monthOut = items.filter((p) => p.direction === "outgoing").reduce((s, p) => s + p.amount, 0);
-            return (
-              <div key={month} className="admin-card">
-                <div className="admin-card__head">
-                  <h3 className="admin-card__title">{rentMonthLabel(month)}</h3>
-                  <div style={{ display: "flex", gap: 10, fontSize: 13 }}>
-                    <span style={{ color: "var(--adm-pine)" }}>+{rentFmt(monthIn)} ₽</span>
-                    <span style={{ color: "var(--adm-rust)" }}>−{rentFmt(monthOut)} ₽</span>
-                    <strong>{rentFmt(monthIn - monthOut)} ₽</strong>
-                  </div>
-                </div>
-                <div className="admin-card__pad">
-                  <div className="rent-rows">
+          ) : (
+            <div className="rent-bank-phone__history">
+              {historyGroups.map(([month, items]) => {
+                const monthIn = items.filter((p) => p.direction === "incoming").reduce((s, p) => s + p.amount, 0);
+                const monthOut = items.filter((p) => p.direction === "outgoing").reduce((s, p) => s + p.amount, 0);
+                return (
+                  <div key={month} className="rent-bank-phone__month">
+                    <div className="rent-bank-phone__month-head">
+                      <span>{rentMonthLabel(month)}</span>
+                      <span style={{ display: "flex", gap: 8, fontSize: 11 }}>
+                        <span style={{ color: "var(--adm-pine)" }}>+{rentFmt(monthIn)} ₽</span>
+                        <span style={{ color: "var(--adm-rust)" }}>-{rentFmt(monthOut)} ₽</span>
+                      </span>
+                    </div>
                     {items.map((p) => (
-                      <div key={p.id} className="rent-row">
-                        <div className="rent-row__main">
-                          <div className="rent-row__title">
+                      <div key={p.id} className="rent-bank-phone__item rent-bank-phone__item--history">
+                        <div className="rent-bank-phone__item-main">
+                          <div className="rent-bank-phone__item-title">
                             {p.counterparty}
-                            <span className="admin-badge admin-badge--muted">{orgName(p.accountOrgId)}</span>
-                            <span className="admin-badge admin-badge--muted">
-                              {p.method === "cash" ? "наличка" : "безнал"}
-                            </span>
-                            {p.excludeFromBalance && (
-                              <span className="admin-badge admin-badge--muted">вне баланса</span>
-                            )}
+                            <span className="rent-bank-phone__badge">{orgName(p.accountOrgId)}</span>
+                            <span className="rent-bank-phone__badge" style={{ background: p.method === "cash" ? "var(--adm-kraft-pale)" : "var(--adm-steel-pale)", color: p.method === "cash" ? "var(--adm-kraft)" : "var(--adm-steel)" }}>{p.method === "cash" ? "наличка" : "безнал"}</span>
                           </div>
-                          <div className="admin-muted" style={{ fontSize: 12 }}>
-                            {rentFmtDate(p.date)} · АП-{p.number} ·{" "}
-                            {RENT_PAYMENT_KIND_LABELS[p.kind] || p.kind}
-                            {p.invoiceNumber ? ` · ${p.invoiceNumber}` : ""}
-                            {p.comment ? ` · ${p.comment}` : ""}
+                          <div className="rent-bank-phone__item-sub">
+                            {rentFmtDate(p.date)} · АП-{p.number} · {RENT_PAYMENT_KIND_LABELS[p.kind] || p.kind} {p.invoiceNumber ? `· ${p.invoiceNumber}` : ""} {p.comment ? `· ${p.comment}` : ""}
                           </div>
                         </div>
-                        <div className="rent-row__side">
-                          <strong style={{ color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)" }}>
-                            {p.direction === "incoming" ? "+" : "−"}{rentFmt(p.amount)} ₽
-                          </strong>
+                        <div className="rent-bank-phone__item-side">
+                          <strong style={{ color: p.direction === "incoming" ? "var(--adm-pine)" : "var(--adm-rust)", fontSize: 14 }}>{p.direction === "incoming" ? "+" : "-"}{rentFmt(p.amount)} ₽</strong>
                           {!readOnly && (
-                            <div style={{ display: "flex", gap: 4 }}>
-                              <button
-                                className="admin-btn admin-btn--icon admin-btn--ghost"
-                                title="Вернуть в ожидание"
-                                onClick={() => unpostPayment(p)}
-                              >
-                                <History size={14} />
-                              </button>
-                              <button
-                                className="admin-btn admin-btn--icon admin-btn--ghost"
-                                title="Редактировать"
-                                onClick={() => setEditing(p)}
-                              >
-                                <Pencil size={14} />
-                              </button>
+                            <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                              <button className="admin-btn admin-btn--icon admin-btn--ghost" style={{ width: 28, height: 28 }} title="Вернуть в ожидание" onClick={() => unpostPayment(p)}><History size={12} /></button>
+                              <button className="admin-btn admin-btn--icon admin-btn--ghost" style={{ width: 28, height: 28 }} onClick={() => setEditing(p)}><Pencil size={12} /></button>
                             </div>
                           )}
                         </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Нижний таб-бар как в приложении */}
+        <div className="rent-bank-phone__tabbar">
+          <button className="rent-bank-phone__tab rent-bank-phone__tab--active"><Wallet size={16} /><span>Операции</span></button>
+          <button className="rent-bank-phone__tab"><CreditCard size={16} /><span>Счета</span></button>
+          <button className="rent-bank-phone__tab"><Receipt size={16} /><span>Счета</span></button>
+          <button className="rent-bank-phone__tab"><History size={16} /><span>Аналитика</span></button>
+        </div>
+
+        {/* Домашний индикатор iOS */}
+        <div className="rent-bank-phone__home" />
+      </div>
+
+      {/* Десктопная сводка рядом с телефоном — остаётся видимой на широких экранах */}
+      <div className="rent-bank-desktop">
+        <div className="admin-card">
+          <div className="admin-card__head">
+            <h3 className="admin-card__title">Сводка</h3>
+            <span className="admin-muted" style={{ fontSize: 11 }}>Все счета аренды · <b style={{ color: "var(--adm-pine)" }}>{rentFmt(totalBalance)} ₽</b></span>
+          </div>
+          <div className="admin-card__pad" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {accountOrgs.map((org) => {
+              const b = balances[org.id] || { bankBalance: 0, cashBalance: 0, balance: 0, expectedIn: 0, expectedOut: 0, monthIn: 0, monthOut: 0 };
+              return (
+                <div key={org.id} style={{ background: "var(--adm-paper)", border: "1px solid var(--adm-border)", borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--adm-steel)" }}>{org.name}</div>
+                  <div style={{ fontFamily: "var(--adm-font-head)", fontSize: 18, fontWeight: 700, marginTop: 4 }}>{rentFmt(b.balance)} ₽</div>
+                  <div className="admin-muted" style={{ fontSize: 11, marginTop: 4 }}>Безнал {rentFmt(b.bankBalance)} · Нал {rentFmt(b.cashBalance)}</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, fontSize: 11 }}>
+                    <span style={{ color: "var(--adm-pine)" }}>+{rentFmt(b.expectedIn)}</span>
+                    <span style={{ color: "var(--adm-rust)" }}>-{rentFmt(b.expectedOut)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       {(creating || editing) && (
         <PaymentFormModal

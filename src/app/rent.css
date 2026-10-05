@@ -190,3 +190,279 @@
   font-size: 12px;
   font-weight: 600;
 }
+
+/* ══════════════════════════════════════════════════════════
+   СХЕМА ЗДАНИЯ — этажи и офисы
+   ══════════════════════════════════════════════════════════ */
+.rent-scheme {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rent-scheme__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+  padding: 10px 12px;
+}
+.rent-scheme__buildings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rent-scheme__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+.rent-scheme__mode {
+  display: flex;
+  gap: 6px;
+}
+.rent-scheme__floors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--adm-paper-warm);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r);
+}
+.rent-scheme__floor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--adm-border-mid);
+  background: var(--adm-card);
+  color: var(--adm-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .13s ease;
+}
+.rent-scheme__floor:hover { border-color: var(--adm-ink-muted); color: var(--adm-ink); }
+.rent-scheme__floor--active { background: var(--adm-ink-deep); color: #fff; border-color: var(--adm-ink-deep); }
+.rent-scheme__floor-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.08);
+  font-size: 10px;
+  font-weight: 700;
+}
+.rent-scheme__floor--active .rent-scheme__floor-count { background: rgba(255,255,255,.18); color: #fff; }
+.rent-scheme__stats {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.rent-scheme__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 1100px) { .rent-scheme__body { grid-template-columns: 1fr; } }
+
+.rent-scheme__canvas {
+  position: relative;
+  min-height: 420px;
+  height: 520px;
+  background: var(--adm-card);
+  border: 2px solid var(--adm-border-mid);
+  border-radius: var(--adm-r);
+  overflow: hidden;
+  box-shadow: var(--adm-sh-xs);
+  user-select: none;
+}
+.rent-scheme__canvas--draw { cursor: crosshair; border-color: var(--adm-kraft); }
+.rent-scheme__grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(219,216,208,.45) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(219,216,208,.45) 1px, transparent 1px);
+  background-size: 10% 10%;
+  pointer-events: none;
+}
+.rent-scheme__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--adm-muted);
+  font-size: 13px;
+  text-align: center;
+  background: rgba(255,255,255,.55);
+  backdrop-filter: blur(2px);
+}
+.rent-office {
+  position: absolute;
+  border: 1.5px solid var(--adm-border-mid);
+  border-radius: 6px;
+  padding: 6px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  cursor: grab;
+  transition: box-shadow .12s ease, border-color .12s ease, transform .12s ease;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  min-width: 0;
+}
+.rent-office:hover { box-shadow: 0 4px 14px rgba(0,0,0,.10); transform: translateY(-1px); }
+.rent-office--selected { border-width: 2px; box-shadow: 0 4px 16px rgba(0,0,0,.14); z-index: 3; }
+.rent-office--dragging { opacity: .85; cursor: grabbing; z-index: 4; }
+.rent-office--drawing { background: rgba(200,134,10,.18) !important; border: 2px dashed var(--adm-kraft) !important; pointer-events: none; }
+.rent-office__label { font-size: 12px; font-weight: 800; color: var(--adm-ink); line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rent-office__tenant { font-size: 11px; font-weight: 600; color: var(--adm-ink-soft); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rent-office__tenant--vacant { color: var(--adm-sand); font-style: italic; display: flex; gap: 4px; align-items: center; }
+.rent-office__hint { font-size: 10px; color: var(--adm-sand); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rent-office__area { font-size: 10px; color: var(--adm-ink-muted); }
+.rent-office__badge { display: inline-flex; align-self: flex-start; padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 800; line-height: 1.4; margin-top: 2px; }
+.rent-office__badge--debt { background: var(--adm-kraft); color: #fff; }
+.rent-office__badge--overdue { background: var(--adm-rust); color: #fff; }
+.rent-office__move { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; display: grid; place-items: center; background: rgba(255,255,255,.9); border-radius: 4px; color: var(--adm-sand); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.rent-office__handle { position: absolute; width: 10px; height: 10px; background: #fff; border: 1.5px solid var(--adm-steel); border-radius: 2px; box-shadow: 0 1px 4px rgba(0,0,0,.15); cursor: nwse-resize; }
+.rent-office__handle--nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.rent-office__handle--ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.rent-office__handle--sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.rent-office__handle--se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.rent-scheme__ruler { position: absolute; background: var(--adm-kraft); opacity: .12; pointer-events: none; }
+.rent-scheme__ruler--x { left: 0; right: 0; top: 0; height: 1px; }
+.rent-scheme__ruler--y { top: 0; bottom: 0; left: 0; width: 1px; }
+.rent-scheme__side { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 12px; }
+.rent-scheme__list-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 1px solid var(--adm-border); border-radius: 8px; background: var(--adm-card); font-size: 12px; cursor: pointer; text-align: left; transition: all .12s ease; }
+.rent-scheme__list-item:hover { border-color: var(--adm-border-mid); background: var(--adm-paper); }
+
+/* ══════════════════════════════════════════════════════════
+   БАНК АРЕНДЫ — мобильное приложение
+   ══════════════════════════════════════════════════════════ */
+.rent-bank-app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 1100px) { .rent-bank-app { grid-template-columns: 1fr; } }
+.rent-bank-phone {
+  background: #0f0f0f;
+  border-radius: 32px;
+  overflow: hidden;
+  box-shadow: 0 20px 48px rgba(0,0,0,.30), 0 2px 10px rgba(0,0,0,.15);
+  border: 8px solid #1a1a1a;
+  max-width: 420px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 620px;
+  position: relative;
+}
+.rent-bank-phone__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px 6px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  background: #0f0f0f;
+}
+.rent-bank-phone__time { font-variant-numeric: tabular-nums; }
+.rent-bank-phone__header {
+  background: linear-gradient(135deg, #1a1a18 0%, #232318 45%, #1e3a5a 100%);
+  color: #fff;
+  padding: 14px 16px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.rent-bank-phone__header::after {
+  content: "";
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(200,134,10,.28) 0%, transparent 70%);
+  pointer-events: none;
+}
+.rent-bank-phone__header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; position: relative; z-index: 1; }
+.rent-bank-phone__org-chip {
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.85);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rent-bank-phone__org-chip--active { background: var(--adm-kraft); color: #1a1a18; border-color: var(--adm-kraft); }
+.rent-bank-phone__card {
+  margin-top: 14px;
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.06));
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 18px;
+  padding: 16px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(0,0,0,.20);
+  overflow: hidden;
+}
+.rent-bank-phone__card-bg { position: absolute; inset: 0; background: radial-gradient(ellipse 80% 90% at 100% 0%, rgba(200,134,10,.22), transparent 60%); pointer-events: none; }
+.rent-bank-phone__card-content { position: relative; z-index: 1; }
+.rent-bank-phone__actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; position: relative; z-index: 1; }
+.rent-bank-phone__action { display: flex; flex-direction: column; align-items: center; gap: 6px; background: none; border: none; color: rgba(255,255,255,.92); font-size: 10px; font-weight: 600; cursor: pointer; }
+.rent-bank-phone__action-icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.rent-bank-phone__toolbar { display: flex; gap: 8px; padding: 10px 12px; background: #fff; border-bottom: 1px solid var(--adm-border); align-items: center; }
+.rent-bank-phone__segment { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px; background: #f5f3ee; }
+.rent-bank-phone__segment-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; border-radius: 12px; border: 1px solid transparent; background: transparent; font-size: 12px; font-weight: 600; color: var(--adm-muted); cursor: pointer; }
+.rent-bank-phone__segment-btn--active { background: #fff; color: var(--adm-ink); border-color: var(--adm-border); box-shadow: var(--adm-sh-xs); }
+.rent-bank-phone__count { display: inline-flex; min-width: 18px; height: 18px; padding: 0 5px; align-items: center; justify-content: center; border-radius: 999px; background: var(--adm-kraft); color: #fff; font-size: 10px; font-weight: 700; }
+.rent-bank-phone__feed { background: #f5f3ee; flex: 1; overflow-y: auto; max-height: 420px; }
+.rent-bank-phone__list { display: flex; flex-direction: column; gap: 1px; background: var(--adm-border-soft); }
+.rent-bank-phone__item { display: flex; gap: 10px; padding: 12px; background: #fff; align-items: flex-start; }
+.rent-bank-phone__item-icon { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid transparent; }
+.rent-bank-phone__item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rent-bank-phone__item-title { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; font-weight: 700; color: var(--adm-ink); }
+.rent-bank-phone__badge { display: inline-flex; padding: 1px 6px; border-radius: 999px; background: var(--adm-paper-warm); border: 1px solid var(--adm-border); font-size: 10px; font-weight: 700; color: var(--adm-sand); white-space: nowrap; }
+.rent-bank-phone__item-sub { font-size: 11px; color: var(--adm-sand); line-height: 1.3; }
+.rent-bank-phone__item-kind { font-size: 10px; color: var(--adm-ink-muted); }
+.rent-bank-phone__item-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+.rent-bank-phone__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 32px 16px; color: var(--adm-muted); font-size: 13px; text-align: center; background: #fff; }
+.rent-bank-phone__month { background: #fff; margin-bottom: 8px; border-radius: 12px; overflow: hidden; border: 1px solid var(--adm-border); }
+.rent-bank-phone__month-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--adm-paper-warm); border-bottom: 1px solid var(--adm-border); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--adm-ink-muted); }
+.rent-bank-phone__item--history { border-bottom: 1px solid var(--adm-border-soft); }
+.rent-bank-phone__item--history:last-child { border-bottom: none; }
+.rent-bank-phone__tabbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; background: rgba(255,255,255,.96); border-top: 1px solid var(--adm-border); backdrop-filter: blur(10px); padding: 6px 4px 4px; }
+.rent-bank-phone__tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; background: none; border: none; color: var(--adm-muted); font-size: 9px; font-weight: 600; cursor: pointer; }
+.rent-bank-phone__tab--active { color: var(--adm-ink); }
+.rent-bank-phone__tab span { font-size: 9px; }
+.rent-bank-phone__home { width: 110px; height: 4px; border-radius: 999px; background: #1a1a1a; margin: 8px auto; }
+.rent-bank-desktop { display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 1100px) { .rent-bank-desktop { display: none; } }
+
+/* База Данных — колонка действий */
+.db-browser__cell--action { background: var(--adm-paper) !important; }
+.db-browser__cell--action .admin-btn--icon:hover { background: var(--adm-rust-pale) !important; border-color: var(--adm-rust-line) !important; color: var(--adm-rust) !important; }
+
