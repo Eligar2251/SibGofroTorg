@@ -1,316 +1,262 @@
 // =========================================================
 // FILE: src/components/admin/rent/RentBuildingScheme.tsx
-// Схема здания: этажи, офисы, привязка арендаторов.
-// Интерактивное рисование прямоугольников-офисов, переключение
-// этажей, отображение арендаторов цветом долга/просрочки.
-// Хранение — через /api/admin/rent/building (settings fallback).
+// Схема здания: корпуса, этажи и клеточные планировки.
+//   • редактор клеток — в RentFloorPlanner (стены, двери, окна,
+//     помещения, автонарезка, ластик, отмена/повтор);
+//   • сохранение черновика и публикация схемы корпуса;
+//   • после публикации схема открывается в чистом виде — без линий
+//     сетки, только стены, проёмы и заливки помещений;
+//   • статистика этажа: занято/свободно, площади, долги.
 // =========================================================
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Building2,
-  Layers,
-  Plus,
-  Trash2,
-  Pencil,
-  Save,
-  X,
-  Move,
   AlertTriangle,
+  Building2,
   CheckCircle2,
-  Users,
-  MapPin,
-  Settings2,
   Eye,
-  MousePointer2,
+  Layers,
+  Loader2,
+  MapPin,
+  Pencil,
+  Plus,
+  Rocket,
+  Ruler,
+  Save,
+  Settings2,
   Square,
-  Ban,
+  Trash2,
+  Undo2,
+  Users,
+  X,
 } from "lucide-react";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { useEscapeClose } from "@/hooks/use-escape-close";
-import type { RentBuilding, RentOfficeUnit } from "@/lib/rent-building";
-import type { RentTenant, RentInvoice, RentOrg } from "@/lib/rent-shared";
-import { computeTenantState, rentFmt } from "@/lib/rent-shared";
+import {
+  PLAN_DEFAULT_CELL_SIZE,
+  PLAN_DEFAULT_COLS,
+  PLAN_DEFAULT_ROWS,
+  PLAN_MAX_COLS,
+  PLAN_MIN_COLS,
+  createFloorPlan,
+  normalizeCells,
+  roomArea,
+  type RentBuilding,
+  type RentFloorPlan,
+} from "@/lib/rent-building";
+import { computeTenantState, rentFmt, type RentInvoice, type RentOrg, type RentTenant } from "@/lib/rent-shared";
+import { RentFloorPlanner } from "./RentFloorPlanner";
 
 type Props = {
   initialBuildings: RentBuilding[];
-  initialOffices: RentOfficeUnit[];
+  initialPlans: RentFloorPlan[];
   tenants: RentTenant[];
   invoices: RentInvoice[];
   orgs: RentOrg[];
   readOnly?: boolean;
 };
 
-type DrawMode = "view" | "draw";
+type Mode = "edit" | "view";
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+function clonePlans(plans: RentFloorPlan[]): RentFloorPlan[] {
+  return plans.map((p) => ({
+    ...p,
+    walls: p.walls.map((w) => ({ ...w })),
+    openings: p.openings.map((o) => ({ ...o })),
+    rooms: p.rooms.map((r) => ({ ...r, cells: [...r.cells] })),
+  }));
 }
 
 export function RentBuildingScheme({
   initialBuildings,
-  initialOffices,
+  initialPlans,
   tenants,
   invoices,
   orgs,
   readOnly,
 }: Props) {
+  void orgs;
   const router = useRouter();
-  const [buildings, setBuildings] = useState<RentBuilding[]>(initialBuildings);
-  const [offices, setOffices] = useState<RentOfficeUnit[]>(initialOffices);
-  const [activeBuildingId, setActiveBuildingId] = useState<string>(initialBuildings[0]?.id || "main");
+  const [buildings, setBuildings] = useState<RentBuilding[]>(
+    initialBuildings.length ? initialBuildings : [{ id: "main", name: "Главный корпус", address: null, floors: 3 }]
+  );
+  const [plans, setPlans] = useState<RentFloorPlan[]>(() => clonePlans(initialPlans));
+  const [activeBuildingId, setActiveBuildingId] = useState(initialBuildings[0]?.id || "main");
   const [activeFloor, setActiveFloor] = useState(1);
-  const [mode, setMode] = useState<DrawMode>("view");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [drag, setDrag] = useState<null | { id: string; startX: number; startY: number; origX: number; origY: number }>(null);
-  const [resizing, setResizing] = useState<null | { id: string; handle: string; startX: number; startY: number; orig: RentOfficeUnit }>(null);
-  const [drawing, setDrawing] = useState<null | { x: number; y: number; w: number; h: number }>(null);
+  const [mode, setMode] = useState<Mode>(readOnly ? "view" : "edit");
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [buildingModal, setBuildingModal] = useState<RentBuilding | null>(null);
   const [newBuildingMode, setNewBuildingMode] = useState(false);
+  const [gridModal, setGridModal] = useState<RentFloorPlan | null>(null);
+  const plansRef = useRef(plans);
 
-  const canvasRef = useRef<HTMLDivElement | null>(null);
-
-  const activeBuilding = useMemo(() => buildings.find((b) => b.id === activeBuildingId) || buildings[0], [buildings, activeBuildingId]);
-  const floorOffices = useMemo(() => offices.filter((o) => o.buildingId === activeBuildingId && o.floor === activeFloor), [offices, activeBuildingId, activeFloor]);
-  const tenantById = useMemo(() => new Map(tenants.map((t) => [t.id, t])), [tenants]);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const selectedOffice = useMemo(() => offices.find((o) => o.id === selectedId) || null, [offices, selectedId]);
+  const activeBuilding = useMemo(
+    () => buildings.find((b) => b.id === activeBuildingId) || buildings[0],
+    [buildings, activeBuildingId]
+  );
 
-  // Сброс этажа при смене здания
+  useEffect(() => {
+    plansRef.current = plans;
+  }, [plans]);
+
   useEffect(() => {
     if (activeBuilding && activeFloor > activeBuilding.floors) setActiveFloor(1);
   }, [activeBuilding, activeFloor]);
 
-  // Синхронизация с сервером при монтировании (подтянуть свежие данные, если initial пустые)
+  // Предупреждение при закрытии страницы с несохранённой схемой.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/admin/rent/building", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        if (Array.isArray(data.buildings) && data.buildings.length) {
-          setBuildings(data.buildings);
-          if (!activeBuildingId || !data.buildings.some((b: any) => b.id === activeBuildingId)) {
-            setActiveBuildingId(data.buildings[0].id);
-          }
-        }
-        if (Array.isArray(data.offices)) setOffices(data.offices);
-      } catch {}
-    })();
-    return () => { cancelled = true; };
-  }, []);
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty]);
 
-  const officeState = useCallback(
-    (office: RentOfficeUnit) => {
-      if (!office.tenantId) return null;
-      const tenant = tenantById.get(office.tenantId);
-      if (!tenant) return null;
-      return computeTenantState(tenant, invoices, today);
-    },
-    [tenantById, invoices, today]
+  /** Планировка активного этажа (создаётся «на лету», если её ещё нет). */
+  const activePlan = useMemo(() => {
+    const found = plans.find((p) => p.buildingId === activeBuildingId && p.floor === activeFloor);
+    if (found) return found;
+    const base = plans.find((p) => p.buildingId === activeBuildingId);
+    return createFloorPlan(activeBuildingId, activeFloor, {
+      cols: base?.cols ?? PLAN_DEFAULT_COLS,
+      rows: base?.rows ?? PLAN_DEFAULT_ROWS,
+      cellSize: base?.cellSize ?? PLAN_DEFAULT_CELL_SIZE,
+    });
+  }, [plans, activeBuildingId, activeFloor]);
+
+  const upsertPlan = (next: RentFloorPlan, markDirty = true) => {
+    setPlans((prev) => {
+      const exists = prev.some((p) => p.buildingId === next.buildingId && p.floor === next.floor);
+      if (!exists) return [...prev, next];
+      return prev.map((p) =>
+        p.buildingId === next.buildingId && p.floor === next.floor ? next : p
+      );
+    });
+    if (markDirty) setDirty(true);
+  };
+
+  const tenantById = useMemo(() => new Map(tenants.map((t) => [t.id, t])), [tenants]);
+
+  const floorStats = useMemo(() => {
+    const rooms = activePlan.rooms;
+    const occupied = rooms.filter((r) => r.tenantId);
+    const areaTotal = rooms.reduce((s, r) => s + roomArea(activePlan, r), 0);
+    const areaOccupied = occupied.reduce((s, r) => s + roomArea(activePlan, r), 0);
+    let debt = 0;
+    let overdue = 0;
+    let rent = 0;
+    for (const room of occupied) {
+      const tenant = tenantById.get(room.tenantId as string);
+      if (!tenant) continue;
+      const st = computeTenantState(tenant, invoices, today);
+      debt += st.debt;
+      overdue += st.overdue;
+      rent += tenant.monthlyRent;
+    }
+    return {
+      total: rooms.length,
+      occupied: occupied.length,
+      vacant: rooms.length - occupied.length,
+      areaTotal: Math.round(areaTotal * 10) / 10,
+      areaOccupied: Math.round(areaOccupied * 10) / 10,
+      debt: Math.round(debt * 10) / 10,
+      overdue: Math.round(overdue * 10) / 10,
+      rent: Math.round(rent * 10) / 10,
+      areaFloor: Math.round(activePlan.cols * activePlan.cellSize * activePlan.rows * activePlan.cellSize * 10) / 10,
+    };
+  }, [activePlan, tenantById, invoices, today]);
+
+  const buildingPlans = useMemo(
+    () => plans.filter((p) => p.buildingId === activeBuildingId),
+    [plans, activeBuildingId]
   );
+  const publishedCount = buildingPlans.filter((p) => p.published).length;
+  const isPublished = Boolean(activePlan.published);
 
-  const officeColor = useCallback(
-    (office: RentOfficeUnit) => {
-      if (office.color) return office.color;
-      if (!office.tenantId) return "#e8eef6"; // пусто
-      const st = officeState(office);
-      if (!st) return "#e8eef6";
-      if (st.overdue > 0) return "#fde8e6"; // просрочка
-      if (st.debt > 0) return "#fdf3dc"; // долг
-      return "#ebf4ee"; // нет долга
-    },
-    [officeState]
-  );
+  /* ───────────────────── сохранение / публикация ───────────────────── */
 
-  const officeBorder = useCallback(
-    (office: RentOfficeUnit) => {
-      if (!office.tenantId) return "var(--adm-border)";
-      const st = officeState(office);
-      if (!st) return "var(--adm-border)";
-      if (st.overdue > 0) return "var(--adm-rust-line)";
-      if (st.debt > 0) return "var(--adm-kraft-line)";
-      return "var(--adm-pine-line)";
-    },
-    [officeState]
-  );
-
-  async function saveScheme(nextBuildings: RentBuilding[], nextOffices: RentOfficeUnit[]) {
+  async function save(nextPlans?: RentFloorPlan[], silent = false) {
+    const payloadPlans = nextPlans || plansRef.current;
     setSaving(true);
     setError("");
-    setSuccess("");
     try {
       const res = await fetch("/api/admin/rent/building", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ buildings: nextBuildings, offices: nextOffices }),
+        body: JSON.stringify({ buildings, plans: payloadPlans }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Не удалось сохранить схему");
-      setBuildings(data.buildings || nextBuildings);
-      setOffices(data.offices || nextOffices);
-      setSuccess("Схема сохранена");
-      setTimeout(() => setSuccess(""), 2000);
+      if (Array.isArray(data.plans)) setPlans(clonePlans(data.plans));
+      if (Array.isArray(data.buildings) && data.buildings.length) setBuildings(data.buildings);
+      setDirty(false);
+      if (!silent) {
+        setSuccess("Схема сохранена");
+        setTimeout(() => setSuccess(""), 2200);
+      }
       router.refresh();
+      return true;
     } catch (e: any) {
       setError(e.message || "Ошибка сохранения");
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
-  function handleCanvasMouseDown(e: React.MouseEvent) {
+  async function publish() {
+    if (readOnly || !activeBuilding) return;
+    const stamp = new Date().toISOString();
+    const next = clonePlans(plansRef.current);
+    for (let floor = 1; floor <= activeBuilding.floors; floor += 1) {
+      let plan = next.find((p) => p.buildingId === activeBuildingId && p.floor === floor);
+      if (!plan) {
+        plan = createFloorPlan(activeBuildingId, floor, {
+          cols: activePlan.cols,
+          rows: activePlan.rows,
+          cellSize: activePlan.cellSize,
+        });
+        next.push(plan);
+      }
+      plan.published = true;
+      plan.publishedAt = stamp;
+      plan.updatedAt = stamp;
+    }
+    setPlans(next);
+    setDirty(true);
+    const ok = await save(next, true);
+    if (ok) {
+      setSuccess(`«${activeBuilding.name}» опубликован: схема открывается в чистом виде, без линий сетки`);
+      setTimeout(() => setSuccess(""), 4000);
+    }
+  }
+
+  async function unpublish() {
     if (readOnly) return;
-    if (mode !== "draw") return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = clamp(((e.clientX - rect.left) / rect.width) * 100, 0, 95);
-    const y = clamp(((e.clientY - rect.top) / rect.height) * 100, 0, 95);
-    setDrawing({ x, y, w: 0, h: 0 });
-    // track mouse move globally
-    const onMove = (ev: MouseEvent) => {
-      const w = clamp(((ev.clientX - rect.left) / rect.width) * 100 - x, 5, 100 - x);
-      const h = clamp(((ev.clientY - rect.top) / rect.height) * 100 - y, 5, 100 - y);
-      setDrawing({ x, y, w: Math.max(5, w), h: Math.max(5, h) });
-    };
-    const onUp = (ev: MouseEvent) => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      setDrawing((cur) => {
-        if (!cur || cur.w < 5 || cur.h < 5) return null;
-        const label = `Офис ${activeFloor}${String(floorOffices.length + 1).padStart(2, "0")}`;
-        const newOffice: RentOfficeUnit = {
-          id: `off-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-          buildingId: activeBuildingId,
-          floor: activeFloor,
-          label,
-          x: Math.round(cur.x * 10) / 10,
-          y: Math.round(cur.y * 10) / 10,
-          w: Math.round(cur.w * 10) / 10,
-          h: Math.round(cur.h * 10) / 10,
-          tenantId: null,
-        };
-        const next = [...offices, newOffice];
-        setOffices(next);
-        setSelectedId(newOffice.id);
-        setDrawing(null);
-        // автосохранение
-        void saveScheme(buildings, next);
-        return null;
-      });
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    const next = clonePlans(plansRef.current).map((p) =>
+      p.buildingId === activeBuildingId ? { ...p, published: false, publishedAt: null } : p
+    );
+    setPlans(next);
+    setDirty(true);
+    const ok = await save(next, true);
+    if (ok) {
+      setSuccess("Публикация снята — схема доступна только в редакторе");
+      setTimeout(() => setSuccess(""), 3000);
+    }
   }
 
-  function startDrag(e: React.MouseEvent, office: RentOfficeUnit) {
-    if (readOnly || mode !== "view") return;
-    e.stopPropagation();
-    setSelectedId(office.id);
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    setDrag({ id: office.id, startX, startY, origX: office.x, origY: office.y });
-    const onMove = (ev: MouseEvent) => {
-      const dx = ((ev.clientX - startX) / rect.width) * 100;
-      const dy = ((ev.clientY - startY) / rect.height) * 100;
-      setOffices((prev) =>
-        prev.map((o) =>
-          o.id === office.id
-            ? {
-                ...o,
-                x: clamp(Math.round((office.x + dx) * 10) / 10, 0, 100 - o.w),
-                y: clamp(Math.round((office.y + dy) * 10) / 10, 0, 100 - o.h),
-              }
-            : o
-        )
-      );
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      setDrag(null);
-      setOffices((cur) => {
-        void saveScheme(buildings, cur);
-        return cur;
-      });
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
-  function startResize(e: React.MouseEvent, office: RentOfficeUnit, handle: string) {
-    if (readOnly) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setResizing({ id: office.id, handle, startX: e.clientX, startY: e.clientY, orig: office });
-    const onMove = (ev: MouseEvent) => {
-      const dx = ((ev.clientX - e.clientX) / rect.width) * 100;
-      const dy = ((ev.clientY - e.clientY) / rect.height) * 100;
-      setOffices((prev) =>
-        prev.map((o) => {
-          if (o.id !== office.id) return o;
-          let { x, y, w, h } = office;
-          if (handle.includes("e")) w = clamp(w + dx, 5, 100 - x);
-          if (handle.includes("s")) h = clamp(h + dy, 5, 100 - y);
-          if (handle.includes("w")) {
-            const nx = clamp(x + dx, 0, x + w - 5);
-            w = w - (nx - x);
-            x = nx;
-          }
-          if (handle.includes("n")) {
-            const ny = clamp(y + dy, 0, y + h - 5);
-            h = h - (ny - y);
-            y = ny;
-          }
-          return { ...o, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, w: Math.round(w * 10) / 10, h: Math.round(h * 10) / 10 };
-        })
-      );
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      setResizing(null);
-      setOffices((cur) => {
-        void saveScheme(buildings, cur);
-        return cur;
-      });
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
-  function updateSelectedOffice(patch: Partial<RentOfficeUnit>) {
-    if (!selectedId) return;
-    const next = offices.map((o) => (o.id === selectedId ? { ...o, ...patch } : o));
-    setOffices(next);
-  }
-
-  function commitSelectedOffice() {
-    if (!selectedId) return;
-    void saveScheme(buildings, offices);
-  }
-
-  function deleteSelectedOffice() {
-    if (!selectedId) return;
-    if (!confirm("Удалить офис со схемы?")) return;
-    const next = offices.filter((o) => o.id !== selectedId);
-    setOffices(next);
-    setSelectedId(null);
-    void saveScheme(buildings, next);
-  }
+  /* ───────────────────────── корпуса ───────────────────────── */
 
   function addBuilding() {
     setNewBuildingMode(true);
@@ -325,423 +271,562 @@ export function RentBuildingScheme({
   function saveBuildingModal() {
     if (!buildingModal) return;
     const name = buildingModal.name.trim();
-    if (!name) { setError("Укажите название корпуса"); return; }
-    const floors = clamp(Math.round(buildingModal.floors), 1, 20);
+    if (!name) {
+      setError("Укажите название корпуса");
+      return;
+    }
+    const floors = Math.max(1, Math.min(20, Math.round(buildingModal.floors)));
     if (newBuildingMode) {
       const nextBuildings = [...buildings, { ...buildingModal, name, floors }];
       setBuildings(nextBuildings);
       setActiveBuildingId(buildingModal.id);
       setActiveFloor(1);
-      void saveScheme(nextBuildings, offices);
+      setDirty(true);
+      void saveWithBuildings(nextBuildings);
     } else {
-      const nextBuildings = buildings.map((b) => (b.id === buildingModal.id ? { ...buildingModal, name, floors } : b));
-      const prevFloors = buildings.find((b) => b.id === buildingModal.id)?.floors || floors;
-      let nextOffices = offices;
-      if (floors < prevFloors) {
-        nextOffices = offices.map((o) => (o.buildingId === buildingModal.id && o.floor > floors ? { ...o, floor: floors } : o));
-        setOffices(nextOffices);
-      }
+      const nextBuildings = buildings.map((b) =>
+        b.id === buildingModal.id ? { ...buildingModal, name, floors } : b
+      );
       setBuildings(nextBuildings);
-      void saveScheme(nextBuildings, nextOffices);
+      setDirty(true);
+      void saveWithBuildings(nextBuildings);
     }
     setBuildingModal(null);
   }
 
-  function deleteBuilding(id: string) {
-    if (buildings.length <= 1) { setError("Нельзя удалить единственный корпус"); return; }
-    if (!confirm("Удалить корпус со всеми офисами?")) return;
-    const nextBuildings = buildings.filter((b) => b.id !== id);
-    const nextOffices = offices.filter((o) => o.buildingId !== id);
-    setBuildings(nextBuildings);
-    setOffices(nextOffices);
-    setActiveBuildingId(nextBuildings[0].id);
-    setActiveFloor(1);
-    setSelectedId(null);
-    void saveScheme(nextBuildings, nextOffices);
+  async function saveWithBuildings(nextBuildings: RentBuilding[]) {
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/rent/building", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ buildings: nextBuildings, plans: plansRef.current }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Не удалось сохранить корпус");
+      if (Array.isArray(data.plans)) setPlans(clonePlans(data.plans));
+      setDirty(false);
+      router.refresh();
+    } catch (e: any) {
+      setError(e.message || "Ошибка сохранения");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const stats = useMemo(() => {
-    const total = floorOffices.length;
-    const occupied = floorOffices.filter((o) => o.tenantId).length;
-    const vacant = total - occupied;
-    const overdue = floorOffices.filter((o) => {
-      const st = officeState(o);
-      return st && st.overdue > 0;
-    }).length;
-    return { total, occupied, vacant, overdue };
-  }, [floorOffices, officeState]);
+  function deleteBuilding(id: string) {
+    if (buildings.length <= 1) {
+      setError("Нельзя удалить единственный корпус");
+      return;
+    }
+    if (!confirm("Удалить корпус вместе со всеми этажами и планировками?")) return;
+    const nextBuildings = buildings.filter((b) => b.id !== id);
+    const nextPlans = plansRef.current.filter((p) => p.buildingId !== id);
+    setBuildings(nextBuildings);
+    setPlans(nextPlans);
+    setActiveBuildingId(nextBuildings[0].id);
+    setActiveFloor(1);
+    setSelectedRoomId(null);
+    setDirty(true);
+    setSaving(true);
+    fetch("/api/admin/rent/building", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ buildings: nextBuildings, plans: nextPlans }),
+    })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (Array.isArray(data.plans)) setPlans(clonePlans(data.plans));
+        setDirty(false);
+        router.refresh();
+      })
+      .catch((e: any) => setError(e?.message || "Ошибка сохранения"))
+      .finally(() => setSaving(false));
+  }
+
+  /* ───────────────────────── настройки этажа ───────────────────────── */
+
+  function applyGridSettings() {
+    if (!gridModal) return;
+    const cols = Math.max(PLAN_MIN_COLS, Math.min(PLAN_MAX_COLS, Math.round(gridModal.cols)));
+    const rows = Math.max(PLAN_MIN_COLS, Math.min(PLAN_MAX_COLS, Math.round(gridModal.rows)));
+    const cellSize = Math.max(0.1, Math.min(5, Number(gridModal.cellSize) || PLAN_DEFAULT_CELL_SIZE));
+    const next: RentFloorPlan = {
+      ...gridModal,
+      cols,
+      rows,
+      cellSize,
+      walls: gridModal.walls.filter((w) =>
+        w.o === "h" ? w.x < cols && w.y <= rows : w.y < rows && w.x <= cols
+      ),
+      openings: gridModal.openings.filter((o) =>
+        o.o === "h" ? o.x < cols && o.y <= rows : o.y < rows && o.x <= cols
+      ),
+      rooms: gridModal.rooms
+        .map((r) => ({ ...r, cells: normalizeCells(r.cells, cols, rows) }))
+        .filter((r) => r.cells.length > 0),
+    };
+    upsertPlan(next);
+    setGridModal(null);
+  }
+
+  function toggleMode(next: Mode) {
+    if (readOnly && next === "edit") return;
+    setSelectedRoomId(null);
+    setMode(next);
+  }
+
+  // Правки этажей живут в состоянии до нажатия «Сохранить», поэтому
+  // переключение этажа/корпуса их не теряет — только предупреждаем при уходе со страницы.
+  function switchFloor(floor: number) {
+    setActiveFloor(floor);
+    setSelectedRoomId(null);
+  }
+
+  function switchBuilding(id: string) {
+    setActiveBuildingId(id);
+    setActiveFloor(1);
+    setSelectedRoomId(null);
+  }
+
+  /* ───────────────────────────── UI ───────────────────────────── */
 
   return (
     <div className="rent-scheme">
-      {/* Тулбар */}
-      <div className="rent-scheme__toolbar">
-        <div className="rent-scheme__buildings">
-          <Building2 size={14} style={{ color: "var(--adm-steel)" }} />
-          <select
-            className="admin-select"
-            value={activeBuildingId}
-            onChange={(e) => setActiveBuildingId(e.target.value)}
-            style={{ minWidth: 180, height: 34 }}
-          >
-            {buildings.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name} · {b.floors} эт.
-              </option>
-            ))}
-          </select>
-          {!readOnly && (
-            <>
-              <button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={addBuilding} title="Добавить корпус">
-                <Plus size={13} /> Корпус
-              </button>
-              <button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => activeBuilding && editBuilding(activeBuilding)} title="Настроить корпус">
-                <Settings2 size={13} />
-              </button>
-              {buildings.length > 1 && activeBuilding && (
-                <button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => deleteBuilding(activeBuilding.id)} title="Удалить корпус">
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="rent-scheme__actions">
-          <div className="rent-scheme__mode">
-            <button
-              className={`admin-filter ${mode === "view" ? "admin-filter--active" : ""}`}
-              onClick={() => setMode("view")}
-              title="Выбор и перемещение офисов"
+      {/* Верхняя панель */}
+      <div className="rs-top">
+        <div className="rs-top__row">
+          <div className="rs-top__building">
+            <Building2 size={15} />
+            <select
+              className="admin-select rs-top__select"
+              value={activeBuildingId}
+              onChange={(e) => switchBuilding(e.target.value)}
             >
-              <MousePointer2 size={13} /> Выбор
-            </button>
+              {buildings.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} · {b.floors} эт.
+                </option>
+              ))}
+            </select>
             {!readOnly && (
-              <button
-                className={`admin-filter ${mode === "draw" ? "admin-filter--active" : ""}`}
-                onClick={() => setMode("draw")}
-                title="Рисовать новые офисы мышью"
-              >
-                <Square size={13} /> Рисовать
-              </button>
-            )}
-          </div>
-          <span className="admin-muted" style={{ fontSize: 11 }}>
-            {mode === "draw" ? "Тяните мышью по плану, чтобы нарисовать офис" : "Перетаскивайте офисы, тяните за угол для размера"}
-          </span>
-        </div>
-      </div>
-
-      {/* Переключение этажей */}
-      <div className="rent-scheme__floors">
-        <Layers size={13} />
-        {Array.from({ length: activeBuilding?.floors || 3 }, (_, i) => i + 1).map((floor) => {
-          const count = offices.filter((o) => o.buildingId === activeBuildingId && o.floor === floor).length;
-          return (
-            <button
-              key={floor}
-              className={`rent-scheme__floor ${activeFloor === floor ? "rent-scheme__floor--active" : ""}`}
-              onClick={() => setActiveFloor(floor)}
-            >
-              {floor} этаж
-              <span className="rent-scheme__floor-count">{count}</span>
-            </button>
-          );
-        })}
-        <span className="rent-scheme__stats">
-          <span style={{ color: "var(--adm-pine)" }}>{stats.occupied} занято</span>
-          <span style={{ color: "var(--adm-sand)" }}>{stats.vacant} свободно</span>
-          {stats.overdue > 0 && <span style={{ color: "var(--adm-rust)", fontWeight: 700 }}>{stats.overdue} просрочка</span>}
-        </span>
-      </div>
-
-      {error && <div className="admin-error" style={{ display: "flex", gap: 6, alignItems: "center" }}><AlertTriangle size={14} /> {error}</div>}
-      {success && <div className="admin-success" style={{ display: "inline-flex", gap: 6 }}><CheckCircle2 size={14} /> {success}</div>}
-
-      <div className="rent-scheme__body">
-        {/* План */}
-        <div
-          className={`rent-scheme__canvas ${mode === "draw" ? "rent-scheme__canvas--draw" : ""}`}
-          ref={canvasRef}
-          onMouseDown={handleCanvasMouseDown}
-          onClick={(e) => {
-            if (e.target === canvasRef.current) setSelectedId(null);
-          }}
-        >
-          {/* Сетка */}
-          <div className="rent-scheme__grid" />
-          {/* Офисы */}
-          {floorOffices.map((office) => {
-            const tenant = office.tenantId ? tenantById.get(office.tenantId) : null;
-            const st = officeState(office);
-            const isSelected = selectedId === office.id;
-            const isDragging = drag?.id === office.id;
-            return (
-              <div
-                key={office.id}
-                className={`rent-office ${isSelected ? "rent-office--selected" : ""} ${isDragging ? "rent-office--dragging" : ""}`}
-                style={{
-                  left: `${office.x}%`,
-                  top: `${office.y}%`,
-                  width: `${office.w}%`,
-                  height: `${office.h}%`,
-                  background: officeColor(office),
-                  borderColor: officeBorder(office),
-                }}
-                onMouseDown={(e) => startDrag(e, office)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedId(office.id);
-                }}
-                title={tenant ? `${office.label} · ${tenant.name}${st ? ` · долг ${rentFmt(st.debt)} ₽` : ""}` : office.label}
-              >
-                <div className="rent-office__label">{office.label}</div>
-                {tenant ? (
-                  <>
-                    <div className="rent-office__tenant">{tenant.name}</div>
-                    {tenant.office && tenant.office !== office.label && <div className="rent-office__hint">{tenant.office}</div>}
-                    {office.area && <div className="rent-office__area">{office.area} м²</div>}
-                    {st && (st.overdue > 0 || st.debt > 0) && (
-                      <div className={`rent-office__badge ${st.overdue > 0 ? "rent-office__badge--overdue" : "rent-office__badge--debt"}`}>
-                        {st.overdue > 0 ? `${rentFmt(st.overdue)} ₽` : `${rentFmt(st.debt)} ₽`}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="rent-office__tenant rent-office__tenant--vacant">
-                    <Ban size={10} /> свободно
-                  </div>
-                )}
-                {isSelected && !readOnly && (
-                  <>
-                    <button className="rent-office__handle rent-office__handle--nw" onMouseDown={(e) => startResize(e, office, "nw")} title="Размер" />
-                    <button className="rent-office__handle rent-office__handle--ne" onMouseDown={(e) => startResize(e, office, "ne")} />
-                    <button className="rent-office__handle rent-office__handle--sw" onMouseDown={(e) => startResize(e, office, "sw")} />
-                    <button className="rent-office__handle rent-office__handle--se" onMouseDown={(e) => startResize(e, office, "se")} />
-                    <span className="rent-office__move"><Move size={10} /></span>
-                  </>
-                )}
-              </div>
-            );
-          })}
-          {drawing && (
-            <div
-              className="rent-office rent-office--drawing"
-              style={{ left: `${drawing.x}%`, top: `${drawing.y}%`, width: `${drawing.w}%`, height: `${drawing.h}%` }}
-            />
-          )}
-          {floorOffices.length === 0 && !drawing && (
-            <div className="rent-scheme__empty">
-              <MapPin size={18} />
-              <div>На {activeFloor}-м этаже пока нет офисов</div>
-              {!readOnly && mode === "draw" && <div className="admin-muted" style={{ fontSize: 12 }}>Тяните мышью, чтобы нарисовать первый офис</div>}
-              {!readOnly && mode !== "draw" && <button className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setMode("draw")}><Plus size={13} /> Нарисовать офис</button>}
-            </div>
-          )}
-          <div className="rent-scheme__ruler rent-scheme__ruler--x" />
-          <div className="rent-scheme__ruler rent-scheme__ruler--y" />
-        </div>
-
-        {/* Боковая панель выбранного офиса */}
-        <div className="rent-scheme__side">
-          {selectedOffice ? (
-            <div className="admin-card">
-              <div className="admin-card__head">
-                <h3 className="admin-card__title" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <Building2 size={14} /> {selectedOffice.label}
-                </h3>
-                {!readOnly && (
-                  <button className="admin-btn admin-btn--icon admin-btn--ghost" style={{ width: 28, height: 28 }} onClick={deleteSelectedOffice} title="Удалить офис">
+              <>
+                <button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={addBuilding} title="Добавить корпус">
+                  <Plus size={13} /> Корпус
+                </button>
+                <button
+                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                  onClick={() => activeBuilding && editBuilding(activeBuilding)}
+                  title="Настройки корпуса"
+                >
+                  <Settings2 size={13} />
+                </button>
+                {buildings.length > 1 && activeBuilding && (
+                  <button
+                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                    onClick={() => deleteBuilding(activeBuilding.id)}
+                    title="Удалить корпус"
+                  >
                     <Trash2 size={13} />
                   </button>
                 )}
-              </div>
-              <div className="admin-card__pad" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div className="admin-field">
-                  <label className="admin-label">Название офиса</label>
-                  <input
-                    className="admin-input"
-                    value={selectedOffice.label}
-                    onChange={(e) => updateSelectedOffice({ label: e.target.value })}
-                    onBlur={commitSelectedOffice}
-                    placeholder="Офис 214"
-                    disabled={readOnly}
-                  />
-                </div>
-                <div className="admin-grid-2">
-                  <div className="admin-field">
-                    <label className="admin-label">Этаж</label>
-                    <select
-                      className="admin-select"
-                      value={selectedOffice.floor}
-                      onChange={(e) => {
-                        const floor = Number(e.target.value);
-                        updateSelectedOffice({ floor });
-                        setTimeout(() => commitSelectedOffice(), 0);
-                      }}
-                      disabled={readOnly}
-                    >
-                      {Array.from({ length: activeBuilding?.floors || 1 }, (_, i) => i + 1).map((f) => (
-                        <option key={f} value={f}>{f} этаж</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="admin-field">
-                    <label className="admin-label">Площадь, м²</label>
-                    <input
-                      type="number"
-                      className="admin-input"
-                      value={selectedOffice.area ?? ""}
-                      onChange={(e) => updateSelectedOffice({ area: e.target.value ? Number(e.target.value) : null })}
-                      onBlur={commitSelectedOffice}
-                      placeholder="—"
-                      disabled={readOnly}
-                    />
-                  </div>
-                </div>
-                <div className="admin-field">
-                  <label className="admin-label">Арендатор</label>
-                  <select
-                    className="admin-select"
-                    value={selectedOffice.tenantId || ""}
-                    onChange={(e) => {
-                      const tenantId = e.target.value || null;
-                      updateSelectedOffice({ tenantId });
-                      // подсказка: если у арендатора есть офис, подставить его название?
-                      setTimeout(() => commitSelectedOffice(), 0);
-                    }}
-                    disabled={readOnly}
-                  >
-                    <option value="">— свободно —</option>
-                    {tenants
-                      .filter((t) => t.status === "active" || t.id === selectedOffice.tenantId)
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name} {t.office ? `· ${t.office}` : ""} {(() => { const s = computeTenantState(t, invoices, today); return s.overdue > 0 ? `· 🔴 ${rentFmt(s.overdue)}` : s.debt > 0 ? `· 🟡 ${rentFmt(s.debt)}` : ""; })()}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-                {selectedOffice.tenantId && (() => {
-                  const tenant = tenantById.get(selectedOffice.tenantId!);
-                  if (!tenant) return null;
-                  const st = computeTenantState(tenant, invoices, today);
-                  return (
-                    <div style={{ background: "var(--adm-paper)", border: "1px solid var(--adm-border)", borderRadius: 8, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{tenant.name}</div>
-                      <div className="admin-muted" style={{ fontSize: 11 }}>{tenant.phone || tenant.email || ""} {tenant.contactName ? `· ${tenant.contactName}` : ""}</div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <span className={`admin-badge ${st.overdue > 0 ? "admin-badge--red" : st.debt > 0 ? "admin-badge--amber" : "admin-badge--green"}`}>
-                          {st.overdue > 0 ? `Просрочка ${rentFmt(st.overdue)} ₽` : st.debt > 0 ? `Долг ${rentFmt(st.debt)} ₽` : "Нет долга"}
-                        </span>
-                        <span className="admin-badge admin-badge--muted">{rentFmt(tenant.monthlyRent)} ₽/мес</span>
-                      </div>
-                    </div>
-                  );
-                })()}
-                <div className="admin-field">
-                  <label className="admin-label">Координаты (x, y, w, h %)</label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                    <input className="admin-input" type="number" value={selectedOffice.x} onChange={(e) => updateSelectedOffice({ x: Number(e.target.value) })} onBlur={commitSelectedOffice} disabled={readOnly} />
-                    <input className="admin-input" type="number" value={selectedOffice.y} onChange={(e) => updateSelectedOffice({ y: Number(e.target.value) })} onBlur={commitSelectedOffice} disabled={readOnly} />
-                    <input className="admin-input" type="number" value={selectedOffice.w} onChange={(e) => updateSelectedOffice({ w: Number(e.target.value) })} onBlur={commitSelectedOffice} disabled={readOnly} />
-                    <input className="admin-input" type="number" value={selectedOffice.h} onChange={(e) => updateSelectedOffice({ h: Number(e.target.value) })} onBlur={commitSelectedOffice} disabled={readOnly} />
-                  </div>
-                </div>
-                {!readOnly && (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button className="admin-btn admin-btn--primary admin-btn--sm" onClick={commitSelectedOffice} disabled={saving}>
-                      <Save size={13} /> Сохранить
-                    </button>
-                    <button className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => setSelectedId(null)}>
-                      <Eye size={13} /> Готово
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="admin-card">
-              <div className="admin-card__pad">
-                <div style={{ display: "flex", gap: 8, alignItems: "center", color: "var(--adm-ink-soft)", fontWeight: 600, marginBottom: 6 }}>
-                  <Users size={14} /> Офисы на этаже
-                </div>
-                {floorOffices.length === 0 ? (
-                  <div className="admin-muted" style={{ fontSize: 13 }}>Выберите офис на плане или нарисуйте новый.</div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {floorOffices.map((o) => {
-                      const tenant = o.tenantId ? tenantById.get(o.tenantId) : null;
-                      const st = officeState(o);
-                      return (
-                        <button
-                          key={o.id}
-                          onClick={() => setSelectedId(o.id)}
-                          className="rent-scheme__list-item"
-                          style={{ borderColor: selectedId === o.id ? "var(--adm-steel-line)" : undefined, background: selectedId === o.id ? "var(--adm-steel-pale)" : undefined }}
-                        >
-                          <span style={{ fontWeight: 700, flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.label}</span>
-                          <span className="admin-muted" style={{ fontSize: 11, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {tenant ? tenant.name : "свободно"}
-                          </span>
-                          {st && st.overdue > 0 ? <span className="admin-badge admin-badge--red" style={{ fontSize: 10 }}>{rentFmt(st.overdue)} ₽</span> : st && st.debt > 0 ? <span className="admin-badge admin-badge--amber" style={{ fontSize: 10 }}>{rentFmt(st.debt)} ₽</span> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
-                  {!readOnly && <button className="admin-btn admin-btn--primary admin-btn--sm" onClick={() => setMode("draw")}><Plus size={13} /> Нарисовать офис</button>}
-                </div>
-              </div>
-            </div>
-          )}
+              </>
+            )}
+          </div>
 
-          {/* Легенда */}
-          <div className="admin-card">
-            <div className="admin-card__pad">
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--adm-muted)", marginBottom: 8 }}>Легенда</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
-                <span style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ width: 14, height: 14, background: "#e8eef6", border: "1px solid var(--adm-border)", borderRadius: 3 }} /> Свободно</span>
-                <span style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ width: 14, height: 14, background: "#ebf4ee", border: "1px solid var(--adm-pine-line)", borderRadius: 3 }} /> Занято · нет долга</span>
-                <span style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ width: 14, height: 14, background: "#fdf3dc", border: "1px solid var(--adm-kraft-line)", borderRadius: 3 }} /> Долг</span>
-                <span style={{ display: "flex", gap: 8, alignItems: "center" }}><span style={{ width: 14, height: 14, background: "#fde8e6", border: "1px solid var(--adm-rust-line)", borderRadius: 3 }} /> Просрочка</span>
-              </div>
+          <div className="rs-top__mode">
+            <button
+              type="button"
+              className={`admin-filter${mode === "edit" ? " admin-filter--active" : ""}`}
+              onClick={() => toggleMode("edit")}
+              disabled={readOnly}
+              title={readOnly ? "Редактирование доступно администратору" : "Рисовать стены, двери и помещения"}
+            >
+              <Pencil size={13} /> Редактор
+            </button>
+            <button
+              type="button"
+              className={`admin-filter${mode === "view" ? " admin-filter--active" : ""}`}
+              onClick={() => toggleMode("view")}
+              title="Чистая схема без линий сетки — как её видят остальные"
+            >
+              <Eye size={13} /> Просмотр
+            </button>
+          </div>
+
+          <div className="rs-top__actions">
+            {!readOnly && (
+              <>
+                <button
+                  className="admin-btn admin-btn--primary admin-btn--sm"
+                  onClick={() => save()}
+                  disabled={saving}
+                >
+                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                  {dirty ? "Сохранить" : "Сохранить"}
+                </button>
+                {isPublished ? (
+                  <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={unpublish} disabled={saving}>
+                    <Undo2 size={13} /> Снять публикацию
+                  </button>
+                ) : (
+                  <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={publish} disabled={saving}>
+                    <Rocket size={13} /> Опубликовать корпус
+                  </button>
+                )}
+              </>
+            )}
+            <button
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={() => setGridModal({ ...activePlan })}
+              disabled={readOnly}
+              title="Размер сетки, масштаб клетки"
+            >
+              <Ruler size={13} /> Сетка
+            </button>
+          </div>
+        </div>
+
+        <div className="rs-top__row rs-top__row--floors">
+          <div className="rs-floors">
+            <Layers size={13} />
+            {Array.from({ length: activeBuilding?.floors || 3 }, (_, i) => i + 1).map((floor) => {
+              const plan = plans.find((p) => p.buildingId === activeBuildingId && p.floor === floor);
+              return (
+                <button
+                  key={floor}
+                  className={`rs-floor${activeFloor === floor ? " rs-floor--on" : ""}`}
+                  onClick={() => switchFloor(floor)}
+                >
+                  {floor} этаж
+                  {plan ? <span className="rs-floor__count">{plan.rooms.length || "—"}</span> : null}
+                  {plan?.published ? <span className="rs-floor__dot rs-floor__dot--pub" title="опубликован" /> : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="rs-badges">
+            {dirty && <span className="rs-badge rs-badge--warn">не сохранено</span>}
+            {isPublished ? (
+              <span className="rs-badge rs-badge--ok">опубликован</span>
+            ) : (
+              <span className="rs-badge rs-badge--draft">черновик</span>
+            )}
+            <span className="rs-badge rs-badge--muted">
+              корпус: {publishedCount} из {activeBuilding?.floors || 0} эт. опубликовано
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="admin-error" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
+      {success && (
+        <div className="admin-success" style={{ display: "inline-flex", gap: 6 }}>
+          <CheckCircle2 size={14} /> {success}
+        </div>
+      )}
+
+      {mode === "view" && !isPublished && !readOnly && (
+        <div className="rs-note">
+          <Rocket size={14} />
+          <span>
+            Это черновик: схема видна в чистом виде (без линий сетки), но для остальных она
+            останется черновиком, пока вы не нажмёте «Опубликовать корпус».
+          </span>
+        </div>
+      )}
+
+      {mode === "edit" && activePlan.walls.length === 0 && activePlan.rooms.length === 0 && (
+        <div className="rs-note rs-note--hint">
+          <Ruler size={14} />
+          <span>
+            Этаж пока пуст. Быстрый путь: «Контур этажа» → «Автонарезка на помещения» → проведите
+            двери и окна по стенам. Или рисуйте вручную: инструмент «Стена» ведите по клеткам,
+            «Помещение» — протяните прямоугольник.
+          </span>
+        </div>
+      )}
+
+      {/* Сам планировщик */}
+      <RentFloorPlanner
+        plan={activePlan}
+        onChange={(next, options) => upsertPlan(next, options?.markDirty !== false)}
+        readOnly={Boolean(readOnly)}
+        mode={mode}
+        tenants={tenants}
+        invoices={invoices}
+        today={today}
+        selectedRoomId={selectedRoomId}
+        onSelectRoom={setSelectedRoomId}
+      />
+
+      {/* Статистика этажа */}
+      <div className="rs-stats">
+        <div className="admin-stat">
+          <div className="admin-stat__icon" style={{ background: "var(--adm-steel-pale)", color: "var(--adm-steel)" }}>
+            <Square size={16} />
+          </div>
+          <div>
+            <div className="admin-stat__label">Помещений на этаже</div>
+            <div className="admin-stat__value">{floorStats.total}</div>
+          </div>
+        </div>
+        <div className="admin-stat">
+          <div className="admin-stat__icon" style={{ background: "var(--adm-pine-pale)", color: "var(--adm-pine)" }}>
+            <Users size={16} />
+          </div>
+          <div>
+            <div className="admin-stat__label">Занято / свободно</div>
+            <div className="admin-stat__value">
+              {floorStats.occupied} / {floorStats.vacant}
+            </div>
+          </div>
+        </div>
+        <div className="admin-stat">
+          <div className="admin-stat__icon" style={{ background: "var(--adm-paper-warm)", color: "var(--adm-sand)" }}>
+            <Ruler size={16} />
+          </div>
+          <div>
+            <div className="admin-stat__label">Площадь занятых / этажа</div>
+            <div className="admin-stat__value">
+              {floorStats.areaOccupied} / {floorStats.areaTotal} м²
+            </div>
+          </div>
+        </div>
+        <div className="admin-stat">
+          <div className="admin-stat__icon" style={{ background: "var(--adm-kraft-pale)", color: "var(--adm-kraft)" }}>
+            <MapPin size={16} />
+          </div>
+          <div>
+            <div className="admin-stat__label">Аренда в месяц по этажу</div>
+            <div className="admin-stat__value">{rentFmt(floorStats.rent)} ₽</div>
+          </div>
+        </div>
+        <div className="admin-stat">
+          <div
+            className="admin-stat__icon"
+            style={{
+              background: floorStats.overdue > 0 ? "var(--adm-rust-pale)" : "var(--adm-paper-warm)",
+              color: floorStats.overdue > 0 ? "var(--adm-rust)" : "var(--adm-sand)",
+            }}
+          >
+            <AlertTriangle size={16} />
+          </div>
+          <div>
+            <div className="admin-stat__label">Долг / просрочка</div>
+            <div
+              className="admin-stat__value"
+              style={{ color: floorStats.overdue > 0 ? "var(--adm-rust)" : undefined }}
+            >
+              {rentFmt(floorStats.debt)} / {rentFmt(floorStats.overdue)} ₽
             </div>
           </div>
         </div>
       </div>
 
-      {/* Модалка здания */}
+      <div className="rs-legend">
+        <span className="rs-legend__title">Легенда</span>
+        <span className="rs-legend__item">
+          <i style={{ background: "#eef2f7", borderColor: "#c3ccd8" }} /> свободно
+        </span>
+        <span className="rs-legend__item">
+          <i style={{ background: "#e8f4ec", borderColor: "#a3c9af" }} /> занято, без долга
+        </span>
+        <span className="rs-legend__item">
+          <i style={{ background: "#fdf3dc", borderColor: "#e2c98a" }} /> есть долг
+        </span>
+        <span className="rs-legend__item">
+          <i style={{ background: "#fdeceb", borderColor: "#e9b4a8" }} /> просрочка
+        </span>
+        <span className="rs-legend__item rs-legend__item--wall">
+          <i className="rs-legend__wall" /> стены
+        </span>
+        <span className="rs-legend__item rs-legend__item--door">
+          <i className="rs-legend__door" /> двери
+        </span>
+        <span className="rs-legend__item rs-legend__item--window">
+          <i className="rs-legend__window" /> окна
+        </span>
+      </div>
+
+      {/* Модалка настроек корпуса */}
       {buildingModal && (
         <ModalPortal>
           <div className="admin-modal-overlay" data-admin="true" onClick={() => setBuildingModal(null)}>
             <div className="admin-modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
               <div className="admin-modal__head">
-                <h3 className="admin-modal__title">{newBuildingMode ? "Новый корпус" : "Настройка корпуса"}</h3>
-                <button className="admin-modal__close" onClick={() => setBuildingModal(null)}><X size={16} /></button>
+                <h3 className="admin-modal__title">
+                  {newBuildingMode ? "Новый корпус" : "Настройка корпуса"}
+                </h3>
+                <button className="admin-modal__close" onClick={() => setBuildingModal(null)}>
+                  <X size={16} />
+                </button>
               </div>
               <div className="admin-form" style={{ padding: "0 20px" }}>
                 <div className="admin-field">
                   <label className="admin-label">Название *</label>
-                  <input className="admin-input" value={buildingModal.name} onChange={(e) => setBuildingModal({ ...buildingModal, name: e.target.value })} placeholder="Главный корпус" />
+                  <input
+                    className="admin-input"
+                    value={buildingModal.name}
+                    onChange={(e) => setBuildingModal({ ...buildingModal, name: e.target.value })}
+                    placeholder="Главный корпус"
+                  />
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Адрес</label>
-                  <input className="admin-input" value={buildingModal.address || ""} onChange={(e) => setBuildingModal({ ...buildingModal, address: e.target.value })} placeholder="ул. Примерная, 1" />
+                  <input
+                    className="admin-input"
+                    value={buildingModal.address || ""}
+                    onChange={(e) => setBuildingModal({ ...buildingModal, address: e.target.value })}
+                    placeholder="ул. Примерная, 1"
+                  />
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Этажей</label>
-                  <input type="number" min={1} max={20} className="admin-input" value={buildingModal.floors} onChange={(e) => setBuildingModal({ ...buildingModal, floors: Number(e.target.value) })} />
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    className="admin-input"
+                    value={buildingModal.floors}
+                    onChange={(e) =>
+                      setBuildingModal({ ...buildingModal, floors: Number(e.target.value) })
+                    }
+                  />
                 </div>
               </div>
               <div className="admin-modal__actions">
-                <button className="admin-btn admin-btn--ghost" onClick={() => setBuildingModal(null)}>Отмена</button>
-                <button className="admin-btn admin-btn--primary" onClick={saveBuildingModal}><Save size={14} /> Сохранить</button>
+                <button className="admin-btn admin-btn--ghost" onClick={() => setBuildingModal(null)}>
+                  Отмена
+                </button>
+                <button className="admin-btn admin-btn--primary" onClick={saveBuildingModal}>
+                  <Save size={14} /> Сохранить
+                </button>
               </div>
             </div>
           </div>
         </ModalPortal>
       )}
+
+      {/* Модалка настроек сетки */}
+      {gridModal && (
+        <GridSettingsModal
+          plan={gridModal}
+          onChange={setGridModal}
+          onApply={applyGridSettings}
+          onClose={() => setGridModal(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/* ─────────────────── модалка настроек сетки этажа ─────────────────── */
+
+function GridSettingsModal({
+  plan,
+  onChange,
+  onApply,
+  onClose,
+}: {
+  plan: RentFloorPlan;
+  onChange: (plan: RentFloorPlan) => void;
+  onApply: () => void;
+  onClose: () => void;
+}) {
+  useEscapeClose(onClose);
+  const presets = [
+    { label: "Компактно 24×16", cols: 24, rows: 16, cellSize: 0.5 },
+    { label: "Стандарт 40×24", cols: 40, rows: 24, cellSize: 0.5 },
+    { label: "Подробно 60×36", cols: 60, rows: 36, cellSize: 0.25 },
+  ];
+  return (
+    <ModalPortal>
+      <div className="admin-modal-overlay" data-admin="true" onClick={onClose}>
+        <div className="admin-modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+          <div className="admin-modal__head">
+            <h3 className="admin-modal__title">Сетка этажа</h3>
+            <button className="admin-modal__close" onClick={onClose}>
+              <X size={16} />
+            </button>
+          </div>
+          <div className="admin-form" style={{ padding: "0 20px" }}>
+            <div className="rfp__presets">
+              {presets.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                  onClick={() => onChange({ ...plan, cols: p.cols, rows: p.rows, cellSize: p.cellSize })}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="admin-grid-2">
+              <div className="admin-field">
+                <label className="admin-label">Клеток по ширине</label>
+                <input
+                  type="number"
+                  min={PLAN_MIN_COLS}
+                  max={PLAN_MAX_COLS}
+                  className="admin-input"
+                  value={plan.cols}
+                  onChange={(e) => onChange({ ...plan, cols: Number(e.target.value) })}
+                />
+              </div>
+              <div className="admin-field">
+                <label className="admin-label">Клеток по высоте</label>
+                <input
+                  type="number"
+                  min={PLAN_MIN_COLS}
+                  max={PLAN_MAX_COLS}
+                  className="admin-input"
+                  value={plan.rows}
+                  onChange={(e) => onChange({ ...plan, rows: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+            <div className="admin-field">
+              <label className="admin-label">Размер клетки, м</label>
+              <select
+                className="admin-select"
+                value={String(plan.cellSize)}
+                onChange={(e) => onChange({ ...plan, cellSize: Number(e.target.value) })}
+              >
+                {[0.1, 0.25, 0.5, 1, 2].map((v) => (
+                  <option key={v} value={v}>
+                    {v} м
+                  </option>
+                ))}
+              </select>
+              <div className="admin-muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Итоговая схема: {Math.round(plan.cols * plan.cellSize * 10) / 10} ×{" "}
+                {Math.round(plan.rows * plan.cellSize * 10) / 10} м, площадь{" "}
+                {Math.round(plan.cols * plan.cellSize * plan.rows * plan.cellSize * 10) / 10} м².
+                Стены и помещения за пределами новой сетки будут обрезаны.
+              </div>
+            </div>
+            <div className="admin-muted" style={{ fontSize: 12 }}>
+              Площадь помещений считается автоматически: количество клеток × площадь клетки.
+            </div>
+          </div>
+          <div className="admin-modal__actions">
+            <button className="admin-btn admin-btn--ghost" onClick={onClose}>
+              Отмена
+            </button>
+            <button className="admin-btn admin-btn--primary" onClick={onApply}>
+              <Save size={14} /> Применить к этажу
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
   );
 }

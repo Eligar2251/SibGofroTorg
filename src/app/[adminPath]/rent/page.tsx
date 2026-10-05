@@ -27,7 +27,7 @@ import type {
   RentPayment,
   RentTenant,
 } from "@/lib/rent-shared";
-import type { RentBuilding, RentOfficeUnit } from "@/lib/rent-building";
+import type { RentBuilding, RentFloorPlan } from "@/lib/rent-building";
 import { RentManager, type RentMode } from "@/components/admin/rent/RentManager";
 import { RentRealtime } from "@/components/admin/RentRealtime";
 
@@ -66,7 +66,7 @@ export default async function RentPage({
   let payments: RentPayment[] = [];
   let meterReadings: RentMeterReading[] = [];
   let buildings: RentBuilding[] = [{ id: "main", name: "Главный корпус", address: null, floors: 3 }];
-  let offices: RentOfficeUnit[] = [];
+  let plans: RentFloorPlan[] = [];
   try {
     [orgs, tenants, invoices, payments, meterReadings] = await Promise.all([
       getRentOrgs(),
@@ -78,7 +78,7 @@ export default async function RentPage({
     try {
       const scheme = await getRentBuildingScheme();
       buildings = scheme.buildings;
-      offices = scheme.offices;
+      plans = scheme.plans;
     } catch {}
   } catch (error) {
     console.error(
@@ -100,7 +100,7 @@ export default async function RentPage({
       payments={payments}
       meterReadings={meterReadings}
       initialBuildings={buildings}
-      initialOffices={offices}
+      initialPlans={plans}
       />
     </>
   );
