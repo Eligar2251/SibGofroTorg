@@ -10,8 +10,7 @@ export const SITE_ADDRESS =
   "г. Новосибирск, ул. Ватутина, 42а к1";
 
 /** Основной телефон компании (отдел продаж, шапка сайта и т. п.). */
-export const SITE_PHONE =
-  process.env.NEXT_PUBLIC_COMPANY_PHONE || "+7 (913) 915-81-46";
+export const SITE_PHONE = "+7 (913) 915-81-46";
 
 export const SITE_PHONE_HREF = `tel:${SITE_PHONE.replace(/[^\d+]/g, "")}`;
 
