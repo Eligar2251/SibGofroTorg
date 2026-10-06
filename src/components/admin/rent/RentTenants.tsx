@@ -102,7 +102,11 @@ export function RentTenants({
           !q ||
           t.name.toLocaleLowerCase("ru-RU").includes(q) ||
           (t.office || "").toLocaleLowerCase("ru-RU").includes(q) ||
-          (t.contractNumber || "").toLocaleLowerCase("ru-RU").includes(q)
+          (t.contractNumber || "").toLocaleLowerCase("ru-RU").includes(q) ||
+          (t.contactName || "").toLocaleLowerCase("ru-RU").includes(q) ||
+          (t.phone || "").toLocaleLowerCase("ru-RU").includes(q) ||
+          (t.email || "").toLocaleLowerCase("ru-RU").includes(q) ||
+          (t.inn || "").toLocaleLowerCase("ru-RU").includes(q)
       )
       .sort((a, b) => a.name.localeCompare(b.name, "ru-RU"));
   }, [tenants, orgFilter, statusFilter, query]);
@@ -289,6 +293,13 @@ export function RentTenants({
               {list.map((t) => {
                 const st = states.get(t.id);
                 const dueDay = rentDueDay(t, orgs);
+                const initials = t.name
+                  .trim()
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0] || "")
+                  .join("")
+                  .toLocaleUpperCase("ru-RU");
                 return (
                   <tr
                     key={t.id}
@@ -298,23 +309,29 @@ export function RentTenants({
                     title="Открыть карточку арендатора"
                   >
                     <td>
-                      <div style={{ fontWeight: 600 }}>
-                        {t.name}
-                        {rentHasPayeeNote(t, orgs) && (
-                          <span
-                            className="admin-badge admin-badge--amber"
-                            style={{ marginLeft: 6 }}
-                            title="Договор с СибИнвестТоргом: деньги приходят на счёт БАУ"
-                          >
-                            деньги на БАУ
+                      <div className="rent-tenant-cell">
+                        <span className="rent-tenant-cell__avatar" aria-hidden="true">{initials || "А"}</span>
+                        <span className="rent-tenant-cell__body">
+                          <span className="rent-tenant-cell__name">
+                            {t.name}
+                            {rentHasPayeeNote(t, orgs) && (
+                              <span
+                                className="admin-badge admin-badge--amber"
+                                title="Договор с СибИнвестТоргом: деньги приходят на счёт БАУ"
+                              >
+                                деньги на БАУ
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </div>
-                      <div className="admin-muted" style={{ fontSize: 12 }}>
-                        {t.contactName || t.phone || t.email || "\u00A0"}
+                          <span className="rent-tenant-cell__meta">
+                            {[t.contactName, t.phone, t.inn ? `ИНН ${t.inn}` : ""]
+                              .filter(Boolean)
+                              .join(" · ") || "Контактные данные не указаны"}
+                          </span>
+                        </span>
                       </div>
                     </td>
-                    <td>{orgName(t.orgId)}</td>
+                    <td><span className="rent-org-chip">{orgName(t.orgId)}</span></td>
                     <td>{t.office || "—"}</td>
                     <td>
                       {t.contractNumber ? `№ ${t.contractNumber}` : "—"}
@@ -479,6 +496,7 @@ export function RentTenants({
           orgs={orgs}
           tenants={tenants}
           invoices={invoices}
+          payments={payments}
           payment={null}
           presetTenantId={paymentPreset.id}
           onClose={() => setPaymentPreset(null)}

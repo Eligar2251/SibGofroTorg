@@ -89,9 +89,15 @@ export function RentBank({
           p.counterparty.toLocaleLowerCase("ru-RU").includes(q) ||
           (p.comment || "").toLocaleLowerCase("ru-RU").includes(q) ||
           (p.invoiceNumber || "").toLocaleLowerCase("ru-RU").includes(q) ||
+          (p.tenantId ? tenants.find((tenant) => tenant.id === p.tenantId)?.name : "")
+            ?.toLocaleLowerCase("ru-RU")
+            .includes(q) ||
+          (orgs.find((org) => org.id === p.accountOrgId)?.name || "")
+            .toLocaleLowerCase("ru-RU")
+            .includes(q) ||
           String(p.number).includes(q)
       );
-  }, [payments, orgFilter, query, directionFilter]);
+  }, [payments, orgFilter, query, directionFilter, tenants, orgs]);
 
   const pending = useMemo(
     () => list.filter((p) => !p.isPaid).sort((a, b) => b.date.localeCompare(a.date)),
@@ -187,7 +193,10 @@ export function RentBank({
         </span>
         <div className="rb-op__main">
           <div className="rb-op__title">
-            <span className="rb-op__name">{p.counterparty}</span>
+            <span className="rb-op__name" title={p.counterparty}>{p.counterparty || "Без названия"}</span>
+            <span className={`rb-op__pill rb-op__pill--party${p.tenantId ? " rb-op__pill--tenant" : ""}`}>
+              {p.tenantId ? "арендатор" : "контрагент"}
+            </span>
             <span className="rb-op__pill">{orgName(p.accountOrgId)}</span>
             <span className="rb-op__pill rb-op__pill--muted">
               {RENT_PAYMENT_KIND_LABELS[p.kind] || p.kind}
@@ -541,6 +550,7 @@ export function RentBank({
           orgs={orgs}
           tenants={tenants}
           invoices={invoices}
+          payments={payments}
           payment={editing}
           defaultDirection={creating || "incoming"}
           presetAccountOrgId={orgFilter === "all" ? null : orgFilter}
@@ -562,6 +572,7 @@ export function PaymentFormModal({
   orgs,
   tenants,
   invoices,
+  payments = [],
   payment,
   presetTenantId,
   presetAccountOrgId,
@@ -571,6 +582,7 @@ export function PaymentFormModal({
   orgs: RentOrg[];
   tenants: RentTenant[];
   invoices: RentInvoice[];
+  payments?: RentPayment[];
   payment: RentPayment | null;
   presetTenantId?: string | null;
   presetAccountOrgId?: string | null;
@@ -608,6 +620,12 @@ export function PaymentFormModal({
   const activeTenants = tenants.filter(
     (t) => t.status === "active" || t.id === payment?.tenantId || t.id === presetTenantId
   );
+  const counterpartySuggestions = Array.from(
+    new Set([
+      ...activeTenants.map((tenant) => tenant.name.trim()),
+      ...payments.map((item) => item.counterparty.trim()),
+    ].filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "ru-RU"));
   const awaitingInvoices = useMemo(
     () =>
       invoices.filter(
@@ -643,8 +661,13 @@ export function PaymentFormModal({
   }
 
   async function save() {
-    if (Number(amount) <= 0) {
-      setError("Укажите сумму платежа");
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setError("Укажите корректную сумму платежа");
+      return;
+    }
+    if (!counterparty.trim() && !tenantId) {
+      setError("Укажите контрагента или выберите арендатора");
       return;
     }
     setSaving(true);
@@ -658,7 +681,7 @@ export function PaymentFormModal({
         tenantId: tenantId || null,
         invoiceId: direction === "incoming" ? invoiceId || null : null,
         counterparty,
-        amount: Number(amount),
+        amount: parsedAmount,
         date,
         invoiceNumber,
         isPaid,
@@ -783,13 +806,37 @@ export function PaymentFormModal({
                 </select>
               </div>
               <div className="admin-field">
-                <label className="admin-label">Контрагент</label>
+                <label className="admin-label">Контрагент *</label>
                 <input
                   className="admin-input"
+                  list="rent-counterparty-options"
                   value={counterparty}
-                  placeholder="Название или ФИО"
-                  onChange={(e) => setCounterparty(e.target.value)}
+                  placeholder="Название организации или ФИО"
+                  autoComplete="off"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const normalized = value.trim().toLocaleLowerCase("ru-RU");
+                    const matchingTenant = activeTenants.find(
+                      (tenant) => tenant.name.toLocaleLowerCase("ru-RU") === normalized
+                    );
+                    if (matchingTenant) {
+                      setCounterparty(value);
+                      if (matchingTenant.id !== tenantId) pickTenant(matchingTenant.id);
+                    } else {
+                      setCounterparty(value);
+                      if (tenantId) {
+                        setTenantId("");
+                        setInvoiceId("");
+                      }
+                    }
+                  }}
                 />
+                <datalist id="rent-counterparty-options">
+                  {counterpartySuggestions.map((name) => <option key={name} value={name} />)}
+                </datalist>
+                <small className="rent-payment-counterparty-hint">
+                  Можно выбрать арендатора из списка или указать внешнего поставщика / получателя.
+                </small>
               </div>
               {direction === "incoming" && (
                 <div className="admin-field" style={{ gridColumn: "1 / -1" }}>
