@@ -35,6 +35,7 @@ import {
   PanelTop,
   Printer,
   Redo2,
+  Ruler,
   Square,
   Trash2,
   Undo2,
@@ -68,33 +69,60 @@ import {
   type PlanStroke,
 } from "@/lib/rent-plan-ops";
 
-export type PlannerTool = "select" | "wall" | "door" | "window" | "gate" | "room" | "erase";
+export type PlannerTool =
+  | "pan"
+  | "select"
+  | "measure"
+  | "wall"
+  | "door"
+  | "window"
+  | "gate"
+  | "room"
+  | "erase";
 
 type Pt = { x: number; y: number };
-
-type Stroke = PlanStroke & { base: RentFloorPlan; origin?: Pt };
+type ViewPoint = { x: number; y: number };
+type Measurement = { a: Pt; b: Pt };
+type RoomTextField = "label" | "comment";
+type RoomTextEdit = {
+  base: RentFloorPlan;
+  roomId: string;
+  field: RoomTextField;
+  initialValue: string;
+};
+type Stroke = PlanStroke & { base: RentFloorPlan; origin?: Pt; historyPushed?: boolean };
 
 const VACANT_FILL = "#eef2f7";
+const DARK_ADMIN_THEMES = ["dark", "superdark", "graphite", "ruby", "coffee"];
 
-const ROOM_COLORS: { id: string; name: string; fill: string; line: string }[] = [
-  { id: "slate", name: "Нейтральный", fill: "#eef2f7", line: "#c3ccd8" },
-  { id: "pine", name: "Зелёный", fill: "#e8f4ec", line: "#a3c9af" },
-  { id: "steel", name: "Синий", fill: "#e8eef6", line: "#a8bedb" },
-  { id: "kraft", name: "Янтарный", fill: "#fdf3dc", line: "#e2c98a" },
-  { id: "rust", name: "Терракот", fill: "#fdeceb", line: "#e9b4a8" },
-  { id: "teal", name: "Бирюзовый", fill: "#e9f6f6", line: "#9ae0e0" },
-  { id: "violet", name: "Сиреневый", fill: "#f1eefc", line: "#c5bdf2" },
+const ROOM_COLORS: {
+  id: string;
+  name: string;
+  fill: string;
+  line: string;
+  darkFill: string;
+  darkLine: string;
+}[] = [
+  { id: "slate", name: "Нейтральный", fill: "#eef2f7", line: "#c3ccd8", darkFill: "#27313d", darkLine: "#536172" },
+  { id: "pine", name: "Зелёный", fill: "#e8f4ec", line: "#a3c9af", darkFill: "#183427", darkLine: "#3c7951" },
+  { id: "steel", name: "Синий", fill: "#e8eef6", line: "#a8bedb", darkFill: "#1b2b43", darkLine: "#466b9a" },
+  { id: "kraft", name: "Янтарный", fill: "#fdf3dc", line: "#e2c98a", darkFill: "#392d17", darkLine: "#8b7137" },
+  { id: "rust", name: "Терракот", fill: "#fdeceb", line: "#e9b4a8", darkFill: "#3c2423", darkLine: "#92564e" },
+  { id: "teal", name: "Бирюзовый", fill: "#e9f6f6", line: "#9ae0e0", darkFill: "#173333", darkLine: "#3b8585" },
+  { id: "violet", name: "Сиреневый", fill: "#f1eefc", line: "#c5bdf2", darkFill: "#2a2540", darkLine: "#7063a6" },
 ];
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function paletteForColor(color?: string | null): { fill: string; line: string } {
+function paletteForColor(color?: string | null, dark = false): { fill: string; line: string } {
   const found = ROOM_COLORS.find((c) => c.id === color);
-  if (found) return { fill: found.fill, line: found.line };
-  if (color && /^#[0-9a-f]{3,8}$/i.test(color)) return { fill: color, line: "#b9c2cd" };
-  return { fill: VACANT_FILL, line: "#c3ccd8" };
+  if (found) return { fill: dark ? found.darkFill : found.fill, line: dark ? found.darkLine : found.line };
+  if (color && /^#[0-9a-f]{3,8}$/i.test(color)) {
+    return { fill: color, line: dark ? "#596579" : "#b9c2cd" };
+  }
+  return { fill: dark ? "#20252c" : VACANT_FILL, line: dark ? "#46505d" : "#c3ccd8" };
 }
 
 /** Отрезки границы набора клеток — тонкие контуры помещений. */
@@ -137,16 +165,33 @@ export function RentFloorPlanner({
   const editing = mode === "edit" && !readOnly;
   const [tool, setTool] = useState<PlannerTool>("select");
   const [cellPx, setCellPx] = useState(26);
+  const [fitCellPx, setFitCellPx] = useState(26);
+  const [pan, setPan] = useState<ViewPoint>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [autoWalls, setAutoWalls] = useState(true);
   const [hoverCell, setHoverCell] = useState<Pt | null>(null);
   const [draft, setDraft] = useState<{ a: Pt; b: Pt } | null>(null);
+  const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [pastLen, setPastLen] = useState(0);
   const [futureLen, setFutureLen] = useState(0);
+  const [themeName, setThemeName] = useState("standard");
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const strokeRef = useRef<Stroke | null>(null);
+  const panGestureRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startPan: ViewPoint;
+  } | null>(null);
+  const measureGestureRef = useRef(false);
+  const roomTextEditRef = useRef<RoomTextEdit | null>(null);
+  const spacePressedRef = useRef(false);
+  const viewDirtyRef = useRef(false);
+  const cellPxRef = useRef(cellPx);
+  const panRef = useRef(pan);
   const pastRef = useRef<RentFloorPlan[]>([]);
   const futureRef = useRef<RentFloorPlan[]>([]);
 
@@ -156,11 +201,62 @@ export function RentFloorPlanner({
     planRef.current = plan;
   }, [plan]);
 
+  useEffect(() => {
+    cellPxRef.current = cellPx;
+  }, [cellPx]);
+
+  useEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
+
+  // Тема меняется атрибутом на <html> и не вызывает рендер дочерних
+  // компонентов. Подписываемся, чтобы перерисовать и сам canvas.
+  useEffect(() => {
+    const syncTheme = () =>
+      setThemeName(document.documentElement.getAttribute("data-admin-theme") || "standard");
+    syncTheme();
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-admin-theme"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const canvasTheme = useMemo(() => {
+    const dark = DARK_ADMIN_THEMES.includes(themeName);
+    const style = typeof document !== "undefined" ? getComputedStyle(document.documentElement) : null;
+    const token = (name: string, fallback: string) => style?.getPropertyValue(name).trim() || fallback;
+    return {
+      dark,
+      paper: token("--adm-card", dark ? "#1f2328" : "#ffffff"),
+      paperWarm: token("--adm-paper-warm", dark ? "#171a1f" : "#f5f3ee"),
+      ink: token("--adm-ink", dark ? "#e8eaed" : "#1f2833"),
+      inkSoft: token("--adm-ink-soft", dark ? "#dadce0" : "#3d4a58"),
+      inkMuted: token("--adm-ink-muted", dark ? "#9aa0a6" : "#7a8798"),
+      border: token("--adm-border-mid", dark ? "#3c4043" : "#c3ccd8"),
+      kraft: token("--adm-kraft", dark ? "#fdd663" : "#c8860a"),
+      kraftPale: token("--adm-kraft-pale", dark ? "#3c2f14" : "#fdf3dc"),
+      kraftLine: token("--adm-kraft-line", dark ? "rgba(253,214,99,.22)" : "#e2c98a"),
+      pinePale: token("--adm-pine-pale", dark ? "#1e2e1f" : "#e8f4ec"),
+      pineLine: token("--adm-pine-line", dark ? "rgba(129,201,149,.22)" : "#a3c9af"),
+      rust: token("--adm-rust", dark ? "#f28b82" : "#b83a1e"),
+      rustPale: token("--adm-rust-pale", dark ? "#2e1e1d" : "#fdeceb"),
+      rustLine: token("--adm-rust-line", dark ? "rgba(242,139,130,.22)" : "#e9b4a8"),
+      steel: token("--adm-steel", dark ? "#8ab4f8" : "#2b6cb0"),
+      teal: token("--adm-teal", dark ? "#5eead4" : "#0d7377"),
+    };
+  }, [themeName]);
+
   const tenantById = useMemo(() => new Map(tenants.map((t) => [t.id, t])), [tenants]);
   const selectedRoom = useMemo(
     () => plan.rooms.find((r) => r.id === selectedRoomId) || null,
     [plan.rooms, selectedRoomId]
   );
+
+  useEffect(() => {
+    if (!editing && !["pan", "select", "measure"].includes(tool)) setTool("select");
+  }, [editing, tool]);
 
   /* ─────────────── состояние помещения (долг/просрочка) ─────────────── */
 
@@ -172,12 +268,20 @@ export function RentFloorPlanner({
   };
 
   const roomPalette = (room: RentPlanRoom) => {
-    if (room.color) return paletteForColor(room.color);
-    if (!room.tenantId) return { fill: VACANT_FILL, line: "#c3ccd8" };
+    if (room.color) return paletteForColor(room.color, canvasTheme.dark);
+    if (!room.tenantId) {
+      return {
+        fill: canvasTheme.dark ? canvasTheme.paperWarm : VACANT_FILL,
+        line: canvasTheme.border,
+      };
+    }
     const st = roomState(room);
-    if (st && st.overdue > 0) return { fill: "#fdeceb", line: "#e9b4a8" };
-    if (st && st.debt > 0) return { fill: "#fdf3dc", line: "#e2c98a" };
-    return { fill: "#e8f4ec", line: "#a3c9af" };
+    if (st && st.overdue > 0) return { fill: canvasTheme.rustPale, line: canvasTheme.rustLine };
+    if (st && st.debt > 0) return { fill: canvasTheme.kraftPale, line: canvasTheme.kraftLine };
+    return {
+      fill: canvasTheme.pinePale,
+      line: canvasTheme.pineLine,
+    };
   };
 
   /* ─────────────────────────── история ─────────────────────────── */
@@ -189,7 +293,30 @@ export function RentFloorPlanner({
     setFutureLen(0);
   }
 
+  function beginRoomTextEdit(roomId: string, field: RoomTextField) {
+    const base = planRef.current;
+    const room = base.rooms.find((item) => item.id === roomId);
+    if (!room) return;
+    roomTextEditRef.current = {
+      base,
+      roomId,
+      field,
+      initialValue: field === "label" ? room.label : room.comment || "",
+    };
+  }
+
+  function finishRoomTextEdit() {
+    const edit = roomTextEditRef.current;
+    roomTextEditRef.current = null;
+    if (!edit) return;
+    const room = planRef.current.rooms.find((item) => item.id === edit.roomId);
+    const currentValue = edit.field === "label" ? room?.label || "" : room?.comment || "";
+    if (currentValue !== edit.initialValue) pushHistory(edit.base);
+  }
+
   function commit(next: RentFloorPlan, markDirty = true) {
+    // Keep pointer/keyboard handlers on the latest state even between React renders.
+    planRef.current = next;
     onChange(next, { history: false, markDirty });
   }
 
@@ -236,11 +363,14 @@ export function RentFloorPlanner({
     ctx.clearRect(0, 0, W, H);
 
     const showGridNow = editing && showGrid;
-    const wallColor = "#2f3a45";
-    const wallW = clamp(px * 0.18, 2.5, 7);
+    const wallColor = canvasTheme.ink;
+    const canvasPaper = canvasTheme.paper;
+    const minorGrid = canvasTheme.dark ? "rgba(255,255,255,.07)" : "rgba(90,105,125,.12)";
+    const majorGrid = canvasTheme.dark ? "rgba(255,255,255,.17)" : "rgba(90,105,125,.25)";
+    const wallW = clamp(px * 0.18, 1, 7);
 
-    // «бумага»
-    ctx.fillStyle = showGridNow ? "#fcfbf8" : "#ffffff";
+    // Фон и основные заливки используют токены активной темы.
+    ctx.fillStyle = canvasPaper;
     ctx.fillRect(0, 0, W, H);
 
     // заливки помещений
@@ -268,14 +398,14 @@ export function RentFloorPlanner({
     if (showGridNow) {
       ctx.lineWidth = 1;
       for (let x = 0; x <= plan.cols; x += 1) {
-        ctx.strokeStyle = x % 5 === 0 ? "rgba(120,130,145,.30)" : "rgba(150,160,175,.16)";
+        ctx.strokeStyle = x % 5 === 0 ? majorGrid : minorGrid;
         ctx.beginPath();
         ctx.moveTo(Math.round(x * px) + 0.5, 0);
         ctx.lineTo(Math.round(x * px) + 0.5, H);
         ctx.stroke();
       }
       for (let y = 0; y <= plan.rows; y += 1) {
-        ctx.strokeStyle = y % 5 === 0 ? "rgba(120,130,145,.30)" : "rgba(150,160,175,.16)";
+        ctx.strokeStyle = y % 5 === 0 ? majorGrid : minorGrid;
         ctx.beginPath();
         ctx.moveTo(0, Math.round(y * px) + 0.5);
         ctx.lineTo(W, Math.round(y * px) + 0.5);
@@ -289,9 +419,12 @@ export function RentFloorPlanner({
       const ry0 = Math.min(draft.a.y, draft.b.y);
       const rw = Math.abs(draft.a.x - draft.b.x) + 1;
       const rh = Math.abs(draft.a.y - draft.b.y) + 1;
-      ctx.fillStyle = "rgba(200,134,10,.16)";
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = canvasTheme.kraft;
       ctx.fillRect(rx0 * px, ry0 * px, rw * px, rh * px);
-      ctx.strokeStyle = "#c8860a";
+      ctx.restore();
+      ctx.strokeStyle = canvasTheme.kraft;
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
       ctx.strokeRect(rx0 * px, ry0 * px, rw * px, rh * px);
@@ -324,7 +457,7 @@ export function RentFloorPlanner({
       const y2 = isH ? op.y * px : (op.y + 1) * px;
       const L = px;
       // «прорезаем» стену и бежим от края до края
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle = canvasPaper;
       ctx.lineWidth = wallW + 2;
       ctx.beginPath();
       ctx.moveTo(x1, y1);
@@ -332,7 +465,7 @@ export function RentFloorPlanner({
       ctx.stroke();
 
       if (op.kind === "window") {
-        ctx.strokeStyle = "#2b6cb0";
+        ctx.strokeStyle = canvasTheme.steel;
         ctx.lineWidth = Math.max(1.5, wallW * 0.34);
         const off = Math.max(2, wallW * 0.5);
         for (const dir of [-1, 1]) {
@@ -346,14 +479,16 @@ export function RentFloorPlanner({
           }
           ctx.stroke();
         }
-        ctx.strokeStyle = "#9ec3e0";
+        ctx.strokeStyle = canvasTheme.steel;
+        ctx.globalAlpha = 0.62;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
+        ctx.globalAlpha = 1;
       } else if (op.kind === "gate") {
-        ctx.strokeStyle = "#0d7377";
+        ctx.strokeStyle = canvasTheme.teal;
         ctx.lineWidth = Math.max(1.5, wallW * 0.4);
         ctx.setLineDash([5, 4]);
         ctx.beginPath();
@@ -368,18 +503,20 @@ export function RentFloorPlanner({
         const hy = isH ? y1 : y1 + L * 0.12;
         const nx = isH ? 0 : 1;
         const ny = isH ? 1 : 0;
-        ctx.strokeStyle = "#b83a1e";
+        ctx.strokeStyle = canvasTheme.rust;
         ctx.lineWidth = Math.max(1.6, wallW * 0.42);
         ctx.beginPath();
         ctx.moveTo(hx, hy);
         ctx.lineTo(hx + nx * leafLen, hy + ny * leafLen);
         ctx.stroke();
-        ctx.strokeStyle = "rgba(184,58,30,.45)";
+        ctx.strokeStyle = canvasTheme.rust;
+        ctx.globalAlpha = 0.5;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         const start = isH ? 0 : Math.PI / 2;
         ctx.arc(hx, hy, leafLen, start, start + Math.PI / 2);
         ctx.stroke();
+        ctx.globalAlpha = 1;
       }
     }
 
@@ -400,7 +537,7 @@ export function RentFloorPlanner({
         {
           text: room.label,
           font: `800 ${titleSize}px Inter, system-ui, sans-serif`,
-          color: "#1f2833",
+          color: canvasTheme.ink,
         },
       ];
       if (tenant) {
@@ -413,13 +550,17 @@ export function RentFloorPlanner({
         lines.push({
           text: tenant.name,
           font: `600 ${subSize}px Inter, system-ui, sans-serif`,
-          color: debtText ? (st && st.overdue > 0 ? "#b83a1e" : "#96650a") : "#3d4a58",
+          color: debtText
+            ? st && st.overdue > 0
+              ? canvasTheme.rust
+              : canvasTheme.kraft
+            : canvasTheme.inkSoft,
         });
         if (debtText) {
           lines.push({
             text: debtText,
             font: `700 ${subSize * 0.92}px Inter, system-ui, sans-serif`,
-            color: "#b83a1e",
+            color: canvasTheme.rust,
           });
         }
       }
@@ -427,7 +568,7 @@ export function RentFloorPlanner({
         lines.push({
           text: `${area} м²`,
           font: `500 ${subSize * 0.9}px Inter, system-ui, sans-serif`,
-          color: "#7a8798",
+          color: canvasTheme.inkMuted,
         });
       }
       const step = titleSize * 0.95;
@@ -448,9 +589,47 @@ export function RentFloorPlanner({
       ctx.restore();
     }
 
+    // Размерная линия — временный CAD-инструмент измерения.
+    if (measurement && tool === "measure") {
+      const ax = measurement.a.x * px;
+      const ay = measurement.a.y * px;
+      const bx = measurement.b.x * px;
+      const by = measurement.b.y * px;
+      const dx = (measurement.b.x - measurement.a.x) * plan.cellSize;
+      const dy = (measurement.b.y - measurement.a.y) * plan.cellSize;
+      const length = Math.hypot(dx, dy);
+      const label = `${Number(length.toFixed(2)).toLocaleString("ru-RU")} м`;
+      const midX = (ax + bx) / 2;
+      const midY = (ay + by) / 2;
+      ctx.save();
+      ctx.strokeStyle = canvasTheme.kraft;
+      ctx.fillStyle = canvasTheme.kraft;
+      ctx.lineWidth = Math.max(1.5, px * 0.055);
+      ctx.setLineDash([Math.max(4, px * 0.22), Math.max(3, px * 0.14)]);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const point of [measurement.a, measurement.b]) {
+        ctx.beginPath();
+        ctx.arc(point.x * px, point.y * px, Math.max(3, px * 0.12), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.font = `700 ${clamp(px * 0.38, 10, 14)}px Inter, system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const labelWidth = ctx.measureText(label).width + 14;
+      ctx.fillStyle = canvasPaper;
+      ctx.fillRect(midX - labelWidth / 2, midY - 11, labelWidth, 22);
+      ctx.fillStyle = canvasTheme.ink;
+      ctx.fillText(label, midX, midY, labelWidth - 8);
+      ctx.restore();
+    }
+
     // выделение
     if (selectedRoom) {
-      ctx.strokeStyle = "#1f2833";
+      ctx.strokeStyle = canvasTheme.ink;
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 3]);
       for (const c of selectedRoom.cells) {
@@ -462,32 +641,114 @@ export function RentFloorPlanner({
 
     // подсветка клетки под курсором
     if (editing && hoverCell) {
-      ctx.strokeStyle = tool === "erase" ? "rgba(184,58,30,.75)" : "rgba(30,58,90,.7)";
+      ctx.strokeStyle = tool === "erase" ? canvasTheme.rust : canvasTheme.steel;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 3]);
       ctx.strokeRect(hoverCell.x * px + 0.5, hoverCell.y * px + 0.5, px - 1, px - 1);
       ctx.setLineDash([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cellPx, draft, editing, hoverCell, plan, selectedRoom, showGrid, tenantById, tool, invoices, today]);
+  }, [cellPx, canvasTheme, draft, editing, hoverCell, measurement, plan, selectedRoom, showGrid, tenantById, tool, invoices, today]);
 
-  // автоподбор масштаба под ширину контейнера
+  function setPanView(next: ViewPoint) {
+    panRef.current = next;
+    setPan(next);
+  }
+
+  function setZoom(next: number) {
+    const safe = clamp(next, 1, 120);
+    cellPxRef.current = safe;
+    setCellPx(safe);
+  }
+
+  function fitToViewport() {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const width = viewport.clientWidth - 72;
+    const height = viewport.clientHeight - 72;
+    if (width <= 0 || height <= 0) return;
+    const currentPlan = planRef.current;
+    const next = clamp(
+      Math.min(width / currentPlan.cols, height / currentPlan.rows),
+      1,
+      56
+    );
+    setZoom(next);
+    setFitCellPx(next);
+    setPanView({
+      x: (viewport.clientWidth - currentPlan.cols * next) / 2,
+      y: (viewport.clientHeight - currentPlan.rows * next) / 2,
+    });
+    viewDirtyRef.current = false;
+  }
+
+  /** Масштабирование с сохранением точки под курсором — как в CAD/Figma. */
+  function zoomAt(clientX: number, clientY: number, factor: number) {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const current = cellPxRef.current;
+    const next = clamp(current * factor, 1, 120);
+    if (Math.abs(next - current) < 0.01) return;
+    const anchorX = clientX - rect.left;
+    const anchorY = clientY - rect.top;
+    const worldX = (anchorX - panRef.current.x) / current;
+    const worldY = (anchorY - panRef.current.y) / current;
+    setPanView({
+      x: anchorX - worldX * next,
+      y: anchorY - worldY * next,
+    });
+    setZoom(next);
+    viewDirtyRef.current = true;
+  }
+
+  function zoomBy(factor: number) {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+  }
+
+  function centerOnRoom(room: RentPlanRoom) {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const bounds = roomBounds(planRef.current, room);
+    const px = cellPxRef.current;
+    setPanView({
+      x: viewport.clientWidth / 2 - (bounds.x0 + bounds.w / 2) * px,
+      y: viewport.clientHeight / 2 - (bounds.y0 + bounds.h / 2) * px,
+    });
+    viewDirtyRef.current = true;
+  }
+
+  // Вписываем чертёж по ширине и высоте. После ручного зума/перетаскивания
+  // сохраняем позицию пользователя при изменении размеров окна.
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewDirtyRef.current = false;
     const fit = () => {
-      const width = el.clientWidth - 4;
-      if (width > 60) {
-        setCellPx((prev) => {
-          const next = clamp(width / planRef.current.cols, 8, 40);
-          return Math.abs(next - prev) < 0.8 ? prev : next;
-        });
-      }
+      if (!viewDirtyRef.current) fitToViewport();
     };
     fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
+    const observer = new ResizeObserver(fit);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.cols, plan.rows]);
+
+  // Колесо всегда управляет масштабом, а не прокручивает страницу/холст.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      zoomAt(event.clientX, event.clientY, Math.exp(-event.deltaY * 0.0015));
+    };
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
+    // zoomAt reads mutable refs, so this listener does not need to be rebound.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ────────────────────── геометрия указателя ────────────────────── */
@@ -552,18 +813,43 @@ export function RentFloorPlanner({
 
   /* ───────────────────────── события указателя ───────────────────────── */
 
-  function handlePointerDown(e: ReactPointerEvent<HTMLCanvasElement>) {
+  function handlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    const shouldPan =
+      e.button === 1 || e.button === 2 || spacePressedRef.current || tool === "pan";
+    if (shouldPan) {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      panGestureRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startPan: panRef.current,
+      };
+      setIsPanning(true);
+      return;
+    }
+    if (e.button !== 0 || (e.target as HTMLElement) !== canvasRef.current) return;
+
     const base = planRef.current;
     const p = pointFrom(e.clientX, e.clientY);
+    e.currentTarget.setPointerCapture(e.pointerId);
 
-    if (!editing) {
-      const cell = cellFromPoint(p);
-      const room = roomAtCell(cellIndex(plan.cols, cell.x, cell.y));
-      onSelectRoom(room ? room.id : null);
+    if (tool === "measure") {
+      const point = {
+        x: clamp(Math.round(p.x), 0, base.cols),
+        y: clamp(Math.round(p.y), 0, base.rows),
+      };
+      setMeasurement({ a: point, b: point });
+      measureGestureRef.current = true;
       return;
     }
 
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (!editing) {
+      const cell = cellFromPoint(p);
+      const room = roomAtCell(cellIndex(base.cols, cell.x, cell.y));
+      onSelectRoom(room ? room.id : null);
+      return;
+    }
 
     if (tool === "room") {
       const cell = cellFromPoint(p);
@@ -575,13 +861,12 @@ export function RentFloorPlanner({
 
     if (tool === "select") {
       const cell = cellFromPoint(p);
-      const room = roomAtCell(cellIndex(plan.cols, cell.x, cell.y));
+      const room = roomAtCell(cellIndex(base.cols, cell.x, cell.y));
       if (!room) {
         onSelectRoom(null);
         return;
       }
       onSelectRoom(room.id);
-      pushHistory(base);
       strokeRef.current = { kind: "move-room", roomId: room.id, dx: 0, dy: 0, base, origin: cell };
       return;
     }
@@ -608,7 +893,7 @@ export function RentFloorPlanner({
       const cell = cellFromPoint(p);
       const stroke: Stroke = {
         kind: "erase-cells",
-        visited: [cellIndex(plan.cols, cell.x, cell.y)],
+        visited: [cellIndex(base.cols, cell.x, cell.y)],
         base,
       };
       strokeRef.current = stroke;
@@ -616,6 +901,7 @@ export function RentFloorPlanner({
       return;
     }
 
+    if (tool !== "wall" && tool !== "door" && tool !== "window" && tool !== "gate") return;
     if (!edge) return;
     pushHistory(base);
     const axis = edge.o;
@@ -633,10 +919,43 @@ export function RentFloorPlanner({
     commit(runStroke(stroke));
   }
 
-  function handlePointerMove(e: ReactPointerEvent<HTMLCanvasElement>) {
-    const p = pointFrom(e.clientX, e.clientY);
+  function handlePointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const panGesture = panGestureRef.current;
+    if (panGesture && panGesture.pointerId === e.pointerId) {
+      setPanView({
+        x: panGesture.startPan.x + e.clientX - panGesture.startX,
+        y: panGesture.startPan.y + e.clientY - panGesture.startY,
+      });
+      viewDirtyRef.current = true;
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    const overCanvas = Boolean(
+      rect &&
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom
+    );
+    const p = canvas ? pointFrom(e.clientX, e.clientY) : { x: 0, y: 0 };
     const cell = cellFromPoint(p);
-    setHoverCell((prev) => (prev && prev.x === cell.x && prev.y === cell.y ? prev : cell));
+    if (overCanvas) {
+      setHoverCell((prev) => (prev && prev.x === cell.x && prev.y === cell.y ? prev : cell));
+    } else {
+      setHoverCell(null);
+    }
+
+    if (measureGestureRef.current && tool === "measure") {
+      const currentPlan = planRef.current;
+      const point = {
+        x: clamp(Math.round(p.x), 0, currentPlan.cols),
+        y: clamp(Math.round(p.y), 0, currentPlan.rows),
+      };
+      setMeasurement((prev) => (prev ? { ...prev, b: point } : prev));
+      return;
+    }
 
     const stroke = strokeRef.current;
     if (!stroke || !editing) return;
@@ -653,7 +972,8 @@ export function RentFloorPlanner({
       const dx = cell.x - origin.x;
       const dy = cell.y - origin.y;
       if (stroke.dx === dx && stroke.dy === dy) return;
-      const next: Stroke = { ...stroke, dx, dy };
+      if (!stroke.historyPushed) pushHistory(stroke.base);
+      const next: Stroke = { ...stroke, dx, dy, historyPushed: true };
       strokeRef.current = next;
       commit(runStroke(next));
       return;
@@ -667,7 +987,7 @@ export function RentFloorPlanner({
       return;
     }
     if (stroke.kind === "erase-cells") {
-      const idx = cellIndex(plan.cols, cell.x, cell.y);
+      const idx = cellIndex(planRef.current.cols, cell.x, cell.y);
       if (stroke.visited.includes(idx)) return;
       const next: Stroke = { ...stroke, visited: [...stroke.visited, idx] };
       strokeRef.current = next;
@@ -675,7 +995,26 @@ export function RentFloorPlanner({
     }
   }
 
-  function handlePointerUp(e: ReactPointerEvent<HTMLCanvasElement>) {
+  function handlePointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    const panGesture = panGestureRef.current;
+    if (panGesture && panGesture.pointerId === e.pointerId) {
+      panGestureRef.current = null;
+      setIsPanning(false);
+      return;
+    }
+
+    if (measureGestureRef.current) {
+      measureGestureRef.current = false;
+      const currentPlan = planRef.current;
+      const point = pointFrom(e.clientX, e.clientY);
+      const snapped = {
+        x: clamp(Math.round(point.x), 0, currentPlan.cols),
+        y: clamp(Math.round(point.y), 0, currentPlan.rows),
+      };
+      setMeasurement((prev) => (prev ? { ...prev, b: snapped } : prev));
+      return;
+    }
+
     const stroke = strokeRef.current;
     strokeRef.current = null;
     if (!stroke || !editing) return;
@@ -684,8 +1023,9 @@ export function RentFloorPlanner({
       const cell = cellFromPoint(pointFrom(e.clientX, e.clientY));
       const final: Stroke = { kind: "room", a: stroke.a, b: cell, base: stroke.base };
       const next = runStroke(final);
-      commit(next);
       const created = next.rooms.find((r) => !stroke.base.rooms.some((x) => x.id === r.id));
+      if (created) pushHistory(stroke.base);
+      commit(next);
       if (created) onSelectRoom(created.id);
     }
   }
@@ -693,17 +1033,35 @@ export function RentFloorPlanner({
   /* ─────────────────── горячие клавиши ─────────────────── */
 
   useEffect(() => {
-    if (!editing) return;
-    const onKey = (e: KeyboardEvent) => {
+    const isInputTarget = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      return Boolean(
+        element &&
+          (element.isContentEditable ||
+            /input|textarea|select/i.test(element.tagName) ||
+            element.closest("[contenteditable='true']"))
+      );
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && /input|textarea|select/i.test(target.tagName)) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      const typing = isInputTarget(e.target);
+      const inModal = Boolean(target?.closest(".admin-modal, .admin-modal-overlay, [role='dialog']"));
+      if (inModal) return;
+      if (e.code === "Space" && !typing && !target?.closest("button, a, [role='button']")) {
+        spacePressedRef.current = true;
+        e.preventDefault();
+        return;
+      }
+      if (!editing || typing) return;
+      const command = e.ctrlKey || e.metaKey;
+      const key = e.code.startsWith("Key") ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
+      if (command && (e.code === "KeyZ" || key === "z")) {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+      if (command && (e.code === "KeyY" || key === "y")) {
         e.preventDefault();
         redo();
         return;
@@ -724,10 +1082,38 @@ export function RentFloorPlanner({
         const dx = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
         const dy = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
         nudge(selectedRoomId, dx, dy);
+        return;
       }
+      const shortcuts: Record<string, PlannerTool> = {
+        h: "pan",
+        v: "select",
+        m: "measure",
+        w: "wall",
+        d: "door",
+        o: "window",
+        g: "gate",
+        r: "room",
+        e: "erase",
+      };
+      const nextTool = shortcuts[key];
+      if (nextTool) setTool(nextTool);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") spacePressedRef.current = false;
+    };
+    const onBlur = () => {
+      spacePressedRef.current = false;
+      panGestureRef.current = null;
+      setIsPanning(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, selectedRoomId, plan]);
 
@@ -805,48 +1191,63 @@ export function RentFloorPlanner({
 
   const tools: { id: PlannerTool; label: string; icon: ReactNode; hint: string }[] = [
     {
+      id: "pan",
+      label: "Рука",
+      icon: <Hand size={14} />,
+      hint: "Переместить холст перетаскиванием (H); Space или средняя кнопка мыши — временная панорама",
+    },
+    {
       id: "select",
       label: "Выбор",
       icon: <MousePointer2 size={14} />,
-      hint: "Выбрать помещение, перетащить его мышью; стрелки — сдвиг, Delete — удалить",
+      hint: "Выбрать и переместить помещение (V); стрелки — сдвиг, Delete — удалить",
+    },
+    {
+      id: "measure",
+      label: "Размер",
+      icon: <Ruler size={14} />,
+      hint: "Измерить расстояние между точками сетки (M); размер покажется в метрах",
     },
     {
       id: "wall",
       label: "Стена",
       icon: <Square size={14} />,
-      hint: "Ведите мышью вдоль клеток: влево/вправо — горизонтальная стена, вверх/вниз — вертикальная",
+      hint: "Ведите мышью вдоль клеток: горизонтальная или вертикальная стена (W)",
     },
     {
       id: "door",
       label: "Дверь",
       icon: <DoorOpen size={14} />,
-      hint: "Клик или протяжка по стене — дверной проём",
+      hint: "Клик или протяжка по стене — дверной проём (D)",
     },
     {
       id: "window",
       label: "Окно",
       icon: <PanelTop size={14} />,
-      hint: "Клик или протяжка по стене — окно",
+      hint: "Клик или протяжка по стене — окно (O)",
     },
     {
       id: "gate",
       label: "Ворота",
       icon: <ArrowRight size={14} />,
-      hint: "Клик или протяжка по стене — ворота/проезд",
+      hint: "Клик или протяжка по стене — ворота/проезд (G)",
     },
     {
       id: "room",
       label: "Помещение",
       icon: <Grid3x3 size={14} />,
-      hint: "Протяните прямоугольник по клеткам — появится помещение с заливкой",
+      hint: "Протяните прямоугольник по клеткам — появится помещение с заливкой (R)",
     },
     {
       id: "erase",
       label: "Ластик",
       icon: <Eraser size={14} />,
-      hint: "Стирает стены/проёмы, а по заливке — убирает клетки помещений",
+      hint: "Стирает стены/проёмы и клетки помещений (E)",
     },
   ];
+  const visibleTools = editing
+    ? tools
+    : tools.filter((item) => item.id === "pan" || item.id === "select" || item.id === "measure");
 
   function statusChip(room: RentPlanRoom) {
     const tenant = room.tenantId ? tenantById.get(room.tenantId) : null;
@@ -866,27 +1267,45 @@ export function RentFloorPlanner({
     return <span className="rfp-room-card__chip rfp-room-card__chip--ok">без долга</span>;
   }
 
+  const selectedRoomBounds = selectedRoom ? roomBounds(plan, selectedRoom) : null;
+  const selectedRoomWidth = selectedRoomBounds
+    ? Math.round(selectedRoomBounds.w * plan.cellSize * 100) / 100
+    : 0;
+  const selectedRoomHeight = selectedRoomBounds
+    ? Math.round(selectedRoomBounds.h * plan.cellSize * 100) / 100
+    : 0;
+  const measurementSize = measurement
+    ? {
+        width: Math.abs(measurement.b.x - measurement.a.x) * plan.cellSize,
+        height: Math.abs(measurement.b.y - measurement.a.y) * plan.cellSize,
+        length: Math.hypot(
+          (measurement.b.x - measurement.a.x) * plan.cellSize,
+          (measurement.b.y - measurement.a.y) * plan.cellSize
+        ),
+      }
+    : null;
+  const formatMeters = (value: number) => `${Number(value.toFixed(2)).toLocaleString("ru-RU")} м`;
   const scaleLabel = `${plan.cols}×${plan.rows} клеток · ${Math.round(plan.cellSize * 100) / 100} м/клетка · ${Math.round(plan.cols * plan.cellSize * 10) / 10}×${Math.round(plan.rows * plan.cellSize * 10) / 10} м`;
 
   return (
     <div className="rfp">
       <div className="rfp__toolbar">
-        {editing && (
-          <div className="rfp__tools" role="toolbar" aria-label="Инструменты планировки">
-            {tools.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                title={t.hint}
-                className={`rfp__tool${tool === t.id ? " rfp__tool--on" : ""}`}
-                onClick={() => setTool(t.id)}
-              >
-                {t.icon}
-                <span>{t.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="rfp__tools" role="toolbar" aria-label="Инструменты планировки">
+          {visibleTools.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              title={t.hint}
+              aria-label={t.label}
+              aria-pressed={tool === t.id}
+              className={`rfp__tool${tool === t.id ? " rfp__tool--on" : ""}`}
+              onClick={() => setTool(t.id)}
+            >
+              {t.icon}
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
 
         <div className="rfp__toolbar-right">
           {editing && (
@@ -895,6 +1314,7 @@ export function RentFloorPlanner({
                 type="button"
                 className="rfp__icon-btn"
                 title="Отменить (Ctrl+Z)"
+                aria-label="Отменить последнее действие (Ctrl+Z)"
                 onClick={undo}
                 disabled={pastLen === 0}
               >
@@ -904,6 +1324,7 @@ export function RentFloorPlanner({
                 type="button"
                 className="rfp__icon-btn"
                 title="Повторить (Ctrl+Shift+Z)"
+                aria-label="Повторить действие (Ctrl+Shift+Z)"
                 onClick={redo}
                 disabled={futureLen === 0}
               >
@@ -924,29 +1345,30 @@ export function RentFloorPlanner({
           <button
             type="button"
             className="rfp__icon-btn"
-            title="Уменьшить"
-            onClick={() => setCellPx((v) => clamp(v - 4, 8, 48))}
+            title="Уменьшить масштаб"
+            aria-label="Уменьшить масштаб"
+            onClick={() => zoomBy(1 / 1.15)}
           >
             <ZoomOut size={14} />
           </button>
-          <span className="rfp__zoom">{Math.round((cellPx / 26) * 100)}%</span>
+          <span className="rfp__zoom" title="Масштаб относительно вписывания">
+            {Math.round((cellPx / Math.max(1, fitCellPx)) * 100)}%
+          </span>
           <button
             type="button"
             className="rfp__icon-btn"
-            title="Увеличить"
-            onClick={() => setCellPx((v) => clamp(v + 4, 8, 48))}
+            title="Увеличить масштаб"
+            aria-label="Увеличить масштаб"
+            onClick={() => zoomBy(1.15)}
           >
             <ZoomIn size={14} />
           </button>
           <button
             type="button"
             className="rfp__icon-btn"
-            title="Вписать в экран"
-            onClick={() => {
-              const el = scrollRef.current;
-              if (!el) return;
-              setCellPx(clamp((el.clientWidth - 4) / plan.cols, 8, 40));
-            }}
+            title="Вписать весь этаж в холст"
+            aria-label="Вписать весь этаж в холст"
+            onClick={fitToViewport}
           >
             <Maximize2 size={14} />
           </button>
@@ -979,29 +1401,47 @@ export function RentFloorPlanner({
           <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={clearFloor}>
             <Trash2 size={12} /> Очистить этаж
           </button>
-          <span className="rfp__hint">{tools.find((t) => t.id === tool)?.hint}</span>
+          <span className="rfp__hint">
+            {tools.find((t) => t.id === tool)?.hint} · Колесо — масштаб, Space/средняя кнопка — панорама · Ctrl+Z — отмена, Ctrl+Shift+Z — повтор.
+          </span>
         </div>
       )}
 
       <div className="rfp__body">
         <div className="rfp__stage">
-          <div className="rfp__scroll" ref={scrollRef}>
+          <div
+            className={`rfp__viewport${isPanning ? " rfp__viewport--panning" : ""}${tool === "pan" ? " rfp__viewport--pan-tool" : ""}`}
+            ref={viewportRef}
+            role="application"
+            aria-label="Холст плана этажа. Колесо мыши — масштаб, Space или средняя кнопка — перемещение"
+            tabIndex={0}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onPointerLeave={() => setHoverCell(null)}
+            onContextMenu={(e) => e.preventDefault()}
+          >
             <canvas
               ref={canvasRef}
               className={`rfp__canvas${editing ? " rfp__canvas--edit" : ""}`}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              onMouseLeave={() => setHoverCell(null)}
-              onContextMenu={(e) => e.preventDefault()}
+              style={{ transform: `translate3d(${pan.x}px, ${pan.y}px, 0)` }}
             />
+            <span className="rfp__viewport-hint">
+              Колесо — масштаб <i /> Space / средняя кнопка — перемещение
+            </span>
           </div>
           <div className="rfp__statusbar">
             <span>{scaleLabel}</span>
             <span>Помещений: {plan.rooms.length}</span>
             <span>Стен: {plan.walls.length}</span>
             <span>Проёмов: {plan.openings.length}</span>
+            {measurementSize && tool === "measure" && (
+              <strong className="rfp__measurement-status">
+                Размер: {formatMeters(measurementSize.width)} × {formatMeters(measurementSize.height)}
+                {" · "}{formatMeters(measurementSize.length)} по диагонали
+              </strong>
+            )}
             {!editing && (
               <span className="rfp__statusbar-badge">
                 <Hand size={12} /> {readOnly ? "режим просмотра" : "опубликованная схема"}
@@ -1035,8 +1475,9 @@ export function RentFloorPlanner({
                   <input
                     className="admin-input"
                     value={selectedRoom.label}
+                    onFocus={() => beginRoomTextEdit(selectedRoom.id, "label")}
                     onChange={(e) => patchRoom(selectedRoom.id, { label: e.target.value }, false)}
-                    onBlur={() => commit(planRef.current)}
+                    onBlur={finishRoomTextEdit}
                     disabled={!editing}
                     placeholder="Офис 214"
                   />
@@ -1068,14 +1509,18 @@ export function RentFloorPlanner({
                       })}
                   </select>
                 </div>
-                <div className="admin-grid-2">
-                  <div className="admin-field">
-                    <label className="admin-label">Площадь</label>
-                    <input className="admin-input" value={`${roomArea(plan, selectedRoom)} м²`} readOnly />
+                <div className="rfp__metrics" aria-label="Размеры помещения">
+                  <div className="rfp__metric">
+                    <span>Площадь</span>
+                    <strong>{roomArea(plan, selectedRoom)} м²</strong>
                   </div>
-                  <div className="admin-field">
-                    <label className="admin-label">Клеток</label>
-                    <input className="admin-input" value={selectedRoom.cells.length} readOnly />
+                  <div className="rfp__metric">
+                    <span>Габариты</span>
+                    <strong>{formatMeters(selectedRoomWidth)} × {formatMeters(selectedRoomHeight)}</strong>
+                  </div>
+                  <div className="rfp__metric">
+                    <span>Клеток</span>
+                    <strong>{selectedRoom.cells.length}</strong>
                   </div>
                 </div>
                 <div className="admin-field">
@@ -1096,7 +1541,10 @@ export function RentFloorPlanner({
                         type="button"
                         title={c.name}
                         className={`rfp__swatch${selectedRoom.color === c.id ? " rfp__swatch--on" : ""}`}
-                        style={{ background: c.fill, borderColor: c.line }}
+                        style={{
+                          background: canvasTheme.dark ? c.darkFill : c.fill,
+                          borderColor: canvasTheme.dark ? c.darkLine : c.line,
+                        }}
                         onClick={() => patchRoom(selectedRoom.id, { color: c.id })}
                         disabled={!editing}
                       />
@@ -1108,8 +1556,9 @@ export function RentFloorPlanner({
                   <textarea
                     className="admin-input rfp__textarea"
                     value={selectedRoom.comment || ""}
+                    onFocus={() => beginRoomTextEdit(selectedRoom.id, "comment")}
                     onChange={(e) => patchRoom(selectedRoom.id, { comment: e.target.value }, false)}
-                    onBlur={() => commit(planRef.current)}
+                    onBlur={finishRoomTextEdit}
                     disabled={!editing}
                     placeholder="Например: вход со двора, отдельный счётчик"
                   />
@@ -1197,15 +1646,7 @@ export function RentFloorPlanner({
                         className={`rfp-room-card${selectedRoomId === room.id ? " rfp-room-card--on" : ""}`}
                         onClick={() => {
                           onSelectRoom(room.id);
-                          const b = roomBounds(plan, room);
-                          const el = scrollRef.current;
-                          if (el) {
-                            el.scrollTo({
-                              left: Math.max(0, (b.x0 + b.w / 2) * cellPx - el.clientWidth / 2),
-                              top: Math.max(0, (b.y0 + b.h / 2) * cellPx - el.clientHeight / 2),
-                              behavior: "smooth",
-                            });
-                          }
+                          centerOnRoom(room);
                         }}
                       >
                         <span

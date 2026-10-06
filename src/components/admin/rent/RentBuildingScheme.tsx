@@ -461,10 +461,17 @@ export function RentBuildingScheme({
                 <button
                   className="admin-btn admin-btn--primary admin-btn--sm"
                   onClick={() => save()}
-                  disabled={saving}
+                  disabled={saving || !dirty}
+                  title={dirty ? "Сохранить несохранённые изменения планировки" : "Нет несохранённых изменений"}
                 >
-                  {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                  {dirty ? "Сохранить" : "Сохранить"}
+                  {saving ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : dirty ? (
+                    <Save size={13} />
+                  ) : (
+                    <CheckCircle2 size={13} />
+                  )}
+                  {saving ? "Сохранение…" : dirty ? "Сохранить" : "Нет изменений"}
                 </button>
                 {isPublished ? (
                   <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={unpublish} disabled={saving}>
@@ -555,6 +562,7 @@ export function RentBuildingScheme({
 
       {/* Сам планировщик */}
       <RentFloorPlanner
+        key={`${activeBuildingId}:${activeFloor}`}
         plan={activePlan}
         onChange={(next, options) => upsertPlan(next, options?.markDirty !== false)}
         readOnly={Boolean(readOnly)}
@@ -633,16 +641,16 @@ export function RentBuildingScheme({
       <div className="rs-legend">
         <span className="rs-legend__title">Легенда</span>
         <span className="rs-legend__item">
-          <i style={{ background: "#eef2f7", borderColor: "#c3ccd8" }} /> свободно
+          <i className="rs-legend__swatch--free" /> свободно
         </span>
         <span className="rs-legend__item">
-          <i style={{ background: "#e8f4ec", borderColor: "#a3c9af" }} /> занято, без долга
+          <i className="rs-legend__swatch--ok" /> занято, без долга
         </span>
         <span className="rs-legend__item">
-          <i style={{ background: "#fdf3dc", borderColor: "#e2c98a" }} /> есть долг
+          <i className="rs-legend__swatch--debt" /> есть долг
         </span>
         <span className="rs-legend__item">
-          <i style={{ background: "#fdeceb", borderColor: "#e9b4a8" }} /> просрочка
+          <i className="rs-legend__swatch--overdue" /> просрочка
         </span>
         <span className="rs-legend__item rs-legend__item--wall">
           <i className="rs-legend__wall" /> стены

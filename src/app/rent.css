@@ -1459,9 +1459,13 @@
   border: 0 !important;
   border-radius: 2px !important;
 }
-.rs-legend__wall { background: #2f3a45; }
-.rs-legend__door { background: #b83a1e; }
-.rs-legend__window { background: #2b6cb0; }
+.rs-legend__wall { background: var(--adm-ink); }
+.rs-legend__door { background: var(--adm-rust); }
+.rs-legend__window { background: var(--adm-steel); }
+.rs-legend__swatch--free { background: var(--adm-paper-warm); border-color: var(--adm-border-mid) !important; }
+.rs-legend__swatch--ok { background: var(--adm-pine-pale); border-color: var(--adm-pine-line) !important; }
+.rs-legend__swatch--debt { background: var(--adm-kraft-pale); border-color: var(--adm-kraft-line) !important; }
+.rs-legend__swatch--overdue { background: var(--adm-rust-pale); border-color: var(--adm-rust-line) !important; }
 
 /* ── Планировщик ── */
 .rfp {
@@ -1509,6 +1513,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
   margin-left: auto;
 }
 .rfp__icon-btn {
@@ -1587,23 +1592,63 @@
   gap: 6px;
   min-width: 0;
 }
-.rfp__scroll {
+.rfp__viewport {
   position: relative;
-  overflow: auto;
-  max-height: min(72vh, 780px);
-  background: #fff;
+  isolation: isolate;
+  height: min(72vh, 780px);
+  min-height: 360px;
+  overflow: hidden;
+  background: var(--adm-paper-warm);
   border: 1px solid var(--adm-border-mid);
   border-radius: 15px;
   box-shadow: var(--adm-sh-xs);
-  overscroll-behavior: contain;
-}
-.rfp__canvas {
-  display: block;
-  touch-action: auto;
-}
-.rfp__canvas--edit {
-  cursor: crosshair;
+  overscroll-behavior: none;
   touch-action: none;
+  outline: none;
+  cursor: default;
+}
+.rfp__viewport:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--adm-kraft) 24%, transparent), var(--adm-sh-xs);
+}
+.rfp__viewport--pan-tool { cursor: grab; }
+.rfp__viewport--panning { cursor: grabbing; }
+.rfp__canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  touch-action: none;
+  max-width: none;
+  will-change: transform;
+}
+.rfp__canvas--edit { cursor: crosshair; }
+.rfp__viewport--pan-tool .rfp__canvas { cursor: grab; }
+.rfp__viewport--panning .rfp__canvas { cursor: grabbing; }
+.rfp__viewport-hint {
+  position: absolute;
+  z-index: 2;
+  right: 12px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--adm-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--adm-card) 90%, transparent);
+  color: var(--adm-ink-muted);
+  box-shadow: var(--adm-sh-xs);
+  font-size: 10px;
+  line-height: 1;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.rfp__viewport-hint i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--adm-border-mid);
 }
 .rfp__statusbar {
   display: flex;
@@ -1624,6 +1669,16 @@
   color: var(--adm-pine);
   font-weight: 700;
 }
+.rfp__measurement-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--adm-kraft-pale);
+  border: 1px solid var(--adm-kraft-line);
+  color: var(--adm-kraft);
+  font-variant-numeric: tabular-nums;
+}
 .rfp__panel {
   position: sticky;
   top: 12px;
@@ -1636,6 +1691,34 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.rfp__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 7px;
+}
+.rfp__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--adm-border-soft);
+  border-radius: 10px;
+  background: var(--adm-paper);
+}
+.rfp__metric span {
+  color: var(--adm-ink-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.rfp__metric strong {
+  overflow-wrap: anywhere;
+  color: var(--adm-ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 .rfp__textarea {
   min-height: 62px;
@@ -1775,7 +1858,7 @@
 @media (max-width: 1080px) {
   .rfp__body { grid-template-columns: minmax(0, 1fr); }
   .rfp__panel { position: static; }
-  .rfp__scroll { max-height: 60vh; }
+  .rfp__viewport { height: min(62vh, 680px); min-height: 320px; }
   .rd-grid--ops { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -1817,7 +1900,7 @@
   .rfp__toolbar-right { margin-left: 0; width: 100%; justify-content: flex-start; }
   .rfp__subbar { gap: 8px; }
   .rfp__hint { margin-left: 0; flex-basis: 100%; }
-  .rfp__scroll { max-height: 52vh; }
+  .rfp__viewport { height: min(54vh, 560px); min-height: 280px; }
   .rfp__statusbar { gap: 10px; font-size: 10.5px; }
   .rfp__rooms { max-height: 280px; }
 }
@@ -1835,4 +1918,157 @@
   background: var(--adm-steel-pale);
   border-color: var(--adm-steel-line);
   color: var(--adm-steel);
+}
+
+/* ══════════════════════════════════════════════════════════
+   Темизация аренды и оформление контрагентов
+   Поверхности в этом модуле работают от тех же токенов, что и
+   остальная админка; canvas читает их для собственного рендера.
+   ══════════════════════════════════════════════════════════ */
+[data-admin="true"] {
+  --rent-finance-from: color-mix(in srgb, var(--adm-ink-deep) 76%, var(--adm-steel));
+  --rent-finance-mid: color-mix(in srgb, var(--adm-ink-deep) 88%, var(--adm-steel));
+  --rent-finance-deep: var(--adm-ink-deep);
+  --rent-finance-glow: color-mix(in srgb, var(--adm-kraft) 44%, transparent);
+}
+
+.rd-hero {
+  background: linear-gradient(135deg, var(--rent-finance-from) 0%, var(--rent-finance-mid) 55%, var(--rent-finance-deep) 100%);
+}
+.rd-hero::after {
+  background: radial-gradient(circle, var(--rent-finance-glow), transparent 68%);
+}
+.rd-quick__icon--kraft {
+  background: var(--adm-kraft);
+  color: var(--adm-on-accent);
+}
+.rd-account {
+  background: linear-gradient(140deg, var(--rent-finance-from) 0%, var(--rent-finance-deep) 78%);
+}
+.rd-kpi__card--danger {
+  background: linear-gradient(180deg, var(--adm-card), var(--adm-rust-pale));
+}
+.rb__panel {
+  background: linear-gradient(180deg, var(--rent-finance-from), var(--rent-finance-deep));
+}
+.rb__hero {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 94% -14%, var(--rent-finance-glow), transparent 34%),
+    linear-gradient(135deg, var(--rent-finance-from) 0%, var(--rent-finance-mid) 60%, var(--rent-finance-deep) 100%);
+}
+.rb__hero > * { position: relative; z-index: 1; }
+.rb__acc--on {
+  background: color-mix(in srgb, var(--adm-kraft) 18%, transparent);
+  border-color: var(--adm-kraft-line);
+}
+.rb__chip--on {
+  background: var(--adm-kraft);
+  color: var(--adm-on-accent);
+  border-color: var(--adm-kraft);
+}
+.rb-op__pill--party {
+  background: var(--adm-paper-warm);
+  color: var(--adm-ink-muted);
+  border-color: var(--adm-border);
+  text-transform: lowercase;
+}
+.rb-op__pill--tenant {
+  background: var(--adm-steel-pale);
+  color: var(--adm-steel);
+  border-color: var(--adm-steel-line);
+}
+.rb__acc:focus-visible,
+.rb__chip:focus-visible,
+.rb__filter:focus-visible,
+.rb__tab:focus-visible,
+.rfp__tool:focus-visible,
+.rfp__icon-btn:focus-visible,
+.rfp-room-card:focus-visible {
+  outline: 2px solid var(--adm-kraft);
+  outline-offset: 2px;
+}
+
+.rent-tenant-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 230px;
+}
+.rent-tenant-cell__avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid var(--adm-steel-line);
+  border-radius: 11px;
+  background: var(--adm-steel-pale);
+  color: var(--adm-steel);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+.rent-tenant-cell__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.rent-tenant-cell__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--adm-ink);
+  font-weight: 700;
+}
+.rent-tenant-cell__name .admin-badge { margin: 0 !important; }
+.rent-tenant-cell__meta {
+  overflow-wrap: anywhere;
+  color: var(--adm-ink-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.rent-org-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 180px;
+  padding: 4px 9px;
+  border: 1px solid var(--adm-kraft-line);
+  border-radius: 999px;
+  background: var(--adm-kraft-pale);
+  color: var(--adm-kraft);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.rent-payment-counterparty-hint {
+  color: var(--adm-ink-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.rfp__viewport {
+  background: var(--adm-paper-warm);
+}
+.rfp__swatch {
+  background: var(--adm-card);
+}
+.rs-note { color: var(--adm-kraft); }
+
+@media (max-width: 760px) {
+  .rent-tenant-cell { min-width: 0; }
+  .rent-tenant-cell__avatar { width: 30px; height: 30px; flex-basis: 30px; }
+  .rfp__viewport-hint {
+    right: 8px;
+    bottom: 8px;
+    max-width: calc(100% - 16px);
+    font-size: 9px;
+    line-height: 1.2;
+    white-space: normal;
+  }
+  .rfp__statusbar { align-items: flex-start; }
+  .rfp__measurement-status { white-space: normal; }
 }
