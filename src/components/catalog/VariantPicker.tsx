@@ -19,10 +19,9 @@
 //     цену товара.
 //   • Если у варианта price=null — берём с product (через
 //     resolveVariant в AddToCartButton).
-//   • Если у варианта stockQty=0 — помечаем чип как
-//     «Нет в наличии» (серый, некликабельный). Если все
-//     варианты в option_type распроданы — клиент не сможет
-//     положить товар в корзину, только оставить заявку.
+//   • Если склад ведётся по вариантам и stockQty=0 — помечаем чип
+//     как «Нет в наличии». Если ни у одного варианта нет остатка,
+//     используется общий остаток родительского товара.
 //
 // Архитектурное решение: компонент контролируемый
 // (selectedVariantId / onSelectVariant в родителе), чтобы
@@ -40,6 +39,8 @@ export interface VariantPickerProps {
   variants: ProductVariant[];
   /** Колбэк: выбранный вариант (или null — «варианты не выбраны»). */
   onSelectVariant: (variant: ProductVariant | null) => void;
+  /** true, если задан отдельный складской остаток хотя бы для одного варианта. */
+  manageVariantStock?: boolean;
   /**
    * Если true — изначально выбирается первый вариант, который
    * есть в наличии. По умолчанию true: иначе кладовщик
@@ -84,7 +85,10 @@ export function VariantPicker({
   variants,
   onSelectVariant,
   preferInStock = true,
+  manageVariantStock,
 }: VariantPickerProps) {
+  const usesVariantStock =
+    manageVariantStock ?? variants.some((variant) => variant.stockQty > 0);
   // Группируем варианты по option_type
   const groups = useMemo<OptionGroup[]>(() => {
     if (!variants || variants.length === 0) return [];
@@ -134,7 +138,7 @@ export function VariantPicker({
       return;
     }
     let pick: ProductVariant | null = null;
-    if (preferInStock) {
+    if (preferInStock && usesVariantStock) {
       pick = variants.find((v) => v.stockQty > 0) || variants[0] || null;
     } else {
       pick = variants[0] || null;
@@ -162,7 +166,7 @@ export function VariantPicker({
           <div className="variant-group__chips">
             {g.variants.map((v) => {
               const isSelected = v.id === selectedId;
-              const isOut = v.stockQty <= 0;
+              const isOut = usesVariantStock && v.stockQty <= 0;
               return (
                 <button
                   key={v.id}
@@ -208,7 +212,7 @@ export function VariantPicker({
             })}
           </div>
           {/* Если все варианты в группе распроданы — подсказка */}
-          {g.variants.every((v) => v.stockQty <= 0) && (
+          {usesVariantStock && g.variants.every((v) => v.stockQty <= 0) && (
             <div className="variant-group__warn">
               <Package size={12} />
               Все варианты этой опции распроданы

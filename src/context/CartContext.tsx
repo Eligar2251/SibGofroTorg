@@ -28,6 +28,8 @@ export interface CartItem {
   quantity: number;
   imageUrl?: string | null;
   maxStock?: number | null;
+  /** Общий лимит для вариантов, наследующих остаток родительского товара. */
+  stockPoolId?: string | null;
 }
 
 /**
@@ -71,6 +73,15 @@ function cartItemKey(item: Pick<CartItem, "productId" | "variantId">): string {
   return `${item.productId}::${item.variantId || ""}`;
 }
 
+/** Обычные варианты имеют отдельные лимиты, наследующие — общий остаток товара. */
+function stockPoolKey(
+  item: Pick<CartItem, "productId" | "variantId" | "stockPoolId">,
+): string {
+  return item.stockPoolId
+    ? `pool:${item.stockPoolId}`
+    : `line:${cartItemKey(item)}`;
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -90,6 +101,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           ...it,
           variantId: it.variantId ?? null,
           variantName: it.variantName ?? null,
+          stockPoolId: it.stockPoolId ?? null,
         }));
         setCart(normalized);
       } catch (e) {
@@ -118,27 +130,45 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const addToCart = (product: Omit<CartItem, "quantity">, qty = 1) => {
     const addedQty = Math.max(1, Math.round(qty));
     const incomingKey = cartItemKey(product);
+    const incomingPool = stockPoolKey(product);
     const existing = cart.find((item) => cartItemKey(item) === incomingKey);
-    let lineQty = addedQty;
-    if (existing) {
-      const newQty = existing.quantity + addedQty;
-      lineQty = product.maxStock != null ? Math.min(newQty, product.maxStock) : newQty;
-    } else if (product.maxStock != null) {
-      lineQty = Math.min(addedQty, product.maxStock);
-    }
+    const otherPoolQty = cart.reduce(
+      (sum, item) =>
+        stockPoolKey(item) === incomingPool && cartItemKey(item) !== incomingKey
+          ? sum + item.quantity
+          : sum,
+      0,
+    );
+    const maxForLine =
+      product.maxStock != null
+        ? Math.max(0, product.maxStock - otherPoolQty)
+        : Number.POSITIVE_INFINITY;
+    const lineQty = Math.min((existing?.quantity ?? 0) + addedQty, maxForLine);
+
+    if (lineQty < 1) return;
 
     setCart((prev) => {
       const current = prev.find((item) => cartItemKey(item) === incomingKey);
+      const siblingQty = prev.reduce(
+        (sum, item) =>
+          stockPoolKey(item) === incomingPool && cartItemKey(item) !== incomingKey
+            ? sum + item.quantity
+            : sum,
+        0,
+      );
+      const currentMaxForLine =
+        product.maxStock != null
+          ? Math.max(0, product.maxStock - siblingQty)
+          : Number.POSITIVE_INFINITY;
+      const nextQty = Math.min((current?.quantity ?? 0) + addedQty, currentMaxForLine);
+      if (nextQty < 1) return prev;
+
       if (current) {
-        const newQty = current.quantity + addedQty;
-        const finalQty = product.maxStock != null ? Math.min(newQty, product.maxStock) : newQty;
         return prev.map((item) =>
-          cartItemKey(item) === incomingKey ? { ...item, quantity: finalQty } : item
+          cartItemKey(item) === incomingKey ? { ...item, quantity: nextQty } : item
         );
       }
-      const initialQty =
-        product.maxStock != null ? Math.min(addedQty, product.maxStock) : addedQty;
-      return [...prev, { ...product, quantity: initialQty }];
+      return [...prev, { ...product, quantity: nextQty }];
     });
 
     // Попап над плавающей корзиной: количество этой позиции и сумма корзины.
@@ -162,19 +192,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateQty = (productId: string, qty: number, variantId?: string | null) => {
-    setCart((prev) =>
-      prev.map((item) => {
-        if (
-          item.productId === productId &&
-          (item.variantId ?? null) === (variantId ?? null)
-        ) {
-          const finalQty = Math.max(1, qty);
-          const validatedQty = item.maxStock != null ? Math.min(finalQty, item.maxStock) : finalQty;
-          return { ...item, quantity: validatedQty };
-        }
-        return item;
-      })
-    );
+    const targetKey = cartItemKey({ productId, variantId });
+    setCart((prev) => {
+      const target = prev.find((item) => cartItemKey(item) === targetKey);
+      if (!target) return prev;
+
+      const siblingQty = prev.reduce(
+        (sum, item) =>
+          stockPoolKey(item) === stockPoolKey(target) && cartItemKey(item) !== targetKey
+            ? sum + item.quantity
+            : sum,
+        0,
+      );
+      const maxForLine =
+        target.maxStock != null
+          ? Math.max(0, target.maxStock - siblingQty)
+          : Number.POSITIVE_INFINITY;
+      if (maxForLine < 1) {
+        return prev.filter((item) => cartItemKey(item) !== targetKey);
+      }
+
+      const validatedQty = Math.min(Math.max(1, qty), maxForLine);
+      return prev.map((item) =>
+        cartItemKey(item) === targetKey ? { ...item, quantity: validatedQty } : item
+      );
+    });
   };
 
   const clearCart = () => {

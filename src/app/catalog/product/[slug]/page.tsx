@@ -104,7 +104,8 @@ export async function generateMetadata({
   const product = await getProductBySlug(slug);
   if (!product) return { title: "Товар не найден" };
 
-  const effectivePrice = getProductEffectivePrice(product);
+  const basePrice = product.basePrice ?? product.price;
+  const effectivePrice = getProductEffectivePrice({ ...product, price: basePrice });
   const title = `${product.name} купить в Новосибирске`;
   const description = product.description
     ? stripMarkdown(product.description).slice(0, 160)
@@ -169,13 +170,14 @@ export default async function ProductPage({
   // СВОДНОЙ цены товара (для крупных бейджей). В блоке покупки
   // (ProductPurchaseBlock) своя логика с вариантами.
   const outOfStock = isOutOfStock(product);
-  const effectivePrice = getProductEffectivePrice(product);
+  const basePrice = product.basePrice ?? product.price;
+  const effectivePrice = getProductEffectivePrice({ ...product, price: basePrice });
   const hasDiscount =
-    product.price != null &&
+    basePrice != null &&
     effectivePrice != null &&
-    effectivePrice < product.price;
+    effectivePrice < basePrice;
   const oldPrice =
-    hasDiscount && product.price != null ? product.price : null;
+    hasDiscount && basePrice != null ? basePrice : null;
   const discountPercent =
     hasDiscount && oldPrice != null && effectivePrice != null
       ? Math.round((1 - effectivePrice / oldPrice) * 100)
@@ -183,17 +185,15 @@ export default async function ProductPage({
 
   // Если у товара есть варианты — считаем «от X ₽» для крупного
   // блока цены на странице.
-  const variantPriceMin = variants.length > 0
-    ? Math.min(
-        ...variants
-          .map((v) => v.price)
-          .filter((p): p is number => p != null && p > 0),
-      )
-    : null;
+  const variantPrices = variants
+    .map((variant) => variant.price)
+    .filter((price): price is number => price != null && price > 0);
+  const variantPriceMin =
+    variantPrices.length > 0 ? Math.min(...variantPrices) : null;
   const displayPrice =
     variantPriceMin != null
       ? variantPriceMin
-      : (effectivePrice ?? product.price);
+      : (effectivePrice ?? basePrice);
   const displayOldPrice = variantPriceMin != null ? oldPrice : oldPrice;
   const displayDiscountPercent =
     variantPriceMin != null
@@ -250,7 +250,7 @@ export default async function ProductPage({
       ? stripMarkdown(product.description)
       : product.description,
     sku: product.sku,
-    price: effectivePrice ?? product.price,
+    price: displayPrice ?? effectivePrice ?? basePrice,
     imageUrl: product.imageUrl,
     inStock: !outOfStock,
   });
@@ -605,7 +605,7 @@ export default async function ProductPage({
                       id: product.id,
                       name: product.name,
                       sku: product.sku,
-                      price: effectivePrice ?? product.price,
+                      price: effectivePrice ?? basePrice,
                       imageUrl: product.imageUrl,
                       stockQty: product.stockQty,
                       packQty: product.packQty,

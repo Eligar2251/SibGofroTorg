@@ -18,6 +18,8 @@ export interface FirestoreProduct {
   sku?: string | null | undefined;
   description?: string | null | undefined;
   price: number | null;
+  /** Цена родительского товара до подстановки минимальной цены варианта в выдаче. */
+  basePrice?: number | null;
   priceWholesale?: number | null | undefined;
   minWholesaleQty?: number | null | undefined;
   purchasePrice?: number | null | undefined;
@@ -100,6 +102,8 @@ export interface FirestoreProduct {
  * размерами, в каталоге — диапазон «от X ₽».
  *
  * NULL-значения цены/SKU/размеров означают fallback на products.
+ * Если остатки у всех вариантов 0, используется общий остаток products;
+ * при наличии положительного остатка включается учёт по вариантам.
  */
 export interface ProductVariant {
   id: string;
@@ -114,6 +118,7 @@ export interface ProductVariant {
   price: number | null;
   priceWholesale: number | null;
   sku: string | null;
+  /** 0 у всех вариантов наследует общий остаток; иначе ведётся раздельный учёт. */
   stockQty: number;
   stockWarnQty?: number | null;
   /** true → есть в наличии (для быстрой фильтрации) */
@@ -254,6 +259,7 @@ export function resolveVariant(
     | "dimensionUnit"
     | "packQty"
   >,
+  manageVariantStock = variant.stockQty > 0,
 ): ResolvedVariant {
   return {
     variant,
@@ -262,7 +268,7 @@ export function resolveVariant(
       variant.priceWholesale ?? product.priceWholesale ?? null,
     sku: variant.sku ?? product.sku ?? null,
     stockQty:
-      variant.stockQty > 0
+      manageVariantStock
         ? variant.stockQty
         : product.stockQty ?? 0,
     imageUrl: variant.imageUrl ?? product.imageUrl ?? null,

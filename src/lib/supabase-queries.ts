@@ -36,10 +36,8 @@ import type {
   ProductView,
   ProductVariant,
 } from "./types";
-import {
-  aggregateVariants as aggregateVariantsPure,
-  getCachedVariantsMap,
-} from "./variants";
+import { getCachedVariantsMap } from "./variants";
+import { enrichProductsWithVariants } from "./variant-aggregation";
 import {
   calculateBoxVolumeLiters,
   normalizeProductLabelColor,
@@ -450,39 +448,27 @@ export function invalidateProductsCache(): void {
 
 const getCachedProducts = unstable_cache(
   async () => {
-    const products = await fetchAllProducts();
+    const baseProducts = await fetchAllProducts();
     // Подтягиваем сводку по вариантам: используется в каталоге для
     // «от X ₽», бейджа «Есть варианты», сводного остатка и т.п.
-    // Сами варианты не тянем сюда — они нужны только на странице
-    // товара и в админке (отдельные запросы).
-    const productIds = products.map((p) => p.id);
+    // enrichProductsWithVariants создаёт копии, не меняя цену и остаток
+    // в общем memory-кеше исходных строк products.
+    const productIds = baseProducts.map((product) => product.id);
     const variantsMap = await getCachedVariantsMap(productIds);
-    for (const p of products) {
-      const variants = variantsMap.get(p.id) || [];
-      const agg = aggregateVariantsPure(variants, p);
-      p.variants = variants;
-      p.hasVariants = agg.hasVariants;
-      p.variantCount = agg.variantCount;
-      p.variantPriceMin = agg.priceMin;
-      p.variantPriceMax = agg.priceMax;
-      p.variantTotalStock = agg.totalStock;
-      // Если у товара есть варианты — в карточке каталога
-      // показываем «от X ₽» вместо обычной цены.
-      if (agg.hasVariants && agg.priceMin != null) {
-        p.price = agg.priceMin;
-        p.inStock = agg.anyInStock;
-        p.stockQty = agg.totalStock;
-      }
+    const products = enrichProductsWithVariants(baseProducts, variantsMap);
+
+    for (const product of products) {
       // Штрихкод: сначала постоянный код из БД; фоллбек —
       // детерминированный из id (старые товары до миграции, это тот
       // же код, что печатался на их этикетках). Ленивое вычисление
       // qrSlug: ~микросекунды на товар, кеш на 120с.
-      p.barcode = p.barcode || computeBarcode(p.id);
-      p.qrSlug = computeQrSlug(p.id);
+      product.barcode = product.barcode || computeBarcode(product.id);
+      product.qrSlug = computeQrSlug(product.id);
     }
     return products;
   },
-  ["base-products"],
+  // Версия ключа сбрасывает старые записи с мутировавшими ценами/остатками.
+  ["base-products", "variant-aggregation-v2"],
   { revalidate: DATA_REVALIDATE, tags: ["products", "variants"] }
 );
 

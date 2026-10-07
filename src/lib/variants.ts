@@ -99,7 +99,10 @@ export async function getResolvedVariants(
   product: FirestoreProduct,
 ): Promise<ResolvedVariant[]> {
   const variants = await getVisibleProductVariants(product.id);
-  return variants.map((v) => resolveVariant(v, product));
+  const manageVariantStock = variants.some((variant) => variant.stockQty > 0);
+  return variants.map((variant) =>
+    resolveVariant(variant, product, manageVariantStock),
+  );
 }
 
 /** Один вариант по id (для корзины, заказа, админки). */
@@ -150,60 +153,10 @@ export const getCachedVariantsMap = unstable_cache(
 );
 
 // ====================================================================
-// АГРЕГАЦИЯ (используется в каталоге)
+// АГРЕГАЦИЯ (см. variant-aggregation.ts)
 // ====================================================================
 
-/**
- * Сводные данные по вариантам для карточки каталога:
- *   • min/max цена — для «от X ₽»
- *   • общий остаток — для сводного бейджа «В наличии»
- *   • признак «hasVariants» — чтобы UI знал, что у товара
-//     есть выбор (например, чтобы показать плашку «Есть варианты»)
-//   • variantCount — для пометки «3 цвета»
- *
- * Если вариантов нет — возвращает нулевые сводные, и карточка
- * каталога ведёт себя как обычный товар без вариантов.
- */
-export function aggregateVariants(
-  variants: ProductVariant[] | undefined,
-  product: Pick<FirestoreProduct, "price" | "stockQty">,
-): {
-  hasVariants: boolean;
-  variantCount: number;
-  priceMin: number | null;
-  priceMax: number | null;
-  totalStock: number;
-  // Есть ли хотя бы один вариант в наличии
-  anyInStock: boolean;
-} {
-  if (!variants || variants.length === 0) {
-    return {
-      hasVariants: false,
-      variantCount: 0,
-      priceMin: product.price,
-      priceMax: product.price,
-      totalStock: Number(product.stockQty ?? 0),
-      anyInStock: Number(product.stockQty ?? 0) > 0,
-    };
-  }
-
-  const prices = variants
-    .map((v) => v.price)
-    .filter((p): p is number => p != null && p > 0);
-  const priceMin = prices.length > 0 ? Math.min(...prices) : null;
-  const priceMax = prices.length > 0 ? Math.max(...prices) : null;
-  const totalStock = variants.reduce((s, v) => s + (v.stockQty || 0), 0);
-  const anyInStock = variants.some((v) => v.stockQty > 0);
-
-  return {
-    hasVariants: true,
-    variantCount: variants.length,
-    priceMin,
-    priceMax,
-    totalStock,
-    anyInStock,
-  };
-}
+export { aggregateVariants } from "./variant-aggregation";
 
 // ====================================================================
 // ЗАПИСЬ (используется админкой)
@@ -348,4 +301,5 @@ export async function deleteProductVariants(productId: string): Promise<void> {
     .eq("product_id", productId);
   if (error) throw error;
   revalidateTag("variants", { expire: 0 });
+  invalidateProductsCache();
 }
