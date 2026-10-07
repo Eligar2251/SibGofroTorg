@@ -7,6 +7,7 @@ import { SettingsForm } from "@/components/admin/SettingsForm";
 import { ExcelDataManager } from "@/components/admin/ExcelDataManager";
 import { AdminUsersManager } from "@/components/admin/AdminUsersManager";
 import { ThemeCustomizer } from "@/components/admin/AdminTheme";
+import { AdminNavSettingsCard } from "@/components/admin/AdminNavProvider";
 import { OwnerMoneyPanel } from "@/components/admin/OwnerMoneyPanel";
 import { redirect } from "next/navigation";
 import { hasPermission, verifySession } from "@/lib/auth";
@@ -27,6 +28,7 @@ export default async function AdminSettingsPage() {
 
   const settingsMap: Record<string, string> = {};
   for (const [key, value] of Object.entries(settings || {})) {
+    if (key.startsWith("admin_nav_layout:")) continue;
     settingsMap[key] = value != null ? String(value) : "";
   }
 
@@ -61,6 +63,8 @@ export default async function AdminSettingsPage() {
           <ThemeCustomizer />
         </div>
       </div>
+
+      <AdminNavSettingsCard />
 
       <AdminUsersManager />
 

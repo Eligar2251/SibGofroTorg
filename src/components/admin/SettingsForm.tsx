@@ -218,7 +218,10 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
     defaults[WP_PICKUP_PRICE_SETTING_KEY] = "0";
     defaults[WP_ACCEPT_LIST_SETTING_KEY] = WASTEPAPER_ACCEPT_DEFAULTS.join("\n");
     defaults[WP_PHONE_SETTING_KEY] = WASTEPAPER_PHONE_DEFAULT;
-    return { ...defaults, ...settings };
+    const siteSettings = Object.fromEntries(
+      Object.entries(settings).filter(([key]) => !key.startsWith("admin_nav_layout:")),
+    );
+    return { ...defaults, ...siteSettings };
   });
   const [messengerCells, setMessengerCells] = useState<MessengerCell[]>(() =>
     parseMessengerCells({

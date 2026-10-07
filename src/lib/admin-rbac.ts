@@ -201,6 +201,13 @@ export function canAccessAdminApi(
   pathname: string,
   method: string
 ): boolean {
+  // Личная раскладка меню — у каждой роли, только своя запись
+  // (логин берётся из сессии внутри маршрута).
+  if (pathname === "/api/admin/nav-layout") {
+    const verb = method.toUpperCase();
+    return verb === "GET" || verb === "PUT" || verb === "DELETE";
+  }
+
   // Владелец имеет доступ ко всем API админки.
   if (role === "owner") return true;
 

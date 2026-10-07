@@ -32,6 +32,7 @@ import "../admin-warehouse-mobile.css";
 // завязаны на .owner-money / .db-browser и другие разделы не задевают.
 import "../admin-owner.css";
 import { AdminThemeProvider } from "@/components/admin/AdminTheme";
+import { AdminNavProvider } from "@/components/admin/AdminNavProvider";
 
 // Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому
 // единственный источник истины — публичная переменная. Legacy-переменная
@@ -103,13 +104,19 @@ export default async function AdminLayout({
   return (
     <>
       <AdminThemeProvider>
-        <AdminShell
+        <AdminNavProvider
           adminPath={ADMIN_PATH}
           role={session?.role ?? null}
-          displayName={session?.displayName ?? null}
+          username={session?.username ?? ""}
         >
-          {children}
-        </AdminShell>
+          <AdminShell
+            adminPath={ADMIN_PATH}
+            role={session?.role ?? null}
+            displayName={session?.displayName ?? null}
+          >
+            {children}
+          </AdminShell>
+        </AdminNavProvider>
       </AdminThemeProvider>
     </>
   );

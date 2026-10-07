@@ -257,6 +257,102 @@
   border-top: 1px solid var(--adm-border, #dbd8d0);
 }
 
+.sheetCustomize {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid var(--adm-border, #dbd8d0);
+  border-radius: 14px;
+  background: var(--adm-paper, #f5f3ee);
+  color: var(--adm-ink, #1a1a18);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupHeadIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 10px;
+  background: var(--adm-kraft-pale, #fdf3dc);
+  color: var(--adm-kraft, #c8860a);
+}
+
+.groupHeadIcon svg,
+.groupHeadIcon .admin-nav-ico {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.groupHeadLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.groupChevron {
+  flex: 0 0 16px;
+  color: var(--adm-ink-muted, #6b6b60);
+  transition: transform 0.28s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.groupOpen .groupChevron {
+  transform: rotate(180deg);
+}
+
+.groupPanel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.groupOpen .groupPanel {
+  grid-template-rows: 1fr;
+}
+
+.groupPanelInner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.groupPanelInner .grid {
+  padding-bottom: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .groupChevron,
+  .groupPanel {
+    transition: none;
+  }
+}
+
 /* Форма выхода — ячейкой сетки, иначе кнопка схлопнется. */
 .sheetActions form {
   min-width: 0;

@@ -1296,3 +1296,72 @@
   background: var(--adm-card) !important;
   border-color: var(--adm-border-mid) !important;
 }
+
+/* Группы меню в раскладках «верх» и «компакт». */
+@media (min-width: 1024px) {
+  [data-admin-layout="sidebar-top"] .admin-sidebar .admin-nav-group {
+    width: auto;
+    flex: 0 0 auto;
+    position: relative;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar button.admin-nav-group__toggle {
+    width: auto;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar .admin-nav-group__panel {
+    display: block;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 70;
+    min-width: 228px;
+    padding: 6px;
+    background: var(--adm-sidebar-bg);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+    grid-template-rows: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-6px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar .admin-nav-group.is-open > .admin-nav-group__panel {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar .admin-nav-group__panel-inner,
+  [data-admin-layout="sidebar-top"] .admin-sidebar .admin-nav-group.is-open > .admin-nav-group__panel > .admin-nav-group__panel-inner {
+    overflow: visible;
+    opacity: 1;
+    transform: none;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar .admin-nav-group__panel-inner::before {
+    display: none;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar .admin-sidebar__link.admin-nav-group__item {
+    padding-left: 10px !important;
+    margin-left: 0;
+  }
+  [data-admin-layout="sidebar-top"] .admin-sidebar .admin-nav-group:nth-last-child(-n+2) .admin-nav-group__panel {
+    left: auto;
+    right: 0;
+  }
+
+  [data-admin-layout="compact"] .admin-sidebar .admin-nav-group__chevron,
+  [data-admin-layout="compact"] .admin-sidebar .admin-nav-group__panel-inner::before {
+    display: none !important;
+  }
+  [data-admin-layout="compact"] .admin-sidebar .admin-nav-ico {
+    display: block !important;
+    width: 18px !important;
+    height: 18px !important;
+    flex: 0 0 18px !important;
+  }
+  [data-admin-layout="compact"] .admin-sidebar .admin-nav-group__item {
+    margin-left: 0;
+  }
+}

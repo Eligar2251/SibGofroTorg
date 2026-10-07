@@ -7,6 +7,7 @@ import { revalidateTag } from "next/cache";
 import { getSettings, updateSettings } from "@/lib/supabase-queries";
 import { hasPermission, requireAdminApi } from "@/lib/auth";
 import { isOperationalSettingKey } from "@/lib/admin-rbac";
+import { isAdminNavLayoutSettingKey } from "@/lib/admin-nav";
 
 /**
  * GET: администратору отдаёт все настройки. Менеджеру — только рабочие
@@ -17,7 +18,11 @@ export async function GET() {
   const auth = await requireAdminApi();
   if (auth instanceof NextResponse) return auth;
   try {
-    const settings = await getSettings();
+    const settings = Object.fromEntries(
+      Object.entries(await getSettings()).filter(
+        ([key]) => !isAdminNavLayoutSettingKey(key),
+      ),
+    );
     if (hasPermission(auth, "view_settings")) {
       return NextResponse.json(settings || {});
     }
@@ -72,7 +77,13 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    await updateSettings(body);
+    const settingsBody = Object.fromEntries(
+      Object.entries(body).filter(([key]) => !isAdminNavLayoutSettingKey(key)),
+    );
+    if (Object.keys(settingsBody).length === 0) {
+      return NextResponse.json({ error: "Некорректные настройки" }, { status: 400 });
+    }
+    await updateSettings(settingsBody);
     revalidateTag("settings", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {

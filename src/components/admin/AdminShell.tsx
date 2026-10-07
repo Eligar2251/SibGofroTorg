@@ -5,33 +5,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Package,
-  ClipboardList,
-  Settings,
-  LayoutDashboard,
   ExternalLink,
   LogOut,
-  Megaphone,
-  TrendingUp,
-  Star,
-  Boxes,
-  Truck,
-  QrCode,
-  ShieldCheck,
   PanelLeftClose,
   ChevronRight,
-  Headset,
-  UserSquare,
-  Recycle,
-  Building2,
-  DoorOpen,
-  Printer,
-  Ruler,
-  Scissors,
-  Table2,
   Menu,
   X,
-  Database,
 } from "lucide-react";
 import { SiteLogo } from "@/components/layout/SiteLogo";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
@@ -42,7 +21,16 @@ import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
 import { RealtimeStatusIndicator } from "./RealtimeStatusIndicator";
-import { canAccessAdminPage, type AdminRole } from "@/lib/admin-rbac";
+import { type AdminRole } from "@/lib/admin-rbac";
+import {
+  buildAccessibleNav,
+  flattenNavTree,
+  isAdminNavItemActive,
+  resolveNavTree,
+} from "@/lib/admin-nav";
+import { AdminNavIcon } from "./AdminNavIcon";
+import { AdminNavMenu } from "./AdminNavMenu";
+import { AdminNavCustomizeButton, useAdminNavOptional } from "./AdminNavProvider";
 
 const SIDEBAR_PREF_KEY = "admin-sidebar-hidden";
 
@@ -165,135 +153,21 @@ export function AdminShell({
   }
 
   // ── Навигация ──
-  // Список нужен и сайдбару (десктоп), и планшетной панели, и мобильной
-  // оболочке, поэтому считается до ветки рендера.
-  const nav = [
-    {
-      href: `/${adminPath}`,
-      label: "Панель",
-      icon: <LayoutDashboard size={18} />,
-    },
-    {
-      href: `/${adminPath}/products`,
-      label: "Товары и категории",
-      icon: <Package size={18} />,
-    },
-    {
-      href: `/${adminPath}/promotions`,
-      label: "Акции и окна",
-      icon: <Megaphone size={18} />,
-    },
-    {
-      // Расчёт выгоды продаж за период: прибыль своего производства
-      // против закупки у конкурента + печать сводки на A4.
-      href: `/${adminPath}/profit-report`,
-      label: "Выгода продаж",
-      icon: <TrendingUp size={18} />,
-    },
-    {
-      href: `/${adminPath}/reviews`,
-      label: "Отзывы",
-      icon: <Star size={18} />,
-    },
-    {
-      href: `/${adminPath}/orders`,
-      label: "Заявки",
-      icon: <ClipboardList size={18} />,
-    },
-    {
-      href: `/${adminPath}/client-requests`,
-      label: "Заявки клиентов",
-      icon: <Headset size={18} />,
-    },
-    {
-      // Кабинет клиента глазами клиента + ручное управление его заявками.
-      href: `/${adminPath}/user-cabinet`,
-      label: "Кабинет клиента",
-      icon: <UserSquare size={18} />,
-    },
-    {
-      href: `/${adminPath}/warehouse`,
-      // Учёт СибГофроТорг (гофротара): склад, заказы, банк. Не путать
-      // с учётом аренды и макулатуры — у них свои разделы ниже.
-      label: "Учёт СибГофроТорг",
-      icon: <Boxes size={18} />,
-    },
-    {
-      // Управленческий учёт аренды: банк аренды, арендаторы, просрочки.
-      // Юристу доступен только просмотр дашборда (canAccessAdminPage).
-      href: `/${adminPath}/rent`,
-      label: "Учёт аренды",
-      icon: <Building2 size={18} />,
-    },
-    {
-      // Отдельный учёт макулатуры: виден admin и макулатурщику
-      // (остальным пункт скроет canAccessAdminPage).
-      href: `/${adminPath}/wastepaper-account`,
-      label: "Учёт макулатура",
-      icon: <Recycle size={18} />,
-    },
-    {
-      href: `/${adminPath}/duty-schedule`,
-      label: "Охрана",
-      icon: <ShieldCheck size={18} />,
-    },
-    {
-      // Отдельная страница сканера /admin/scan (без [code] — это
-      // просто точка входа: открывается пустая форма поиска +
-      // доступ к камере, можно начать ввод кода).
-      href: `/${adminPath}/scan`,
-      label: "Сканер",
-      icon: <QrCode size={18} />,
-    },
-    {
-      // Редактор таблицы для печати на А4 (шрифт, размеры, поля).
-      href: `/${adminPath}/print-sheet`,
-      label: "Печать А4",
-      icon: <Printer size={18} />,
-    },
-    {
-      // Табличка на дверь: A4 landscape, крупный телефон, ч/б печать.
-      href: `/${adminPath}/door-sign`,
-      label: "Табличка на дверь",
-      icon: <DoorOpen size={18} />,
-    },
-    {
-      // Подбор ближайшей коробки по габаритам Д×Ш×В (мм).
-      href: `/${adminPath}/box-finder`,
-      label: "Подбор коробки",
-      icon: <Ruler size={18} />,
-    },
-    {
-      // Калькулятор штанцформы: развертка вырезанной заготовки, сборка 3D,
-      // раскладка по листу, длины ножей и цена штампа/тиража. Расчёт ведёт
-      // ядро src/lib/die-calc (без БД), а сохранение в die_calc_jobs — уже
-      // через серверные маршруты /api/admin/die-calc/*.
-      href: `/${adminPath}/die-calc`,
-      label: "Штанцформа",
-      icon: <Scissors size={18} />,
-    },
-    {
-      // Журнал сохранённых расчётов: правка всех полей, подтверждение факта
-      // (габарит с матрицы, реальная цена) и «обучить по базе».
-      href: `/${adminPath}/die-calc/jobs`,
-      label: "Расчёты штанцформ",
-      icon: <Table2 size={18} />,
-    },
-    {
-      // Все таблицы базы данных: просмотр и правка значений без SQL.
-      // Пункт видят только admin и owner (см. canAccessAdminPage).
-      href: `/${adminPath}/database`,
-      label: "База Данных",
-      icon: <Database size={18} />,
-    },
-    {
-      href: `/${adminPath}/settings`,
-      label: "Настройки",
-      icon: <Settings size={18} />,
-    },
-  ].filter((item) =>
-    role ? canAccessAdminPage(role, item.href, adminPath) : false,
-  );
+  // Группы, порядок и иконки — личные, из базы (AdminNavProvider).
+  // Плоский список нужен планшетной полоске и нижним вкладкам телефона.
+  const navCtx = useAdminNavOptional();
+  const navItems =
+    navCtx?.items ?? (role ? buildAccessibleNav(role, adminPath) : []);
+  const navTree = navCtx?.tree ?? resolveNavTree(navItems, null);
+  const flatNav = flattenNavTree(navTree);
+  const navHrefs = flatNav.map((link) => link.href);
+  const nav = flatNav.map((link) => ({
+    href: link.href,
+    label: link.label,
+    icon: <AdminNavIcon id={link.icon} size={18} />,
+  }));
+  const navActive = (href: string) =>
+    isAdminNavItemActive(pathname, href, navHrefs, `/${adminPath}`);
 
   if (isLogin) {
     return <div data-admin="true">{children}</div>;
@@ -367,32 +241,17 @@ export function AdminShell({
           </button>
         </div>
 
-        <nav className="admin-sidebar__nav">
-          {nav.map((link) => {
-            const active =
-              link.href === `/${adminPath}`
-                ? pathname === link.href
-                : pathname.startsWith(link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                title={link.label}
-                className={`admin-sidebar__link${active ? " admin-sidebar__link--active" : ""}`}
-              >
-                {link.icon}
-                {/* Подпись обёрнута в span: в «компактной» раскладке
-                    CSS прячет текст и оставляет только иконки. */}
-                <span className="admin-sidebar__label">{link.label}</span>
-              </Link>
-            );
-          })}
+        <nav className="admin-sidebar__nav" aria-label="Разделы админ-панели">
+          <AdminNavMenu
+            items={navItems}
+            layout={navCtx?.layout ?? null}
+            pathname={pathname}
+            adminPath={adminPath}
+          />
         </nav>
 
         <div className="admin-sidebar__footer">
-          {/* Переключателя темы здесь больше нет: вся кастомизация
-              (темы, раскладка, стиль, плотность, анимации) живёт
-              в Настройках → «Кастомизация оформления». */}
+          <AdminNavCustomizeButton className="admin-sidebar__footer-link" />
           <Link
             href="/"
             prefetch={false}
@@ -422,11 +281,7 @@ export function AdminShell({
         aria-label="Навигация админ-панели"
       >
         <span className="admin-mobile-bar__title" aria-live="polite">
-          {nav.find((link) =>
-            link.href === `/${adminPath}`
-              ? pathname === link.href
-              : pathname.startsWith(link.href),
-          )?.label || "Управление"}
+          {nav.find((link) => navActive(link.href))?.label || "Управление"}
         </span>
         <button
           type="button"
@@ -449,31 +304,21 @@ export function AdminShell({
             <span>{displayName || roleLabel || "Админ-панель"}</span>
           </div>
           <div className="admin-mobile-bar__nav">
-            {nav.map((link) => {
-              const active =
-                link.href === `/${adminPath}`
-                  ? pathname === link.href
-                  : pathname.startsWith(link.href);
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  prefetch={false}
-                  className={`admin-mobile-bar__link${
-                    active ? " admin-mobile-bar__link--active" : ""
-                  }`}
-                  title={link.label}
-                  aria-label={link.label}
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {link.icon}
-                  <span>{link.label}</span>
-                </Link>
-              );
-            })}
+            <AdminNavMenu
+              items={navItems}
+              layout={navCtx?.layout ?? null}
+              pathname={pathname}
+              adminPath={adminPath}
+              variant="bar"
+              onNavigate={() => setMobileMenuOpen(false)}
+            />
           </div>
           <div className="admin-mobile-bar__actions">
+            <AdminNavCustomizeButton
+              className="admin-mobile-bar__action"
+              iconSize={17}
+              showLabel={false}
+            />
             <Link
               href="/"
               prefetch={false}

@@ -270,6 +270,14 @@ select {
   justify-content: space-between;
   gap: 16px;
   width: 100%;
+  min-width: 0;
+  /* Длинная ссылка соглашения остаётся в одну строку и не раздвигает страницу. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.topbar-inner::-webkit-scrollbar {
+  display: none;
 }
 
 .topbar-left,
@@ -277,6 +285,23 @@ select {
   display: flex;
   align-items: center;
   gap: 20px;
+}
+
+/* Все текстовые ссылки верхней плашки — один размер и одна линия.
+   «Пользовательское соглашение» раньше тащило класс мобильного меню
+   (15px и лишние отступы) и выглядело крупнее соседних пунктов. */
+.topbar-right > a {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  padding: 0;
+  white-space: nowrap;
+  display: inline;
+}
+
+.topbar-right > a.topbar-phone {
+  font-weight: 600;
 }
 
 .topbar a {
@@ -8797,5 +8822,80 @@ body.cookie-banner-visible .cart-popup {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+}
+
+/* =========================================================
+   Пользовательское соглашение
+   Шрифт и размер заголовка — как у политики конфиденциальности
+   (классы privacy-hero / privacy-card). Ниже только воздух
+   между абзацами, списками и определениями.
+   ========================================================= */
+.legal-card {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink-light, #444);
+}
+
+.legal-card h2 {
+  font-family: var(--font-head);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink, #1b2b4b);
+  margin: 26px 0 10px;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+.legal-card h2:first-child {
+  margin-top: 0;
+}
+
+.legal-card p {
+  margin: 0 0 12px;
+}
+
+.legal-card p:last-child {
+  margin-bottom: 0;
+}
+
+/* Определения в одном абзаце через <br> — текст договора не трогаем,
+   но каждая строка получает тот же воздух, что и пункт списка. */
+.legal-card br {
+  display: block;
+  margin-top: 10px;
+  content: "";
+}
+
+.legal-card a {
+  color: var(--green, #2d6a4f);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.legal-card a:hover {
+  color: var(--green-dark, #1e4d38);
+}
+
+.legal-card ul {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.legal-card li {
+  margin: 8px 0;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.legal-card li:first-child {
+  margin-top: 0;
+}
+
+@media (max-width: 640px) {
+  .legal-card h2 {
+    font-size: 17px;
   }
 }
