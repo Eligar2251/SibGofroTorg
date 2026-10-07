@@ -30,6 +30,8 @@ interface AddToCartButtonProps {
    * (показываем кнопку «Оставить заявку»).
    */
   allVariants?: ProductVariant[];
+  /** Если false, варианты используют общий остаток товара. */
+  manageVariantStock?: boolean;
 }
 
 type InputMode = "pieces" | "packs";
@@ -38,6 +40,7 @@ export function AddToCartButton({
   product,
   selectedVariant = null,
   allVariants = [],
+  manageVariantStock = allVariants.some((variant) => variant.stockQty > 0),
 }: AddToCartButtonProps) {
   const { addToCart, cart } = useCart();
 
@@ -46,7 +49,7 @@ export function AddToCartButton({
   const effectivePrice =
     selectedVariant?.price != null ? selectedVariant.price : product.price;
   const effectiveStock =
-    selectedVariant != null
+    selectedVariant != null && manageVariantStock
       ? selectedVariant.stockQty
       : product.stockQty != null
         ? product.stockQty
@@ -98,14 +101,14 @@ export function AddToCartButton({
     return maxStock !== null ? Math.min(raw, maxStock) : raw;
   })();
 
-  // Если у выбранного варианта остаток = 0 — блокируем кнопку
-  // «В корзину» и предлагаем «Оставить заявку».
-  const selectedIsOut = selectedVariant != null && selectedVariant.stockQty <= 0;
-  // Если у товара в принципе есть варианты, но ни один не выбран
-  // (например, только что зашли и ещё не кликнули) — кнопка
-  // работает, но без варианта в корзине.
+  // Если склад ведётся по вариантам, нулевой остаток блокирует покупку.
+  // При общем остатке проверяем количество родительского товара ниже.
+  const selectedIsOut =
+    manageVariantStock && selectedVariant != null && selectedVariant.stockQty <= 0;
   const allVariantsOut =
-    allVariants.length > 0 && allVariants.every((v) => v.stockQty <= 0);
+    manageVariantStock &&
+    allVariants.length > 0 &&
+    allVariants.every((variant) => variant.stockQty <= 0);
 
   function switchMode(mode: InputMode) {
     if (mode === inputMode) return;
@@ -169,6 +172,8 @@ export function AddToCartButton({
         price: priceValue,
         imageUrl: effectiveImageUrl,
         maxStock,
+        stockPoolId:
+          selectedVariant != null && !manageVariantStock ? product.id : null,
       },
       totalPieces
     );
@@ -180,7 +185,7 @@ export function AddToCartButton({
     setTimeout(() => setAdded(false), 2500);
   }
 
-  if (!product.price) {
+  if (effectivePrice == null || effectivePrice <= 0) {
     return (
       <div className="atc-noprice">
         <p>Цена рассчитывается индивидуально — оставьте заявку</p>

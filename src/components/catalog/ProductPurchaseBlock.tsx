@@ -53,6 +53,11 @@ export function ProductPurchaseBlock({
   unavailable = false,
   unavailableSlot,
 }: ProductPurchaseBlockProps) {
+  // Остатки по вариантам считаются заданными, если хотя бы у одного
+  // варианта указано положительное количество. Иначе используется
+  // общий остаток родительского товара.
+  const manageVariantStock = variants.some((variant) => variant.stockQty > 0);
+
   // Локальный state выбранного варианта. null = не выбран
   // (например, у товара вообще нет вариантов).
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
@@ -79,12 +84,17 @@ export function ProductPurchaseBlock({
   return (
     <div className="purchase-block">
       {variants.length > 0 && (
-        <VariantPicker variants={variants} onSelectVariant={setSelectedVariant} />
+        <VariantPicker
+          variants={variants}
+          manageVariantStock={manageVariantStock}
+          onSelectVariant={setSelectedVariant}
+        />
       )}
       <AddToCartButton
         product={productForButton}
         selectedVariant={selectedVariant}
         allVariants={variants}
+        manageVariantStock={manageVariantStock}
       />
     </div>
   );

@@ -10,6 +10,7 @@
     "admin:sql": "node scripts/generate-admin-sql.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test:variants": "node --experimental-strip-types --test tests/variant-aggregation.test.mjs",
     "dev:plain": "next dev"
   },
   "dependencies": {

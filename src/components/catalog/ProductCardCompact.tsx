@@ -355,6 +355,13 @@ export function ProductCardCompact({
             className="pcc__inquiry-btn"
             label="Узнать цену"
           />
+        ) : product.hasVariants ? (
+          <Link
+            href={`/catalog/product/${product.slug}`}
+            className="pcc__add-btn pcc__add-btn--wide"
+          >
+            Выбрать вариант
+          </Link>
         ) : product.price == null ? (
           <PriceInquiryButton
             productName={product.name}
