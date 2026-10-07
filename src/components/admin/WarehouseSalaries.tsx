@@ -1841,6 +1841,7 @@ export function WarehouseSalaries({
   employees: initialEmployees,
   salaries: initialSalaries,
   scope = SGT_SALARY_SCOPE,
+  initialCreate = false,
 }: {
   employees: Employee[];
   salaries: Salary[];
@@ -1849,13 +1850,15 @@ export function WarehouseSalaries({
    * «Учёт макулатура» — свои счета выплат, API и ключи настроек.
    */
   scope?: SalaryScope;
+  /** Открыть штатную форму создания плана зарплаты при первом показе. */
+  initialCreate?: boolean;
 }) {
   const router = useRouter();
   const isWpScope = scope.kind === "wastepaper";
   const [employees, setEmployees] = useState(initialEmployees);
   const [salaries, setSalaries] = useState(initialSalaries);
   const [filter, setFilter] = useState<"all" | "pending" | "paid">("pending");
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(initialCreate);
   const [editing, setEditing] = useState<Salary | null>(null);
   const [empOpen, setEmpOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);

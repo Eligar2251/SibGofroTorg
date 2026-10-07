@@ -33,7 +33,7 @@ export default async function WastepaperAccountPage({
   searchParams,
 }: {
   params: Promise<{ adminPath: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; action?: string }>;
 }) {
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
@@ -47,7 +47,13 @@ export default async function WastepaperAccountPage({
   }
 
   const sp = await searchParams;
-  const initialTab = sp.tab || "days";
+  const actionTab: Record<string, string> = {
+    "quick-intake": "intakes",
+    "quick-shipment": "shipments",
+    "quick-payment": "payments",
+    "quick-salary": "salaries",
+  };
+  const initialTab = sp.tab || actionTab[sp.action || ""] || "days";
 
   // Данные модуля маленькие (десятки-сотни записей), грузим всё сразу —
   // макулатурщику это его единственное рабочее место. При сбое
@@ -111,6 +117,7 @@ export default async function WastepaperAccountPage({
     <WastepaperAccountManager
       adminPath={ADMIN_PATH}
       initialTab={initialTab}
+      initialAction={sp.action || null}
       counterparties={data.counterparties}
       intakes={data.intakes}
       shipments={data.shipments}

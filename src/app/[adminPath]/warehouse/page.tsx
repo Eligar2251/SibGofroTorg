@@ -115,6 +115,7 @@ export default async function AdminWarehousePage({
     transport?: string;
     planProduct?: string;
     planSupplier?: string;
+    action?: string;
   }>;
 }) {
   const { adminPath } = await params;
@@ -378,6 +379,7 @@ export default async function AdminWarehousePage({
       adminPath={ADMIN_PATH}
       initialTab={initialTab}
       initialSub={initialSub}
+      quickAction={sp.action || null}
       focusDealId={sp.deal || null}
       focusReceiptId={sp.receipt || null}
       focusProductId={sp.product || null}

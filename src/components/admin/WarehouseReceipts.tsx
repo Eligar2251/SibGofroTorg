@@ -154,15 +154,18 @@ export function ReceiptForm({
   deals = [],
   payments = [],
   initialReceipt,
+  autoOpen = false,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
   deals?: any[];
   payments?: BankPayment[];
   initialReceipt?: EditableReceipt & { linkedDealIds?: string[] };
+  /** Открыть форму сразу при переходе с панели управления. */
+  autoOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [date, setDate] = useState(initialReceipt?.date || todayIso());
