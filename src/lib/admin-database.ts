@@ -84,6 +84,11 @@ const TABLE_META: Record<string, TableMeta> = {
   client_requests: { label: "Заявки клиентов", group: "Заказы и клиенты" },
   users: { label: "Клиенты", group: "Заказы и клиенты" },
   admins: { label: "Сотрудники админки", group: "Пользователи" },
+  admin_nav_layouts: {
+    label: "Навигация админки (по пользователям)",
+    group: "Пользователи",
+    pk: "username",
+  },
   activity_logs: { label: "Журнал действий", group: "Пользователи" },
   money_adjustments: {
     label: "Правки денежных счетов (владелец)",

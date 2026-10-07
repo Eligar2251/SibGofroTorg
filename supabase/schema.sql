@@ -171,6 +171,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_admins_username ON admins(username);
 DROP TRIGGER IF EXISTS trg_admins_updated ON admins;
 CREATE TRIGGER trg_admins_updated BEFORE UPDATE ON admins FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Личная раскладка меню админки (группы, иконки). Без FK: логин
+-- может появиться раньше строки, запись всё равно должна сохраниться.
+CREATE TABLE IF NOT EXISTS admin_nav_layouts (
+  username TEXT PRIMARY KEY,
+  layout JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+DROP TRIGGER IF EXISTS trg_admin_nav_layouts_updated ON admin_nav_layouts;
+CREATE TRIGGER trg_admin_nav_layouts_updated
+  BEFORE UPDATE ON admin_nav_layouts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE admin_nav_layouts ENABLE ROW LEVEL SECURITY;
+
 -- =========================================================
 -- 5. ЗАКАЗЫ  (user_id, deal_id, payment_id — логические связи, БЕЗ FK)
 -- =========================================================

@@ -20,8 +20,11 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { ExternalLink, Grid2x2, LogOut, X } from "lucide-react";
+import { ChevronDown, ExternalLink, Grid2x2, LogOut, SlidersHorizontal, X } from "lucide-react";
 import { useBodyLock } from "@/hooks/use-body-lock";
+import { useAdminNavOptional } from "@/components/admin/AdminNavProvider";
+import { AdminNavIcon } from "@/components/admin/AdminNavIcon";
+import type { ResolvedNavEntry } from "@/lib/admin-nav";
 import styles from "./MobileTabBar.module.css";
 
 export type MobileNavItem = {
@@ -179,6 +182,157 @@ export function MobileTabBar({
   );
 }
 
+function SheetCustomize({ onClose }: { onClose: () => void }) {
+  const nav = useAdminNavOptional();
+  if (!nav) return null;
+  return (
+    <button
+      type="button"
+      className={`${styles.sheetAction} ${styles.sheetCustomize}`}
+      onClick={() => {
+        onClose();
+        nav.openCustomizer();
+      }}
+    >
+      <SlidersHorizontal size={16} aria-hidden="true" />
+      <span>Настроить меню</span>
+    </button>
+  );
+}
+
+function SheetSections({
+  items,
+  isActive,
+  onClose,
+}: {
+  items: MobileNavItem[];
+  isActive: (href: string) => boolean;
+  onClose: () => void;
+}) {
+  const nav = useAdminNavOptional();
+  const tree = nav?.tree;
+  const hasGroups = Boolean(tree?.some((entry) => entry.type === "group"));
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!tree) return;
+    const active = tree.find(
+      (entry) =>
+        entry.type === "group" && entry.items.some((child) => isActive(child.item.href)),
+    );
+    if (!active || active.type !== "group") return;
+    setOpen((prev) => (prev[active.id] ? prev : { ...prev, [active.id]: true }));
+  }, [tree, isActive]);
+
+  if (!hasGroups || !tree) {
+    return (
+      <div className={styles.grid}>
+        {items.map((item) => (
+          <SheetTile key={item.href} item={item} active={isActive(item.href)} onClose={onClose} />
+        ))}
+      </div>
+    );
+  }
+
+  const blocks: React.ReactNode[] = [];
+  let loose: ResolvedNavEntry[] = [];
+  const flush = () => {
+    if (!loose.length) return;
+    const chunk = loose;
+    loose = [];
+    blocks.push(
+      <div className={styles.grid} key={`loose-${blocks.length}`}>
+        {chunk.map((entry) => {
+          if (entry.type !== "item") return null;
+          return (
+            <SheetTile
+              key={entry.item.href}
+              item={{
+                href: entry.item.href,
+                label: entry.label,
+                icon: <AdminNavIcon id={entry.icon} size={20} />,
+              }}
+              active={isActive(entry.item.href)}
+              onClose={onClose}
+            />
+          );
+        })}
+      </div>,
+    );
+  };
+
+  for (const entry of tree) {
+    if (entry.type === "item") {
+      loose.push(entry);
+      continue;
+    }
+    flush();
+    const expanded = Boolean(open[entry.id]);
+    blocks.push(
+      <section
+        key={entry.id}
+        className={`${styles.group}${expanded ? ` ${styles.groupOpen}` : ""}`}
+      >
+        <button
+          type="button"
+          className={styles.groupHead}
+          aria-expanded={expanded}
+          onClick={() => setOpen((prev) => ({ ...prev, [entry.id]: !prev[entry.id] }))}
+        >
+          <span className={styles.groupHeadIcon}>
+            <AdminNavIcon id={entry.icon} size={18} />
+          </span>
+          <span className={styles.groupHeadLabel}>{entry.label}</span>
+          <ChevronDown size={16} className={styles.groupChevron} aria-hidden="true" />
+        </button>
+        <div className={styles.groupPanel}>
+          <div className={styles.groupPanelInner}>
+            <div className={styles.grid}>
+              {entry.items.map((child) => (
+                <SheetTile
+                  key={child.item.href}
+                  item={{
+                    href: child.item.href,
+                    label: child.label,
+                    icon: <AdminNavIcon id={child.icon} size={20} />,
+                  }}
+                  active={isActive(child.item.href)}
+                  onClose={onClose}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>,
+    );
+  }
+  flush();
+  return <div className={styles.sections}>{blocks}</div>;
+}
+
+function SheetTile({
+  item,
+  active,
+  onClose,
+}: {
+  item: MobileNavItem;
+  active: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Link
+      href={item.href}
+      prefetch={false}
+      className={`${styles.tile}${active ? ` ${styles.tileActive}` : ""}`}
+      aria-current={active ? "page" : undefined}
+      onClick={onClose}
+    >
+      <span className={styles.tileIcon}>{item.icon}</span>
+      <span className={styles.tileLabel}>{item.label}</span>
+    </Link>
+  );
+}
+
 /* ── Лист «Ещё»: все разделы сеткой + служебные действия ── */
 
 function MoreSheet({
@@ -247,26 +401,10 @@ function MoreSheet({
           </button>
         </div>
 
-        <div className={styles.grid}>
-          {items.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch={false}
-                className={`${styles.tile}${active ? ` ${styles.tileActive}` : ""}`}
-                aria-current={active ? "page" : undefined}
-                onClick={onClose}
-              >
-                <span className={styles.tileIcon}>{item.icon}</span>
-                <span className={styles.tileLabel}>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
+        <SheetSections items={items} isActive={isActive} onClose={onClose} />
 
         <div className={styles.sheetActions}>
+          <SheetCustomize onClose={onClose} />
           <Link
             href="/"
             prefetch={false}

@@ -231,11 +231,7 @@ export function Header({
             <Link href="/delivery" className="hide-mobile">
               Доставка
             </Link>
-            <Link
-              href="/user-agreement"
-              className="mobile-simple-link"
-              onClick={() => closeMobileMenu()}
-            >
+            <Link href="/user-agreement" className="topbar-link">
               Пользовательское соглашение
             </Link>
             <Link href="/contacts" className="hide-mobile">
@@ -434,6 +430,13 @@ export function Header({
               onClick={() => closeMobileMenu()}
             >
               Контакты
+            </Link>
+            <Link
+              href="/user-agreement"
+              className="mobile-simple-link"
+              onClick={() => closeMobileMenu()}
+            >
+              Пользовательское соглашение
             </Link>
           </div>
         </div>
