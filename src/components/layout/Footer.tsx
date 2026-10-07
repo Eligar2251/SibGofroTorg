@@ -23,7 +23,6 @@ import { useSiteSettings } from "@/hooks/use-site-settings";
 
 const INFO_LINKS = [
   { href: "/about", label: "О компании" },
-  { href: "/delivery", label: "Доставка и оплата" },
   { href: "/wastepaper", label: "Приём макулатуры" },
   { href: "/contacts", label: "Контакты" },
   { href: "/privacy", label: "Политика конфиденциальности" },
@@ -56,7 +55,6 @@ export function Footer() {
   const [catalogLinks, setCatalogLinks] = useState<CatLink[]>([
     { href: "/catalog", label: "Весь каталог" },
   ]);
-  const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState(30000);
   // Подхватываем телефон/email/адрес/часы из БД (админ-панель «Настройки»).
   // Пока запрос идёт, показываем дефолты из site-config.ts.
   const siteSettings = useSiteSettings();
@@ -82,16 +80,6 @@ export function Footer() {
           })),
           { href: "/catalog", label: "Все категории →" },
         ]);
-      })
-      .catch(() => {});
-
-    fetch("/api/settings/public")
-      .then((r) => r.json())
-      .then((data) => {
-        const threshold = Number(data.freeDeliveryThreshold);
-        if (Number.isFinite(threshold) && threshold > 0) {
-          setFreeDeliveryThreshold(threshold);
-        }
       })
       .catch(() => {});
   }, []);
@@ -162,53 +150,49 @@ export function Footer() {
                 {l.label}
               </Link>
             ))}
-            <div className="footer-delivery-box">
-              <div className="footer-delivery-label">Бесплатная доставка</div>
-              <div className="footer-delivery-value">от {freeDeliveryThreshold.toLocaleString("ru-RU")} ₽</div>
-              <div className="footer-delivery-sub">по Новосибирску</div>
-            </div>
           </div>
         </div>
 
-        <div className="footer-bottom">
-          <span>
-            © {new Date().getFullYear()} ООО «СибГофроТорг» · Все права защищены
-          </span>
-          <span>
-            <Link href="/privacy" className="footer-link footer-link--inline">
-              Политика конфиденциальности
-            </Link>
-          </span>
-          <span>{footerEmail}</span>
-        </div>
+        <div className="footer-legal">
+          <section className="footer-requisites" aria-label="Реквизиты организации">
+            <div className="footer-requisites__heading">
+              <span className="footer-requisites__title">Реквизиты</span>
+              <span className="footer-requisites__company">{COMPANY_FULL_NAME}</span>
+            </div>
+            <div className="footer-requisites__grid">
+              <div className="footer-requisites__item">
+                <span className="footer-requisites__label">ИНН</span>
+                <span className="footer-requisites__value">{COMPANY_INN}</span>
+              </div>
+              <div className="footer-requisites__item">
+                <span className="footer-requisites__label">КПП</span>
+                <span className="footer-requisites__value">{COMPANY_KPP}</span>
+              </div>
+              <div className="footer-requisites__item">
+                <span className="footer-requisites__label">ОГРН</span>
+                <span className="footer-requisites__value">{COMPANY_OGRN}</span>
+              </div>
+              <div className="footer-requisites__item footer-requisites__item--full">
+                <span className="footer-requisites__label">Юр. адрес</span>
+                <span className="footer-requisites__value">{COMPANY_LEGAL_ADDRESS}</span>
+              </div>
+              <div className="footer-requisites__item footer-requisites__item--full">
+                <span className="footer-requisites__label">Руководитель</span>
+                <span className="footer-requisites__value">{COMPANY_DIRECTOR}</span>
+              </div>
+            </div>
+          </section>
 
-        <div className="footer-requisites">
-          <div className="footer-requisites__title">Реквизиты организации</div>
-          <div className="footer-requisites__grid">
-            <div className="footer-requisites__item footer-requisites__item--full">
-              <span className="footer-requisites__label">Наименование</span>
-              <span className="footer-requisites__value">{COMPANY_FULL_NAME}</span>
-            </div>
-            <div className="footer-requisites__item">
-              <span className="footer-requisites__label">ИНН</span>
-              <span className="footer-requisites__value">{COMPANY_INN}</span>
-            </div>
-            <div className="footer-requisites__item">
-              <span className="footer-requisites__label">КПП</span>
-              <span className="footer-requisites__value">{COMPANY_KPP}</span>
-            </div>
-            <div className="footer-requisites__item">
-              <span className="footer-requisites__label">ОГРН</span>
-              <span className="footer-requisites__value">{COMPANY_OGRN}</span>
-            </div>
-            <div className="footer-requisites__item footer-requisites__item--full">
-              <span className="footer-requisites__label">Юридический адрес</span>
-              <span className="footer-requisites__value">{COMPANY_LEGAL_ADDRESS}</span>
-            </div>
-            <div className="footer-requisites__item footer-requisites__item--full">
-              <span className="footer-requisites__label">Руководитель</span>
-              <span className="footer-requisites__value">{COMPANY_DIRECTOR}</span>
-            </div>
+          <div className="footer-bottom">
+            <span>
+              © {new Date().getFullYear()} ООО «СибГофроТорг» · Все права защищены
+            </span>
+            <span>
+              <Link href="/privacy" className="footer-link footer-link--inline">
+                Политика конфиденциальности
+              </Link>
+            </span>
+            {footerEmail && <span>{footerEmail}</span>}
           </div>
         </div>
       </div>

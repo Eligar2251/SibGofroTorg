@@ -189,6 +189,7 @@ export function DealForm({
   freeDeliveryThreshold = 30000,
   reservedStockById,
   tierDiscounts = { special: 5, exclusive: 10 },
+  autoOpen = false,
 }: {
   products: PickerProduct[];
   counterparties?: CounterpartyOption[];
@@ -205,9 +206,11 @@ export function DealForm({
   reservedStockById?: Map<string, number>;
   /** Скидки ценовых уровней контрагентов (из настроек админки). */
   tierDiscounts?: { special: number; exclusive: number };
+  /** Открыть форму сразу при переходе с панели управления. */
+  autoOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   // Копирование заказа: форма нового заказа, предзаполненная из образца.
   const [copyOpen, setCopyOpen] = useState(false);
   const [saving, setSaving] = useState(false);

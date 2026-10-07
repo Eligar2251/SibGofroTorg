@@ -318,6 +318,7 @@ interface WarehouseManagerProps {
   adminPath: string;
   initialTab: TabKey;
   initialSub: StockSub;
+  quickAction?: string | null;
   focusDealId?: string | null;
   focusReceiptId?: string | null;
   focusProductId?: string | null;
@@ -361,6 +362,7 @@ export function WarehouseManager({
   adminPath,
   initialTab,
   initialSub,
+  quickAction = null,
   focusDealId,
   focusReceiptId,
   focusProductId,
@@ -404,6 +406,19 @@ export function WarehouseManager({
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  // Убираем одноразовый маркер из URL после монтирования форм: повторное
+  // обновление страницы не должно ещё раз открывать модалку.
+  useEffect(() => {
+    if (!quickAction) return;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("action");
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch {
+      /* history API недоступен — действие всё равно уже обработано */
+    }
+  }, [quickAction]);
   
   // --- States for Financial Summary (Feature 1) ---
   const [financePeriod, setFinancePeriod] = useState<"today" | "week" | "month">("today");
@@ -2192,6 +2207,7 @@ export function WarehouseManager({
                   counterparties={counterpartyOptions}
                   deals={deals}
                   payments={payments}
+                  autoOpen={quickAction === "quick-receipt"}
                 />
                 <DealForm
                   products={pickerProducts}
@@ -2201,12 +2217,14 @@ export function WarehouseManager({
                   freeDeliveryThreshold={freeDeliveryThreshold}
                   reservedStockById={reservedTotalById}
                   tierDiscounts={tierDiscounts}
+                  autoOpen={quickAction === "quick-order"}
                 />
                 <PaymentForm
                   deals={dealLinkOptions}
                   receipts={receiptLinkOptions}
                   counterparties={counterpartyOptions}
                   purchasePlans={activePurchasePlans}
+                  autoOpen={quickAction === "quick-payment"}
                 />
                 <WarehouseAccountTransfer />
               </>
@@ -2259,6 +2277,7 @@ export function WarehouseManager({
                   counterparties={counterpartyOptions}
                   deals={deals}
                   payments={payments}
+                  autoOpen={quickAction === "quick-receipt"}
                 />
               )}
               {activeTab === "deals" && (
@@ -2279,6 +2298,7 @@ export function WarehouseManager({
                     freeDeliveryThreshold={freeDeliveryThreshold}
                     reservedStockById={reservedTotalById}
                     tierDiscounts={tierDiscounts}
+                    autoOpen={quickAction === "quick-order"}
                   />
                 </>
               )}
@@ -2299,6 +2319,7 @@ export function WarehouseManager({
                     receipts={receiptLinkOptions}
                     counterparties={counterpartyOptions}
                     purchasePlans={activePurchasePlans}
+                    autoOpen={quickAction === "quick-payment"}
                   />
                   <WarehouseAccountTransfer />
                 </>
@@ -3498,6 +3519,7 @@ export function WarehouseManager({
           <SalaryTabContent
             employees={employees}
             salaries={salaries}
+            initialCreate={quickAction === "quick-salary"}
           />
         </>
       )}
@@ -4685,9 +4707,11 @@ function SalaryTabsToggle() {
 function SalaryTabContent({
   employees,
   salaries,
+  initialCreate = false,
 }: {
   employees: Employee[];
   salaries: Salary[];
+  initialCreate?: boolean;
 }) {
   const [sub, setSub] = useState<string>(() => {
     if (typeof window === "undefined") return "regular";
@@ -4704,7 +4728,7 @@ function SalaryTabContent({
   if (sub === "auto") {
     return <SalaryAutoDistribute />;
   }
-  return <WarehouseSalaries employees={employees} salaries={salaries} />;
+  return <WarehouseSalaries employees={employees} salaries={salaries} initialCreate={initialCreate} />;
 }
 
 export default WarehouseManager;

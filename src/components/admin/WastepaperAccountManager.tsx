@@ -643,6 +643,8 @@ function cloneDocItems(items: WpDocItem[]): WpDocItem[] {
 interface Props {
   adminPath: string;
   initialTab: string;
+  /** Одноразовая команда открыть штатную форму из панели управления. */
+  initialAction?: string | null;
   counterparties: WpCounterparty[];
   intakes: WpIntake[];
   shipments: WpShipment[];
@@ -754,19 +756,19 @@ export function WastepaperAccountManager(props: Props) {
   // Модалки
   const [intakeModal, setIntakeModal] = useState<
     { mode: "create" } | { mode: "edit"; item: WpIntake } | { mode: "copy"; item: WpIntake } | null
-  >(null);
+  >(props.initialAction === "quick-intake" ? { mode: "create" } : null);
   const [shipmentModal, setShipmentModal] = useState<
     | { mode: "create" }
     | { mode: "edit"; item: WpShipment }
     | { mode: "copy"; item: WpShipment }
     | null
-  >(null);
+  >(props.initialAction === "quick-shipment" ? { mode: "create" } : null);
   const [paymentModal, setPaymentModal] = useState<
     | { mode: "create"; initialPurpose?: PaymentPurpose }
     | { mode: "edit"; item: WpManualPayment }
     | { mode: "edit-salary"; salary: Salary }
     | null
-  >(null);
+  >(props.initialAction === "quick-payment" ? { mode: "create" } : null);
   const [counterpartyModal, setCounterpartyModal] = useState<
     { mode: "create" } | { mode: "edit"; item: WpCounterparty } | null
   >(null);
@@ -792,15 +794,21 @@ export function WastepaperAccountManager(props: Props) {
     [props.accountTransfers]
   );
 
-  // Сохраняем вкладку в URL (?tab=...), чтобы ссылки с дашборда и
-  // обновление страницы не сбрасывали рабочее место.
+  // Сохраняем вкладку в URL и удаляем одноразовый маркер быстрого действия,
+  // чтобы обновление страницы не открывало модалку повторно.
   useEffect(() => {
     try {
       const url = new URL(window.location.href);
+      let changed = false;
       if (url.searchParams.get("tab") !== tab) {
         url.searchParams.set("tab", tab);
-        window.history.replaceState(null, "", url.toString());
+        changed = true;
       }
+      if (url.searchParams.has("action")) {
+        url.searchParams.delete("action");
+        changed = true;
+      }
+      if (changed) window.history.replaceState(window.history.state, "", url.toString());
     } catch {
       /* приватный режим и т.п. */
     }
@@ -1281,6 +1289,7 @@ export function WastepaperAccountManager(props: Props) {
             employees={employees}
             salaries={salaries}
             scope={WASTEPAPER_SALARY_SCOPE}
+            initialCreate={props.initialAction === "quick-salary"}
           />
         </>
       )}

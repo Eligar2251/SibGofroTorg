@@ -368,9 +368,8 @@ export function AdminNavCustomizer({
                 Настройка навигации
               </h2>
               <p className="navcfg-lead">
-                Соберите вкладки в группы. В меню группа раскрывается анимацией,
-                иконка стоит вровень с текстом. Раскладка пишется в базу только
-                для аккаунта <strong>{username}</strong>.
+                Перетаскивайте разделы, объединяйте их в группы и подбирайте подписи с иконками.
+                Изменения сохраняются отдельно для аккаунта <strong>{username}</strong>.
               </p>
             </div>
             <button type="button" className="admin-modal__close" onClick={requestClose} aria-label="Закрыть">

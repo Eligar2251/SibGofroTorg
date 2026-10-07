@@ -1,6 +1,6 @@
 import { PackagePlus } from "lucide-react";
 
-const ORDER_NOTE = "Мало товара? Привезём под заказ.";
+const ORDER_NOTE = "Мало товара? Изготовим под заказ";
 
 /** Короткая общая подсказка для популярных товаров и страниц категорий. */
 export function CatalogOrderNote() {

@@ -31,6 +31,8 @@ import "../admin-warehouse-mobile.css";
 // Владелец: панель денежных счетов и раздел «База Данных». Правила
 // завязаны на .owner-money / .db-browser и другие разделы не задевают.
 import "../admin-owner.css";
+// Новый единый дашборд и адаптивный редактор меню (токены активной темы).
+import "../admin-dashboard.css";
 import { AdminThemeProvider } from "@/components/admin/AdminTheme";
 import { AdminNavProvider } from "@/components/admin/AdminNavProvider";
 
