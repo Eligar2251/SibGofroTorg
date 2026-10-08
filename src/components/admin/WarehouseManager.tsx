@@ -89,6 +89,7 @@ import {
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
 import { WarehouseAccountTransfer } from "@/components/admin/WarehouseAccountTransfer";
+import { ClientBankExportButton } from "@/components/admin/ClientBankExport";
 import { StockPriceEditor } from "@/components/admin/StockPriceEditor";
 import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
@@ -1623,6 +1624,16 @@ export function WarehouseManager({
         supplier: r.supplier,
         total: r.total,
         paidAmount: receiptPaidMap.get(r.id) || 0,
+        inn: r.inn ?? null,
+        kpp: r.kpp ?? null,
+        bankAccount: r.bankAccount ?? null,
+        bankName: r.bankName ?? null,
+        bankCity: r.bankCity ?? null,
+        bik: r.bik ?? null,
+        correspondentAccount: r.correspondentAccount ?? null,
+        invoiceNumber: r.invoiceNumber ?? null,
+        invoiceDate: r.invoiceDate ?? null,
+        vatRate: r.vatRate,
       })),
     [receipts, receiptPaidMap]
   );
@@ -2219,6 +2230,7 @@ export function WarehouseManager({
                   tierDiscounts={tierDiscounts}
                   autoOpen={quickAction === "quick-order"}
                 />
+                <ClientBankExportButton />
                 <PaymentForm
                   deals={dealLinkOptions}
                   receipts={receiptLinkOptions}
@@ -2314,6 +2326,7 @@ export function WarehouseManager({
               )}
               {activeTab === "bank" && (
                 <>
+                  <ClientBankExportButton />
                   <PaymentForm
                     deals={dealLinkOptions}
                     receipts={receiptLinkOptions}
@@ -4639,6 +4652,10 @@ export function WarehouseManager({
                             dealIds: p.dealIds,
                             receiptIds: p.receiptIds,
                             direction: p.direction,
+                            paymentPurpose: p.paymentPurpose ?? null,
+                            paymentPriority: p.paymentPriority ?? 5,
+                            paymentKind: p.paymentKind ?? "01",
+                            vatRate: p.vatRate,
                           }}
                         />
                       ) : (

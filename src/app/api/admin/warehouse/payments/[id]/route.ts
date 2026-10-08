@@ -62,6 +62,10 @@ export async function PATCH(
       invoiceNumber: body.invoiceNumber,
       dealIds: body.dealIds,
       receiptIds: body.receiptIds,
+      paymentPurpose: body.paymentPurpose,
+      paymentPriority: body.paymentPriority,
+      paymentKind: body.paymentKind,
+      vatRate: body.vatRate !== undefined && body.vatRate !== null ? Number(body.vatRate) : undefined,
     });
 
     await logAdminAction(

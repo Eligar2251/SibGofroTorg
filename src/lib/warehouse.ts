@@ -8,6 +8,7 @@ import { createHash } from "crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getAdminDb } from "./supabase";
 import { getProductEffectivePrice } from "./types";
+import { buildPurposeLines } from "./payment-purpose";
 // Прямые правки счетов владельцем: подмешиваются в остатки кассы.
 import { getMoneyAdjustments } from "./money-accounts";
 // Ревизия пишет остатки напрямую — нужно сбросить memory-кеш товаров,
@@ -187,6 +188,7 @@ function mapCounterpartyRow(row: any): Counterparty {
     taxSystem: row.tax_system ?? null,
     bankAccount: row.bank_account ?? null,
     bankName: row.bank_name ?? null,
+    bankCity: row.bank_city ?? null,
     bik: row.bik ?? null,
     correspondentAccount: row.correspondent_account ?? null,
     address: row.address ?? null,
@@ -226,6 +228,13 @@ function mapReceiptRow(row: any): WarehouseReceipt {
     address: row.address ?? null,
     contactName: row.contact_name ?? null,
     comment: row.comment ?? null,
+    bankAccount: row.bank_account ?? null,
+    bankName: row.bank_name ?? null,
+    bankCity: row.bank_city ?? null,
+    bik: row.bik ?? null,
+    correspondentAccount: row.correspondent_account ?? null,
+    invoiceNumber: row.invoice_number ?? null,
+    invoiceDate: row.invoice_date ?? null,
     isConsignment: row.is_consignment === true,
     items,
     receivedItems,
@@ -419,6 +428,10 @@ function mapPaymentRow(row: any): BankPayment {
     excludeFromBalance: row.exclude_from_balance ?? false,
     purchasePlanId: row.purchase_plan_id ? String(row.purchase_plan_id) : null,
     comment: row.comment ?? null,
+    paymentPurpose: row.payment_purpose ?? null,
+    paymentPriority: Number(row.payment_priority ?? 5),
+    paymentKind: row.payment_kind ?? "01",
+    exportedAt: row.exported_at ?? null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -653,6 +666,7 @@ async function ensureCounterparty(
     phone: "phone", email: "email", inn: "inn", kpp: "kpp", ogrn: "ogrn",
     fullName: "full_name", shortName: "short_name", legalAddress: "legal_address",
     taxSystem: "tax_system", bankAccount: "bank_account", bankName: "bank_name",
+    bankCity: "bank_city",
     bik: "bik", correspondentAccount: "correspondent_account",
     address: "address", contactName: "contact_name",
   };
@@ -705,6 +719,7 @@ export async function saveCounterparty(data: {
   taxSystem?: string | null;
   bankAccount?: string | null;
   bankName?: string | null;
+  bankCity?: string | null;
   bik?: string | null;
   correspondentAccount?: string | null;
   address?: string | null;
@@ -725,6 +740,7 @@ export async function saveCounterparty(data: {
     full_name: data.fullName ?? null, short_name: data.shortName ?? null,
     legal_address: data.legalAddress ?? null, tax_system: data.taxSystem ?? null,
     bank_account: data.bankAccount ?? null, bank_name: data.bankName ?? null,
+    bank_city: data.bankCity ?? null,
     bik: data.bik ?? null, correspondent_account: data.correspondentAccount ?? null,
     address: data.address ?? null, contact_name: data.contactName ?? null,
     comment: data.comment ?? null,
@@ -1250,6 +1266,13 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
       supplierPrices[item.productId] = item.price;
     }
   }
+  const bankDetails = {
+    bankAccount: cleanText(data.bankAccount, 40),
+    bankName: cleanText(data.bankName, 200),
+    bankCity: cleanText(data.bankCity, 100),
+    bik: cleanText(data.bik, 20),
+    correspondentAccount: cleanText(data.correspondentAccount, 40),
+  };
   const counterpartyId = await ensureCounterparty(supplier, "supplier", {
     phone: cleanText(data.phone, 60),
     email: cleanText(data.email, 160),
@@ -1258,6 +1281,7 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
     address: cleanText(data.address, 400),
     contactName: cleanText(data.contactName, 160),
     comment: data.comment,
+    ...bankDetails,
   });
 
   // Сохраняем цены поставщика
@@ -1284,6 +1308,13 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
     inn: cleanText(data.inn, 20), kpp: cleanText(data.kpp, 20),
     address: cleanText(data.address, 400), contact_name: cleanText(data.contactName, 160),
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
+    bank_account: bankDetails.bankAccount || null,
+    bank_name: bankDetails.bankName || null,
+    bank_city: bankDetails.bankCity || null,
+    bik: bankDetails.bik || null,
+    correspondent_account: bankDetails.correspondentAccount || null,
+    invoice_number: data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null,
+    invoice_date: data.invoiceDate ? String(data.invoiceDate).slice(0, 10) : null,
     items, total, bank_adjustment: 0, vat_rate: vatRate, vat_amount: vatAmount,
     linked_deal_ids: linkedDealIds, linked_deal_numbers: linkedDealNumbers,
     is_consignment: data.isConsignment === true,
@@ -1316,22 +1347,39 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
       });
     }
   } else {
-    // ★ Создаём исходящие платежи (по разбивке)
+    // ★ Создаём исходящие платежи (по разбивке). Назначение платежа формируется
+    // по правилам 1С с учётом части (первая/вторая/...) и НДС.
+    const invoiceNo = data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : String(number);
+    const invoiceDt = data.invoiceDate ? String(data.invoiceDate).slice(0, 10) : date;
     for (let i = 0; i < paymentSplits.length; i++) {
       const splitAmount = paymentSplits[i];
       if (splitAmount <= 0) continue;
       const payNumber = await nextNumber("payment");
+      const total = paymentSplits.length;
+      const purpose = buildPurposeLines({
+        amount: splitAmount,
+        vatRate,
+        docNumber: invoiceNo,
+        docDate: invoiceDt,
+        docKind: "по счёту",
+        partIndex: total > 1 ? i : null,
+        partTotal: total > 1 ? total : null,
+        withoutVat: !(vatRate > 0),
+      });
       await db.from("bank_payments").insert({
         number: payNumber, date,
         direction: "outgoing", type: "regular",
         counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
         deal_ids: [], deal_numbers: [],
         receipt_ids: [receiptId], receipt_numbers: [number],
-        amount: splitAmount, invoice_number: null,
-        vat_rate: vatRate, vat_amount: includedVat(splitAmount, vatRate),
+        amount: splitAmount, invoice_number: data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null,
+        vat_rate: vatRate, vat_amount: purpose.vatCalculated,
         is_paid: false, paid_at: null,
         exclude_from_balance: false,
         comment: `Оплата поставщику по приходному ордеру ПО-${number}${paymentSplits.length > 1 ? ` (часть ${i+1})` : ""}`,
+        payment_purpose: purpose.main,
+        payment_priority: 5,
+        payment_kind: "01",
       });
     }
   }
@@ -1780,6 +1828,13 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   const bankAdjustment = 0;
 
   const supplier = sanitizeCounterpartyName(data.supplier);
+  const bankDetailsUpd = {
+    bankAccount: cleanText(data.bankAccount, 40),
+    bankName: cleanText(data.bankName, 200),
+    bankCity: cleanText(data.bankCity, 100),
+    bik: cleanText(data.bik, 20),
+    correspondentAccount: cleanText(data.correspondentAccount, 40),
+  };
   const details = {
     phone: cleanText(data.phone, 60),
     email: cleanText(data.email, 160),
@@ -1787,6 +1842,7 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
     kpp: cleanText(data.kpp, 20),
     address: cleanText(data.address, 400),
     contactName: cleanText(data.contactName, 160),
+    ...bankDetailsUpd,
   };
   if (data.needsTransport === true && !String(details.address || "").trim()) {
     throw new Error("Укажите адрес поставщика — по нему водитель поедет за товаром");
@@ -1800,6 +1856,13 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
     inn: details.inn, kpp: details.kpp,
     address: details.address, contact_name: details.contactName,
     comment: data.comment ? String(data.comment).slice(0, 500) : null,
+    bank_account: bankDetailsUpd.bankAccount || null,
+    bank_name: bankDetailsUpd.bankName || null,
+    bank_city: bankDetailsUpd.bankCity || null,
+    bik: bankDetailsUpd.bik || null,
+    correspondent_account: bankDetailsUpd.correspondentAccount || null,
+    invoice_number: data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null,
+    invoice_date: data.invoiceDate ? String(data.invoiceDate).slice(0, 10) : null,
     items, total, bank_adjustment: bankAdjustment,
     vat_rate: vatRate, vat_amount: includedVat(total, vatRate),
     linked_deal_ids: linkedDealIds, linked_deal_numbers: linkedDealNumbers,
@@ -3087,6 +3150,9 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     paid_at: data.isPaid ? new Date().toISOString().slice(0, 10) : null,
     exclude_from_balance: data.excludeFromBalance ?? false,
     comment: cleanText(data.comment, 500),
+    payment_purpose: data.paymentPurpose ? cleanText(data.paymentPurpose, 500) : null,
+    payment_priority: Number(data.paymentPriority ?? 5) || 5,
+    payment_kind: data.paymentKind ? String(data.paymentKind).slice(0, 10) : "01",
     // Платёж можно сразу отнести к закупке — она покажет его у себя
     // в списке «Платежи по закупке».
     ...(data.purchasePlanId ? { purchase_plan_id: String(data.purchasePlanId) } : {}),
@@ -3168,6 +3234,19 @@ export async function updatePayment(id: string, data: any): Promise<void> {
   if (data.invoiceNumber !== undefined) payload.invoice_number = data.invoiceNumber;
   if (data.dealIds !== undefined) payload.deal_ids = data.dealIds;
   if (data.receiptIds !== undefined) payload.receipt_ids = data.receiptIds;
+  if (data.paymentPurpose !== undefined) payload.payment_purpose = data.paymentPurpose ? cleanText(data.paymentPurpose, 500) : null;
+  if (data.paymentPriority !== undefined) payload.payment_priority = Number(data.paymentPriority) || 5;
+  if (data.paymentKind !== undefined) payload.payment_kind = data.paymentKind ? String(data.paymentKind).slice(0, 10) : "01";
+  if (data.vatRate !== undefined) {
+    const rate = Number(data.vatRate) || 0;
+    payload.vat_rate = rate;
+    if (data.amount !== undefined) payload.vat_amount = includedVat(Number(data.amount) || 0, rate);
+    else {
+      // Сумму не меняли — пересчитываем НДС от старой.
+      const { data: cur } = await db.from("bank_payments").select("amount").eq("id", id).maybeSingle();
+      payload.vat_amount = includedVat(Number(cur?.amount) || 0, rate);
+    }
+  }
   const { error } = await db.from("bank_payments").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-payments", { expire: 0 });

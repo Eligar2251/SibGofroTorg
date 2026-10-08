@@ -47,6 +47,7 @@ export interface CounterpartyDetails {
   taxSystem?: string | null;
   bankAccount?: string | null;
   bankName?: string | null;
+  bankCity?: string | null;
   bik?: string | null;
   correspondentAccount?: string | null;
   address?: string | null;
@@ -145,6 +146,10 @@ export interface WarehouseReceipt extends CounterpartyDetails {
   status: ReceiptStatus;
   counterpartyId?: string | null;
   comment?: string | null;
+  /** Номер счёта от поставщика (для платёжного поручения). */
+  invoiceNumber?: string | null;
+  /** Дата счёта от поставщика (для назначения платежа). */
+  invoiceDate?: string | null;
   /** Поставка товара на реализацию: продажи учитываются по закупочной цене. */
   isConsignment?: boolean;
   items: StockDocItem[];
@@ -575,6 +580,14 @@ export interface BankPayment {
   purchasePlanId?: string | null;
   paidAt?: string | null;
   comment?: string | null;
+  /** Назначение платежа (для выгрузки в 1С/Клиент-Банк). */
+  paymentPurpose?: string | null;
+  /** Очерёдность платежа (поле 21 платёжного поручения), по умолч. 5. */
+  paymentPriority?: number;
+  /** Вид платежа (поле 5: "01" — электронно). */
+  paymentKind?: string | null;
+  /** Когда был выгружен в 1С/Клиент-Банк (дата iso YYYY-MM-DD). */
+  exportedAt?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }

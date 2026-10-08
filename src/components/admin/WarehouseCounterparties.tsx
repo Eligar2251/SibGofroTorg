@@ -38,6 +38,7 @@ export interface CounterpartyOption {
   taxSystem?: string | null;
   bankAccount?: string | null;
   bankName?: string | null;
+  bankCity?: string | null;
   bik?: string | null;
   correspondentAccount?: string | null;
   address?: string | null;
@@ -70,6 +71,7 @@ interface FormState {
   taxSystem: string;
   bankAccount: string;
   bankName: string;
+  bankCity: string;
   bik: string;
   correspondentAccount: string;
   address: string;
@@ -94,6 +96,7 @@ const EMPTY: FormState = {
   taxSystem: "",
   bankAccount: "",
   bankName: "",
+  bankCity: "",
   bik: "",
   correspondentAccount: "",
   address: "",
@@ -197,6 +200,7 @@ export function CounterpartiesManager({
       taxSystem: item.taxSystem || "",
       bankAccount: item.bankAccount || "",
       bankName: item.bankName || "",
+      bankCity: item.bankCity || "",
       bik: item.bik || "",
       correspondentAccount: item.correspondentAccount || "",
       address: item.address || "",
@@ -256,6 +260,7 @@ export function CounterpartiesManager({
         taxSystem: form.taxSystem || null,
         bankAccount: form.bankAccount || null,
         bankName: form.bankName || null,
+        bankCity: form.bankCity || null,
         bik: form.bik || null,
         correspondentAccount: form.correspondentAccount || null,
         address: form.address || null,
@@ -414,7 +419,7 @@ export function CounterpartiesManager({
                                 <div><dt>Юр. адрес</dt><dd>{item.legalAddress || "—"}</dd></div>
                                 <div><dt>Адрес</dt><dd>{item.address || "—"}</dd></div>
                                 <div><dt>Расчётный счёт</dt><dd>{item.bankAccount || "—"}</dd></div>
-                                <div><dt>Банк</dt><dd>{item.bankName || "—"}</dd></div>
+                                <div><dt>Банк</dt><dd>{item.bankName || "—"}{item.bankCity ? `, ${item.bankCity}` : ""}</dd></div>
                                 <div><dt>БИК</dt><dd>{item.bik || "—"}</dd></div>
                                 <div><dt>Корр. счёт</dt><dd>{item.correspondentAccount || "—"}</dd></div>
                                 <div><dt>Цен поставщика</dt><dd>{Object.keys(item.supplierPrices || {}).length}</dd></div>
@@ -507,6 +512,7 @@ export function CounterpartiesManager({
               <div className="admin-grid-2">
                 <div className="admin-field"><label className="admin-label">Расчётный счёт</label><input className="admin-input" value={form.bankAccount} onChange={(e) => patch("bankAccount", e.target.value)} /></div>
                 <div className="admin-field"><label className="admin-label">Банк</label><input className="admin-input" value={form.bankName} onChange={(e) => patch("bankName", e.target.value)} /></div>
+                <div className="admin-field"><label className="admin-label">Город банка</label><input className="admin-input" value={form.bankCity} onChange={(e) => patch("bankCity", e.target.value)} placeholder="г. Новосибирск" /></div>
                 <div className="admin-field"><label className="admin-label">БИК</label><input className="admin-input" value={form.bik} onChange={(e) => patch("bik", e.target.value)} /></div>
                 <div className="admin-field"><label className="admin-label">Корр. счёт</label><input className="admin-input" value={form.correspondentAccount} onChange={(e) => patch("correspondentAccount", e.target.value)} /></div>
               </div>

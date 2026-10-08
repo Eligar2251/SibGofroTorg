@@ -21,6 +21,10 @@ export async function POST(request: NextRequest) {
       excludeFromBalance: body.excludeFromBalance === true,
       comment: body.comment ?? null,
       purchasePlanId: body.purchasePlanId ? String(body.purchasePlanId) : null,
+      paymentPurpose: body.paymentPurpose ?? null,
+      paymentPriority: body.paymentPriority ?? 5,
+      paymentKind: body.paymentKind ?? "01",
+      vatRate: body.vatRate !== undefined && body.vatRate !== null ? Number(body.vatRate) : undefined,
     });
     return NextResponse.json(result);
   } catch (error: any) {
