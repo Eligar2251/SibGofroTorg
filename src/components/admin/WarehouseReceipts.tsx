@@ -62,6 +62,15 @@ export interface EditableReceipt {
   address?: string | null;
   contactName?: string | null;
   comment?: string | null;
+  /** Банковские реквизиты поставщика (обязательны для выгрузки платёжки). */
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bankCity?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
+  /** Номер и дата счёта от поставщика (для назначения платежа). */
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
   items: ReceiptItemDraft[];
   vatRate?: number;
   isConsignment?: boolean;
@@ -179,6 +188,15 @@ export function ReceiptForm({
     initialReceipt?.contactName || ""
   );
   const [comment, setComment] = useState(initialReceipt?.comment || "");
+  const [bankAccount, setBankAccount] = useState(initialReceipt?.bankAccount || "");
+  const [bankName, setBankName] = useState(initialReceipt?.bankName || "");
+  const [bankCity, setBankCity] = useState(initialReceipt?.bankCity || "");
+  const [bik, setBik] = useState(initialReceipt?.bik || "");
+  const [correspondentAccount, setCorrespondentAccount] = useState(
+    initialReceipt?.correspondentAccount || ""
+  );
+  const [invoiceNumber, setInvoiceNumber] = useState(initialReceipt?.invoiceNumber || "");
+  const [invoiceDate, setInvoiceDate] = useState(initialReceipt?.invoiceDate || "");
   const [vatRate, setVatRate] = useState<number>(
     initialReceipt?.vatRate ?? VAT_RATE
   );
@@ -275,6 +293,13 @@ export function ReceiptForm({
     setAddress(initialReceipt?.address || "");
     setContactName(initialReceipt?.contactName || "");
     setComment(initialReceipt?.comment || "");
+    setBankAccount(initialReceipt?.bankAccount || "");
+    setBankName(initialReceipt?.bankName || "");
+    setBankCity(initialReceipt?.bankCity || "");
+    setBik(initialReceipt?.bik || "");
+    setCorrespondentAccount(initialReceipt?.correspondentAccount || "");
+    setInvoiceNumber(initialReceipt?.invoiceNumber || "");
+    setInvoiceDate(initialReceipt?.invoiceDate || "");
     setVatRate(initialReceipt?.vatRate ?? VAT_RATE);
     setItems(initialReceipt?.items || []);
     setSelectedDeals(initialReceipt?.linkedDealIds || []);
@@ -290,9 +315,11 @@ export function ReceiptForm({
 
   function selectSupplier(value: string) {
     setSupplier(value);
+    // Ищем контрагента по имени без фильтра по ролям: если контрагент
+    // отмечен только как покупатель, но пользователь вручную вписал его
+    // в поставщик, всё равно должны подтянуться его реквизиты.
     const found = counterparties.find(
       (item) =>
-        item.roles.includes("supplier") &&
         item.name.toLocaleLowerCase("ru-RU") ===
           value.trim().toLocaleLowerCase("ru-RU")
     );
@@ -306,6 +333,11 @@ export function ReceiptForm({
         setKpp("");
         setAddress("");
         setContactName("");
+        setBankAccount("");
+        setBankName("");
+        setBankCity("");
+        setBik("");
+        setCorrespondentAccount("");
       }
       return;
     }
@@ -315,6 +347,11 @@ export function ReceiptForm({
     setKpp(found.kpp || "");
     setAddress(found.address || "");
     setContactName(found.contactName || "");
+    setBankAccount(found.bankAccount || "");
+    setBankName(found.bankName || "");
+    setBankCity(found.bankCity || "");
+    setBik(found.bik || "");
+    setCorrespondentAccount(found.correspondentAccount || "");
     if (found.supplierPrices) {
       setItems((current) =>
         current.map((item) => {
@@ -452,6 +489,22 @@ export function ReceiptForm({
       setError("Добавьте хотя бы одну позицию");
       return;
     }
+    // Банковские реквизиты поставщика обязательны — без них платёжку не выгрузить
+    // в Альфа-Банк (1CClientBankExchange). Просим заполнить р/с, БИК и название банка.
+    if (!noPayment) {
+      if (!bankAccount.trim()) {
+        setError("Укажите расчётный счёт поставщика (нужен для выгрузки в банк)");
+        return;
+      }
+      if (!bik.trim()) {
+        setError("Укажите БИК банка поставщика");
+        return;
+      }
+      if (!bankName.trim()) {
+        setError("Укажите наименование банка поставщика");
+        return;
+      }
+    }
     setSaving(true);
     try {
       const res = await fetch(
@@ -471,6 +524,13 @@ export function ReceiptForm({
           address: address.trim() || null,
           contactName: contactName.trim() || null,
           comment: comment.trim() || null,
+          bankAccount: bankAccount.trim() || null,
+          bankName: bankName.trim() || null,
+          bankCity: bankCity.trim() || null,
+          bik: bik.trim() || null,
+          correspondentAccount: correspondentAccount.trim() || null,
+          invoiceNumber: invoiceNumber.trim() || null,
+          invoiceDate: invoiceDate || null,
           items: items.map((it) => ({
             productId: it.productId,
             name: it.name,
@@ -577,8 +637,26 @@ export function ReceiptForm({
                 </div>
               </div>
 
+              <div className="wh-counterparty-details" style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, color: "var(--adm-ink)" }}>
+                  Банковские реквизиты поставщика <span style={{ color: "var(--adm-kraft)" }}>*</span>
+                  <span style={{ fontWeight: 400, fontSize: 11, color: "var(--ink-light)", marginLeft: 6 }}>
+                    (подставляются из карточки контрагента, нужны для выгрузки платёжки в Альфа-Банк)
+                  </span>
+                </div>
+                <div className="wh-form-grid">
+                  <div className="admin-field"><label className="admin-label">Расчётный счёт *</label><input className="admin-input" value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} placeholder="40702810..." required /></div>
+                  <div className="admin-field"><label className="admin-label">Банк *</label><input className="admin-input" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="Филиал банка..." /></div>
+                  <div className="admin-field"><label className="admin-label">Город банка</label><input className="admin-input" value={bankCity} onChange={(e) => setBankCity(e.target.value)} placeholder="г. Новосибирск" /></div>
+                  <div className="admin-field"><label className="admin-label">БИК *</label><input className="admin-input" value={bik} onChange={(e) => setBik(e.target.value)} placeholder="045004774" /></div>
+                  <div className="admin-field"><label className="admin-label">Корр. счёт</label><input className="admin-input" value={correspondentAccount} onChange={(e) => setCorrespondentAccount(e.target.value)} placeholder="30101810..." /></div>
+                  <div className="admin-field"><label className="admin-label">Номер счёта</label><input className="admin-input" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="№ счёта от поставщика" /></div>
+                  <div className="admin-field"><label className="admin-label">Дата счёта</label><input type="date" className="admin-input" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} /></div>
+                </div>
+              </div>
+
               <details className="wh-counterparty-details">
-                <summary>Реквизиты поставщика</summary>
+                <summary>Прочие реквизиты поставщика</summary>
                 <div className="wh-form-grid">
                   <div className="admin-field"><label className="admin-label">Контактное лицо</label><input className="admin-input" value={contactName} onChange={(e) => setContactName(e.target.value)} /></div>
                   <div className="admin-field"><label className="admin-label">Телефон</label><input className="admin-input" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
@@ -1149,6 +1227,13 @@ export function ReceiptCard({
                   address: r.address ?? null,
                   contactName: r.contactName ?? null,
                   comment: r.comment ?? null,
+                  bankAccount: r.bankAccount ?? null,
+                  bankName: r.bankName ?? null,
+                  bankCity: r.bankCity ?? null,
+                  bik: r.bik ?? null,
+                  correspondentAccount: r.correspondentAccount ?? null,
+                  invoiceNumber: r.invoiceNumber ?? null,
+                  invoiceDate: r.invoiceDate ?? null,
                   items: r.items.map((item) => ({
                     productId: item.productId,
                     name: item.name,

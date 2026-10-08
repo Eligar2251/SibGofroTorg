@@ -249,6 +249,7 @@ export default async function AdminWarehousePage({
       taxSystem: item.taxSystem ?? null,
       bankAccount: item.bankAccount ?? null,
       bankName: item.bankName ?? null,
+      bankCity: item.bankCity ?? null,
       bik: item.bik ?? null,
       correspondentAccount: item.correspondentAccount ?? null,
       address: item.address ?? null,

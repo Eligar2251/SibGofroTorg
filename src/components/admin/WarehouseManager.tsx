@@ -89,6 +89,7 @@ import {
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { StockQtyEditor } from "@/components/admin/WarehouseStockEditor";
 import { WarehouseAccountTransfer } from "@/components/admin/WarehouseAccountTransfer";
+import { ClientBankExportButton } from "@/components/admin/ClientBankExport";
 import { StockPriceEditor } from "@/components/admin/StockPriceEditor";
 import { ProductStockSummaryPanel } from "@/components/admin/WarehouseStockSummary";
 import { PaymentDetailsModal } from "@/components/admin/PaymentDetailsModal";
@@ -2219,6 +2220,7 @@ export function WarehouseManager({
                   tierDiscounts={tierDiscounts}
                   autoOpen={quickAction === "quick-order"}
                 />
+                <ClientBankExportButton />
                 <PaymentForm
                   deals={dealLinkOptions}
                   receipts={receiptLinkOptions}
@@ -2314,6 +2316,7 @@ export function WarehouseManager({
               )}
               {activeTab === "bank" && (
                 <>
+                  <ClientBankExportButton />
                   <PaymentForm
                     deals={dealLinkOptions}
                     receipts={receiptLinkOptions}

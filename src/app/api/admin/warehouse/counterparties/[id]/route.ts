@@ -26,6 +26,7 @@ export async function PUT(
       taxSystem: body.taxSystem,
       bankAccount: body.bankAccount,
       bankName: body.bankName,
+      bankCity: body.bankCity,
       bik: body.bik,
       correspondentAccount: body.correspondentAccount,
       address: body.address,

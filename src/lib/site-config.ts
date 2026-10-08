@@ -61,3 +61,11 @@ export const COMPANY_OGRN = "1205400033992";
 export const COMPANY_LEGAL_ADDRESS =
   "630024, Новосибирская обл., г. Новосибирск, ул. Ватутина, зд. 42/2";
 export const COMPANY_DIRECTOR = "Директор: Пакин Вадим Маркович";
+
+// ── Банковские реквизиты для выгрузки платёжек в Альфа-Банк (1CClientBankExchange) ──
+// Источник: образец 1С, выгруженный из учёта ООО «СибГофроТорг».
+export const COMPANY_BANK_ACCOUNT = "40702810923240002990";
+export const COMPANY_BANK_NAME = "ФИЛИАЛ \"НОВОСИБИРСКИЙ\" АО \"АЛЬФА-БАНК\"";
+export const COMPANY_BANK_CITY = "г. Новосибирск";
+export const COMPANY_BIK = "045004774";
+export const COMPANY_CORRESPONDENT_ACCOUNT = "30101810600000000774";

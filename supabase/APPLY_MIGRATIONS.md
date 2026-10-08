@@ -1,5 +1,23 @@
 # Миграции ветки (что применить на боевой базе)
 
+> **Ветка `arena/58567d0b-sibgofrotorg` (выгрузка в 1С/Альфа-Банк)** —
+> миграция `supabase/migration_1c_client_bank.sql`. Добавляет:
+>   - `counterparties.bank_city` (город банка получателя),
+>   - в `warehouse_receipts` банковские реквизиты поставщика
+>     (`bank_account`, `bank_name`, `bank_city`, `bik`, `correspondent_account`)
+>     и номер/дату счёта (`invoice_number`, `invoice_date`),
+>   - в `bank_payments` поля платёжного поручения: `payment_purpose`,
+>     `payment_priority` (очерёдность, по умолчанию 5), `payment_kind` (01),
+>     `exported_at` (отметка о том, что платёжка уже выгружена).
+>
+> Все колонки добавляются через `ADD COLUMN IF NOT EXISTS`, миграция
+> идемпотентна. **Применить до деплоя** — иначе сохранение поставки будет
+> падать с ошибкой об отсутствии колонок.
+
+---
+
+# Миграции ветки (что применить на боевой базе)
+
 > **Ветка `arena/01a0faba-sibgofrotorg` (PR #122, штанцформы)** — одна
 > миграция: `supabase/migration_die_calc.sql`. Она создаёт `die_calc_jobs`
 > (сохранённые расчёты), `die_calc_models` (выученная модель),
