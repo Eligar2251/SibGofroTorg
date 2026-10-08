@@ -1,41 +1,38 @@
 import Image from "next/image";
 import Link from "next/link";
-import { WastepaperCalculator } from "@/components/wastepaper/WastepaperCalculator";
-import { CheckCircle, Truck, Coins, ShieldCheck } from "lucide-react";
+import { CheckCircle, Truck, Coins, ShieldCheck, Phone, Scale } from "lucide-react";
+import "./wastepaper.css";
 import { GlyphIcon } from "@/components/ui/Glyph";
-import { getWastepaperRates, getSettings } from "@/lib/supabase-queries";
-import { formatRate, getWastepaperPageConfig, WASTEPAPER_PHONE_DEFAULT } from "@/lib/wastepaper";
+import { getSettings } from "@/lib/supabase-queries";
+import { getWastepaperPageConfig, WASTEPAPER_PHONE_DEFAULT } from "@/lib/wastepaper";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: `Приём макулатуры в Новосибирске — цены за кг ${WASTEPAPER_PHONE_DEFAULT}`,
+  title: `Приём макулатуры в Новосибирске — вывоз, звоните ${WASTEPAPER_PHONE_DEFAULT}`,
   description:
-    `Сдать картон, бумагу и архивы в Новосибирске. Тел. ${WASTEPAPER_PHONE_DEFAULT}. Вывоз от 200 кг, оплата на месте. Актуальные тарифы СибГофроТорг.`,
+    `Сдать картон, бумагу и архивы в Новосибирске. Тел. ${WASTEPAPER_PHONE_DEFAULT}. Вывоз от 200 кг, оплата на месте. Цену уточняйте по телефону — СибГофроТорг.`,
   alternates: { canonical: `${SITE_URL}/wastepaper` },
 };
 
-// Цены читаем из настроек в рантайме (редактируются в админке),
+// Телефон и условия вывоза читаем из настроек в рантайме (админка),
 // поэтому страница не пререндерится на этапе сборки.
 export const dynamic = "force-dynamic";
 
 export default async function WastepaperPage() {
-  const [rates, settings] = await Promise.all([getWastepaperRates(), getSettings()]);
+  const settings = await getSettings();
   const wp = getWastepaperPageConfig(settings);
-  const minRate = Math.min(...Object.values(rates));
-  const selfBonus = `+ ${wp.selfBonus} ₽/кг самовывоз`;
   const pickupPriceLabel = wp.pickupPrice > 0 ? `${wp.pickupPrice} ₽` : "0 ₽";
   // Номер отдела макулатуры — из настроек (админка → Макулатура),
   // с дефолтом 291-08-20. Гофротара использует отдельный settings.phone.
   const contactPhone = wp.phone;
   const contactPhoneHref = wp.phoneHref;
 
-  // Тарифы: названия фиксированные, цены — из настроек
-  const rateRows = [
-    { icon: "box", name: "Гофрокартон (коробки в разобранном виде)", rate: rates.cardboard, bonus: selfBonus },
-    { icon: "file", name: "Белая архивная бумага А4", rate: rates.office_paper, bonus: selfBonus },
-    { icon: "books", name: "Книги, журналы, газеты, каталоги", rate: rates.books, bonus: selfBonus },
-    { icon: "trash", name: "Смешанная макулатура", rate: rates.mix, bonus: selfBonus },
+  const materials = [
+    { icon: "box", name: "Гофрокартон", desc: "Коробки и упаковка в разобранном виде" },
+    { icon: "file", name: "Офисная бумага", desc: "Белая архивная бумага А4, документы" },
+    { icon: "books", name: "Книги и журналы", desc: "Газеты, каталоги, печатная продукция" },
+    { icon: "trash", name: "Смешанная макулатура", desc: "Разные виды бумаги и картона" },
   ];
 
   return (
@@ -66,9 +63,9 @@ export default async function WastepaperPage() {
         <div className="container-wide wp-hero__inner">
           <div className="wp-hero__content">
             <div className="wp-hero__badge"><GlyphIcon value="recycle" size={13} /> Вторая жизнь сырья</div>
-            <h1 className="wp-hero__title">Приём макулатуры<br /><span>дорого в Новосибирске</span></h1>
+            <h1 className="wp-hero__title">Приём макулатуры<br /><span>в Новосибирске</span></h1>
             <p className="wp-hero__desc">
-              Принимаем гофрокартон, белую архивную бумагу, книги и журналы. Работаем с физлицами и организациями. Оплата на месте наличными или картой.
+              Принимаем гофрокартон, офисную бумагу, книги и журналы. Работаем с физлицами и организациями. Цену и условия вывоза уточняйте по телефону.
               {" "}Звоните:{" "}
               <a href={contactPhoneHref} style={{ color: "var(--green-lime)", fontWeight: 700, fontSize: "1.2em", whiteSpace: "nowrap" }}>
                 {contactPhone}
@@ -77,8 +74,8 @@ export default async function WastepaperPage() {
             </p>
             <div className="wp-hero__stats">
               <div className="wp-hero__stat">
-                <div className="wp-hero__stat-val">от {formatRate(minRate)} ₽</div>
-                <div className="wp-hero__stat-label">за кг</div>
+                <div className="wp-hero__stat-val">по звонку</div>
+                <div className="wp-hero__stat-label">актуальная цена</div>
               </div>
               <div className="wp-hero__stat-div" />
               <div className="wp-hero__stat">
@@ -89,8 +86,8 @@ export default async function WastepaperPage() {
               </div>
               <div className="wp-hero__stat-div" />
               <div className="wp-hero__stat">
-                <div className="wp-hero__stat-val">15 мин</div>
-                <div className="wp-hero__stat-label">перезвоним</div>
+                <div className="wp-hero__stat-val">1 звонок</div>
+                <div className="wp-hero__stat-label">и всё решено</div>
               </div>
             </div>
           </div>
@@ -139,87 +136,72 @@ export default async function WastepaperPage() {
           ))}
         </div>
 
-        {/* Основной контент — тарифы + калькулятор */}
-        <div className="wp-main">
-
-          {/* Левый блок — тарифы и правила */}
-          <div className="wp-info">
-
-            {/* Тарифная таблица */}
-            <div className="wp-rates-card">
-              <div className="wp-rates-card__header">
-                <h2 className="wp-rates-card__title">Актуальные тарифы</h2>
-                <span className="wp-rates-card__badge">ориентир · уточняйте</span>
-              </div>
-              <div className="wp-rates-list">
-                {rateRows.map((row, i) => (
-                  <div key={i} className="wp-rate-row">
-                    <div className="wp-rate-row__left">
-                      <span className="wp-rate-row__icon"><GlyphIcon value={row.icon} size={22} /></span>
-                      <div>
-                        <div className="wp-rate-row__name">{row.name}</div>
-                        <div className="wp-rate-row__bonus">{row.bonus}</div>
-                      </div>
-                    </div>
-                    <div className="wp-rate-row__price">{formatRate(row.rate)} ₽<span>/кг</span></div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {/* Основной контент — без калькулятора: всё уточняем по телефону */}
+        <div className="wpc-main">
+          <div className="wpc-info">
 
             {/* Что принимаем */}
-            <div className="wp-accept-card">
-              <h3 className="wp-accept-card__title"><GlyphIcon value="ok" size={18} /> Что мы принимаем</h3>
-              <div className="wp-accept-grid">
-                {wp.acceptList.map((item, i) => (
-                  <div key={i} className="wp-accept-item">
-                    <span className="wp-accept-check"><GlyphIcon value="check" size={14} fallback={null} /></span>
-                    {item}
+            <section className="wpc-card">
+              <h2 className="wpc-card__title"><GlyphIcon value="recycle" size={20} /> Что мы принимаем</h2>
+              <div className="wpc-types">
+                {materials.map((m) => (
+                  <div key={m.name} className="wpc-type">
+                    <span className="wpc-type__icon"><GlyphIcon value={m.icon} size={24} /></span>
+                    <div>
+                      <div className="wpc-type__name">{m.name}</div>
+                      <div className="wpc-type__desc">{m.desc}</div>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
+              {wp.acceptList.length > 0 && (
+                <ul className="wpc-accept">
+                  {wp.acceptList.map((item, i) => (
+                    <li key={i}><CheckCircle size={16} /> {item}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
             {/* Как это работает */}
-            <div className="wp-steps-card">
-              <h3 className="wp-steps-card__title">Как сдать макулатуру</h3>
-              <div className="wp-steps">
+            <section className="wpc-card">
+              <h2 className="wpc-card__title"><GlyphIcon value="ok" size={20} /> Как сдать макулатуру</h2>
+              <ol className="wpc-steps">
                 {[
-                  { n: "1", text: "Рассчитайте примерную стоимость в калькуляторе справа" },
-                  { n: "2", text: `Оставьте заявку или позвоните нам: ${contactPhone}` },
-                  { n: "3", text: "Мы согласуем время приёма или вывоза" },
-                  { n: "4", text: "Взвешивание и мгновенная выплата на месте" },
-                ].map((step) => (
-                  <div key={step.n} className="wp-step">
-                    <div className="wp-step__num">{step.n}</div>
-                    <div className="wp-step__text">{step.text}</div>
-                  </div>
+                  { t: "Позвоните нам", d: `${contactPhone} — расскажите, что и сколько хотите сдать` },
+                  { t: "Уточним условия", d: `Назовём актуальную цену и условия вывоза — вывозим от ${wp.pickupMinKg} кг` },
+                  { t: "Приедем или ждём вас", d: "Согласуем удобное время вывоза или приёма на нашей площадке" },
+                  { t: "Взвешивание и оплата", d: "Взвешиваем на поверенных весах и сразу рассчитываемся" },
+                ].map((step, i) => (
+                  <li key={i} className="wpc-step">
+                    <span className="wpc-step__num">{i + 1}</span>
+                    <div>
+                      <div className="wpc-step__title">{step.t}</div>
+                      <div className="wpc-step__desc">{step.d}</div>
+                    </div>
+                  </li>
                 ))}
-              </div>
-            </div>
-
+              </ol>
+            </section>
           </div>
 
-          {/* Правый блок — Калькулятор */}
-          <div className="wp-calc-wrap">
-            <div className="wp-calc-card">
-              <div className="wp-calc-card__header">
-                <div className="wp-calc-card__icon"><GlyphIcon value="coins" size={30} /></div>
-                <div>
-                  <div className="wp-calc-card__title">Калькулятор выплаты</div>
-                  <div className="wp-calc-card__sub">Узнайте сколько получите за партию</div>
-                </div>
-              </div>
-              <WastepaperCalculator
-                rates={rates}
-                pickupMinKg={wp.pickupMinKg}
-                selfBonus={wp.selfBonus}
-                pickupPrice={wp.pickupPrice}
-                contactPhone={contactPhone}
-                contactPhoneHref={contactPhoneHref}
-              />
+          {/* Правый блок — звонок */}
+          <aside className="wpc-call-wrap">
+            <div className="wpc-call">
+              <div className="wpc-call__icon"><Phone size={28} /></div>
+              <div className="wpc-call__title">Цену и вывоз уточняйте по телефону</div>
+              <p className="wpc-call__text">
+                Стоимость зависит от вида сырья, объёма и чистоты партии. Позвоните — менеджер сразу назовёт актуальную цену и подскажет условия вывоза.
+              </p>
+              <a href={contactPhoneHref} className="wpc-call__phone">{contactPhone}</a>
+              <a href={contactPhoneHref} className="wpc-call__btn"><Phone size={18} /> Позвонить</a>
+              <ul className="wpc-call__facts">
+                <li><Scale size={18} /> <span>Вывоз <b>от {wp.pickupMinKg} кг</b>{wp.pickupPrice > 0 ? ` · ${pickupPriceLabel}` : " — бесплатно"}</span></li>
+                <li><Truck size={18} /> <span>Меньше {wp.pickupMinKg} кг — привозите сами</span></li>
+                <li><Coins size={18} /> <span>Оплата сразу после взвешивания</span></li>
+              </ul>
             </div>
-          </div>
+          </aside>
         </div>
       </div>
     </div>

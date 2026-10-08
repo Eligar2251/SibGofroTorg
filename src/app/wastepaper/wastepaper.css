@@ -1,0 +1,171 @@
+/* Страница приёма макулатуры: без калькулятора, акцент на звонок */
+
+.wpc-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 24px;
+  margin-top: 28px;
+  align-items: start;
+}
+
+.wpc-info { display: flex; flex-direction: column; gap: 24px; }
+
+.wpc-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.04);
+}
+
+.wpc-card__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 20px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.wpc-types {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.wpc-type {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--green-bg, #f0fdf4);
+  border: 1px solid var(--green-border, #dcfce7);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.wpc-type:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(22, 163, 74, 0.1); }
+
+.wpc-type__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #fff;
+}
+.wpc-type__name { font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.wpc-type__desc { font-size: 13px; color: var(--ink-muted); line-height: 1.4; }
+
+.wpc-accept {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+.wpc-accept li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--ink);
+}
+.wpc-accept svg { color: var(--green, #16a34a); flex: none; }
+
+.wpc-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.wpc-step { display: flex; gap: 16px; padding: 12px 0; position: relative; }
+.wpc-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 17px;
+  top: 52px;
+  bottom: -8px;
+  width: 2px;
+  background: var(--border);
+}
+.wpc-step__num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--green, #16a34a);
+  color: #fff;
+  font-weight: 800;
+}
+.wpc-step__title { font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.wpc-step__desc { font-size: 14px; color: var(--ink-muted); line-height: 1.45; }
+
+.wpc-call-wrap { position: sticky; top: 96px; }
+
+.wpc-call {
+  border-radius: 24px;
+  padding: 30px 26px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(163, 230, 53, 0.25), transparent 55%),
+    linear-gradient(160deg, #14532d 0%, #166534 55%, #15803d 100%);
+  box-shadow: 0 20px 40px rgba(20, 83, 45, 0.25);
+}
+.wpc-call__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.14);
+  margin-bottom: 18px;
+}
+.wpc-call__title { font-size: 22px; font-weight: 800; line-height: 1.25; margin-bottom: 10px; }
+.wpc-call__text { margin: 0 0 20px; font-size: 14px; line-height: 1.5; color: rgba(255, 255, 255, 0.82); }
+.wpc-call__phone {
+  display: block;
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  color: var(--green-lime, #a3e635);
+  text-decoration: none;
+  white-space: nowrap;
+  margin-bottom: 14px;
+}
+.wpc-call__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 15px;
+  border-radius: 14px;
+  background: var(--green-lime, #a3e635);
+  color: #14532d;
+  font-weight: 800;
+  font-size: 16px;
+  text-decoration: none;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.wpc-call__btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
+.wpc-call__facts {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 18px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  display: grid;
+  gap: 12px;
+  font-size: 14px;
+}
+.wpc-call__facts li { display: flex; gap: 10px; align-items: center; }
+.wpc-call__facts svg { flex: none; color: var(--green-lime, #a3e635); }
+
+@media (max-width: 960px) {
+  .wpc-main { grid-template-columns: 1fr; }
+  .wpc-call-wrap { position: static; order: -1; }
+}
+@media (max-width: 600px) {
+  .wpc-card { padding: 20px; }
+  .wpc-types, .wpc-accept { grid-template-columns: 1fr; }
+  .wpc-call__phone { font-size: 26px; }
+}
