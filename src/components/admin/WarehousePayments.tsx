@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -411,6 +411,20 @@ export function PaymentForm({
     // Настоящий подсчёт делает сервер при создании платежа.
     return 1;
   }
+
+  // При выборе поступления подтягиваем его ставку НДС автоматически.
+  useEffect(() => {
+    if (!primaryReceipt) return;
+    const rate = Number(primaryReceipt.vatRate);
+    if (Number.isFinite(rate)) {
+      if (rate <= 0) {
+        setPaymentWithoutVat(true);
+      } else {
+        setPaymentWithoutVat(false);
+        setPaymentVatRate(rate);
+      }
+    }
+  }, [primaryReceipt?.id]);
 
   // Живой предпросмотр назначения платежа (правила 1С).
   const purposePreview = useMemo(() => {
