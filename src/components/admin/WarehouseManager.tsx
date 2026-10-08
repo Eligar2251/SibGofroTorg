@@ -1624,6 +1624,16 @@ export function WarehouseManager({
         supplier: r.supplier,
         total: r.total,
         paidAmount: receiptPaidMap.get(r.id) || 0,
+        inn: r.inn ?? null,
+        kpp: r.kpp ?? null,
+        bankAccount: r.bankAccount ?? null,
+        bankName: r.bankName ?? null,
+        bankCity: r.bankCity ?? null,
+        bik: r.bik ?? null,
+        correspondentAccount: r.correspondentAccount ?? null,
+        invoiceNumber: r.invoiceNumber ?? null,
+        invoiceDate: r.invoiceDate ?? null,
+        vatRate: r.vatRate,
       })),
     [receipts, receiptPaidMap]
   );
@@ -4642,6 +4652,10 @@ export function WarehouseManager({
                             dealIds: p.dealIds,
                             receiptIds: p.receiptIds,
                             direction: p.direction,
+                            paymentPurpose: p.paymentPurpose ?? null,
+                            paymentPriority: p.paymentPriority ?? 5,
+                            paymentKind: p.paymentKind ?? "01",
+                            vatRate: p.vatRate,
                           }}
                         />
                       ) : (

@@ -8,6 +8,7 @@ import { createHash } from "crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getAdminDb } from "./supabase";
 import { getProductEffectivePrice } from "./types";
+import { buildPurposeLines } from "./payment-purpose";
 // Прямые правки счетов владельцем: подмешиваются в остатки кассы.
 import { getMoneyAdjustments } from "./money-accounts";
 // Ревизия пишет остатки напрямую — нужно сбросить memory-кеш товаров,
@@ -1346,21 +1347,25 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
       });
     }
   } else {
-    // ★ Создаём исходящие платежи (по разбивке)
-    const partLabels = ["первой части", "второй части", "третьей части", "четвертой части", "пятой части", "шестой части", "седьмой части", "восьмой части", "девятой части", "десятой части"];
-    const months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-    const _d = new Date(date + "T00:00:00");
-    const dateRu = `${String(_d.getDate()).padStart(2, "0")} ${months[_d.getMonth()]} ${_d.getFullYear()}`;
+    // ★ Создаём исходящие платежи (по разбивке). Назначение платежа формируется
+    // по правилам 1С с учётом части (первая/вторая/...) и НДС.
+    const invoiceNo = data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : String(number);
+    const invoiceDt = data.invoiceDate ? String(data.invoiceDate).slice(0, 10) : date;
     for (let i = 0; i < paymentSplits.length; i++) {
       const splitAmount = paymentSplits[i];
       if (splitAmount <= 0) continue;
       const payNumber = await nextNumber("payment");
-      const part = paymentSplits.length > 1 ? (partLabels[i] || `${i + 1}-й части`) : null;
-      const purposeParts: string[] = [];
-      purposeParts.push(part ? `оплата ${part} по счёту № ${number} от ${dateRu}` : `оплата по счёту № ${number} от ${dateRu}`);
-      if (vatRate > 0) purposeParts.push(`В том числе НДС ${vatRate}%`);
-      else purposeParts.push("Без НДС");
-      const purpose = purposeParts.join(". ").replace(/\.\./g, ".");
+      const total = paymentSplits.length;
+      const purpose = buildPurposeLines({
+        amount: splitAmount,
+        vatRate,
+        docNumber: invoiceNo,
+        docDate: invoiceDt,
+        docKind: "по счёту",
+        partIndex: total > 1 ? i : null,
+        partTotal: total > 1 ? total : null,
+        withoutVat: !(vatRate > 0),
+      });
       await db.from("bank_payments").insert({
         number: payNumber, date,
         direction: "outgoing", type: "regular",
@@ -1368,11 +1373,11 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
         deal_ids: [], deal_numbers: [],
         receipt_ids: [receiptId], receipt_numbers: [number],
         amount: splitAmount, invoice_number: data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null,
-        vat_rate: vatRate, vat_amount: includedVat(splitAmount, vatRate),
+        vat_rate: vatRate, vat_amount: purpose.vatCalculated,
         is_paid: false, paid_at: null,
         exclude_from_balance: false,
         comment: `Оплата поставщику по приходному ордеру ПО-${number}${paymentSplits.length > 1 ? ` (часть ${i+1})` : ""}`,
-        payment_purpose: purpose,
+        payment_purpose: purpose.main,
         payment_priority: 5,
         payment_kind: "01",
       });
@@ -3232,6 +3237,16 @@ export async function updatePayment(id: string, data: any): Promise<void> {
   if (data.paymentPurpose !== undefined) payload.payment_purpose = data.paymentPurpose ? cleanText(data.paymentPurpose, 500) : null;
   if (data.paymentPriority !== undefined) payload.payment_priority = Number(data.paymentPriority) || 5;
   if (data.paymentKind !== undefined) payload.payment_kind = data.paymentKind ? String(data.paymentKind).slice(0, 10) : "01";
+  if (data.vatRate !== undefined) {
+    const rate = Number(data.vatRate) || 0;
+    payload.vat_rate = rate;
+    if (data.amount !== undefined) payload.vat_amount = includedVat(Number(data.amount) || 0, rate);
+    else {
+      // Сумму не меняли — пересчитываем НДС от старой.
+      const { data: cur } = await db.from("bank_payments").select("amount").eq("id", id).maybeSingle();
+      payload.vat_amount = includedVat(Number(cur?.amount) || 0, rate);
+    }
+  }
   const { error } = await db.from("bank_payments").update(payload).eq("id", id);
   if (error) throw error;
   revalidateTag("warehouse-payments", { expire: 0 });

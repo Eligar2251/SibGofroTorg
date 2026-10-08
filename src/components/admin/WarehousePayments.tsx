@@ -37,6 +37,12 @@ import { includedVat, VAT_RATE } from "@/lib/vat";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
 import type { BankPaymentType, CashKind } from "@/lib/warehouse-shared";
 import { useEscapeClose } from "@/hooks/use-escape-close";
+import {
+  buildPurposeLines,
+  PAYMENT_PRIORITIES,
+  PAYMENT_KINDS,
+  formatRuDate,
+} from "@/lib/payment-purpose";
 
 export interface DealLinkOption {
   id: string;
@@ -57,6 +63,19 @@ export interface ReceiptLinkOption {
   total: number;
   /** Сколько уже оплачено поставщику по этому поступлению */
   paidAmount: number;
+  /** Банковские реквизиты поставщика (для автоподстановки платёжки). */
+  inn?: string | null;
+  kpp?: string | null;
+  bankAccount?: string | null;
+  bankName?: string | null;
+  bankCity?: string | null;
+  bik?: string | null;
+  correspondentAccount?: string | null;
+  /** Номер/дата счёта от поставщика (для назначения платежа). */
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
+  /** Ставка НДС поступления. */
+  vatRate?: number;
 }
 
 function todayIso(): string {
@@ -126,6 +145,14 @@ export function PaymentForm({
   const [purchasePlanId, setPurchasePlanId] = useState("");
   const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
+
+  // Поля платёжного поручения (для выгрузки в банк).
+  const [paymentPurpose, setPaymentPurpose] = useState("");
+  const [purposeEdited, setPurposeEdited] = useState(false);
+  const [paymentPriority, setPaymentPriority] = useState<number>(5);
+  const [paymentKind, setPaymentKind] = useState<string>("01");
+  const [paymentVatRate, setPaymentVatRate] = useState<number>(VAT_RATE);
+  const [paymentWithoutVat, setPaymentWithoutVat] = useState(false);
 
   const activeDeals = useMemo(
     () =>
@@ -345,7 +372,67 @@ export function PaymentForm({
     setSelectedDeals([]);
     setSelectedReceipts([]);
     setPurchasePlanId("");
+    setPaymentPurpose("");
+    setPurposeEdited(false);
+    setPaymentPriority(5);
+    setPaymentKind("01");
+    setPaymentVatRate(VAT_RATE);
+    setPaymentWithoutVat(false);
     setError("");
+  }
+
+  // Определяем связанный документ для автогенерации назначения платежа.
+  const primaryReceipt = useMemo(
+    () =>
+      selectedReceipts.length > 0
+        ? receipts.find((r) => r.id === selectedReceipts[0]) || null
+        : null,
+    [receipts, selectedReceipts]
+  );
+  const primaryDeal = useMemo(
+    () =>
+      selectedDeals.length > 0
+        ? deals.find((d) => d.id === selectedDeals[0]) || null
+        : null,
+    [deals, selectedDeals]
+  );
+
+  // Сколько ещё платежей с этим же поступлением (вместе с текущим) для
+  // правильной автоподстановки "первая часть/вторая часть".
+  const totalPartsForReceipt = useMemo(() => {
+    if (!primaryReceipt) return 1;
+    return Math.max(1, paymentsForReceipt(primaryReceipt.id, /*ignoreNew=*/false));
+  }, [primaryReceipt]);
+
+  // Хелпер: считает уже существующих неоплаченных платежей по поступлению.
+  function paymentsForReceipt(rid: string, _ignoreNew: boolean): number {
+    // На клиенте мы не знаем все платежи, поэтому ориентируемся только по
+    // выбранному в этой форме поступлению и считаем 1 (этот платёж).
+    // Настоящий подсчёт делает сервер при создании платежа.
+    return 1;
+  }
+
+  // Живой предпросмотр назначения платежа (правила 1С).
+  const purposePreview = useMemo(() => {
+    const amt = Number(amount) || 0;
+    const rate = paymentWithoutVat ? 0 : paymentVatRate;
+    return buildPurposeLines({
+      amount: amt,
+      vatRate: rate,
+      docNumber: invoiceNumber || primaryReceipt?.invoiceNumber || primaryReceipt?.number || null,
+      docDate: primaryReceipt?.invoiceDate || primaryReceipt?.date || date,
+      docKind: "по счёту",
+      baseText: purposeEdited ? paymentPurpose : null,
+      partIndex: null,
+      partTotal: null,
+      withoutVat: paymentWithoutVat,
+    });
+  }, [amount, paymentVatRate, paymentWithoutVat, paymentPurpose, purposeEdited, invoiceNumber, primaryReceipt, date]);
+
+  /** Автозаполнить назначение платежа по сумме/документу/НДС. */
+  function autoFillPurpose() {
+    setPaymentPurpose("");
+    setPurposeEdited(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -381,6 +468,11 @@ export function PaymentForm({
           // Привязка к закупке имеет смысл только для исходящих платежей
           purchasePlanId:
             direction === "outgoing" && purchasePlanId ? purchasePlanId : null,
+          // Поля платёжного поручения
+          paymentPurpose: paymentPurpose.trim() || null,
+          paymentPriority,
+          paymentKind,
+          vatRate: paymentWithoutVat ? 0 : paymentVatRate,
         }),
       });
       if (!res.ok) {
@@ -642,12 +734,109 @@ export function PaymentForm({
                     onChange={(e) => setComment(e.target.value)}
                     placeholder={
                       direction === "outgoing"
-                        ? "Нанапример: фура с завода"
+                        ? "Например: фура с завода"
                         : "Например: оплата по счёту"
                     }
                   />
                 </div>
               </div>
+
+              {direction === "outgoing" && type === "regular" && (
+                <div className="admin-card" style={{ marginTop: 12, padding: 12, background: "rgba(0,0,0,.02)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>Платёжное поручение (для выгрузки в банк)</div>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      onClick={autoFillPurpose}
+                      title="Пересчитать автоматически по номеру/дате/НДС"
+                    >
+                      Авто
+                    </button>
+                  </div>
+
+                  <div className="wh-form-grid">
+                    <div className="admin-field">
+                      <label className="admin-label">Вид оплаты</label>
+                      <select
+                        className="admin-select"
+                        value={paymentKind}
+                        onChange={(e) => setPaymentKind(e.target.value)}
+                      >
+                        {PAYMENT_KINDS.map((k) => (
+                          <option key={k.value} value={k.value}>{k.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">Очерёдность</label>
+                      <select
+                        className="admin-select"
+                        value={paymentPriority}
+                        onChange={(e) => setPaymentPriority(Number(e.target.value))}
+                      >
+                        {PAYMENT_PRIORITIES.map((p) => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="wh-form-grid">
+                    <div className="admin-field">
+                      <label className="admin-label">Ставка НДС</label>
+                      <select
+                        className="admin-select"
+                        value={paymentWithoutVat ? "-1" : String(paymentVatRate)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "-1") { setPaymentWithoutVat(true); }
+                          else { setPaymentWithoutVat(false); setPaymentVatRate(Number(v) || VAT_RATE); }
+                        }}
+                      >
+                        <option value="22">22% (основная)</option>
+                        <option value="20">20%</option>
+                        <option value="10">10%</option>
+                        <option value="0">0%</option>
+                        <option value="-1">Без НДС</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="admin-field">
+                    <label className="admin-label">Назначение платежа (редактируемое)</label>
+                    <textarea
+                      className="admin-textarea"
+                      rows={2}
+                      value={paymentPurpose}
+                      onChange={(e) => { setPaymentPurpose(e.target.value); setPurposeEdited(true); }}
+                      placeholder="Оставьте пустым — сформируется автоматически по сумме, номеру/дате счёта и НДС"
+                    />
+                    <span className="admin-hint">
+                      Пустым — автозаполнение по 1С-правилам при сохранении. При вводе текста вручную автопересчёт отключается.
+                    </span>
+                  </div>
+
+                  <div style={{
+                    marginTop: 6,
+                    padding: "8px 10px",
+                    background: "var(--adm-bg)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    color: "var(--ink)",
+                    border: "1px dashed var(--adm-border)",
+                    lineHeight: 1.45,
+                    wordBreak: "break-word",
+                  }}>
+                    <div style={{ color: "var(--ink-light)", marginBottom: 4 }}>Предпросмотр как в Клиент-Банке:</div>
+                    <div>1: {purposePreview.main}</div>
+                    <div>2: {purposePreview.sumLine}</div>
+                    <div>3: {purposePreview.vatLine}</div>
+                    <div style={{ color: "var(--adm-kraft)", marginTop: 4 }}>→ {purposePreview.combined}</div>
+                  </div>
+                </div>
+              )}
 
               <div style={{ marginTop: 12 }}>
                 <label className="admin-check">
@@ -730,6 +919,10 @@ export function PaymentControls({
     dealIds?: string[];
     receiptIds?: string[];
     direction: "incoming" | "outgoing";
+    paymentPurpose?: string | null;
+    paymentPriority?: number | null;
+    paymentKind?: string | null;
+    vatRate?: number | null;
   };
 }) {
   const router = useRouter();
@@ -758,6 +951,12 @@ export function PaymentControls({
   const [editReceiptIds, setEditReceiptIds] = useState<string[]>(
     edit.receiptIds || []
   );
+  const [editPurpose, setEditPurpose] = useState(edit.paymentPurpose || "");
+  const [editPurposeTouched, setEditPurposeTouched] = useState(Boolean(edit.paymentPurpose));
+  const [editPriority, setEditPriority] = useState<number>(edit.paymentPriority || 5);
+  const [editPayKind, setEditPayKind] = useState<string>(edit.paymentKind || "01");
+  const [editVatRate, setEditVatRate] = useState<number>(edit.vatRate ?? VAT_RATE);
+  const [editWithoutVat, setEditWithoutVat] = useState<boolean>((edit.vatRate ?? VAT_RATE) <= 0);
   const [error, setError] = useState("");
 
   const activeDeals = useMemo(
@@ -826,6 +1025,24 @@ export function PaymentControls({
       })),
     [receipts]
   );
+
+  const editPrimaryReceipt = useMemo(
+    () => (editReceiptIds.length > 0 ? receipts.find((r) => r.id === editReceiptIds[0]) || null : null),
+    [receipts, editReceiptIds]
+  );
+  const editPurposePreview = useMemo(() => {
+    const amt = Number(editAmount) || 0;
+    return buildPurposeLines({
+      amount: amt,
+      vatRate: editWithoutVat ? 0 : editVatRate,
+      docNumber: editInvoiceNumber || editPrimaryReceipt?.invoiceNumber || editPrimaryReceipt?.number || null,
+      docDate: editPrimaryReceipt?.invoiceDate || editPrimaryReceipt?.date || editDate,
+      docKind: "по счёту",
+      baseText: editPurposeTouched ? editPurpose : null,
+      withoutVat: editWithoutVat,
+    });
+  }, [editAmount, editVatRate, editWithoutVat, editPurpose, editPurposeTouched, editInvoiceNumber, editPrimaryReceipt, editDate]);
+
   // Закрытие только крестиком и Escape: клик по подложке не закрывает —
   // иначе выделение текста с отпусканием мыши за окном закрывало окно.
   useEscapeClose(() => setShowEdit(false), showEdit);
@@ -880,6 +1097,10 @@ export function PaymentControls({
           excludeFromBalance: editExclude,
           dealIds: editDealIds,
           receiptIds: editReceiptIds,
+          paymentPurpose: editPurpose.trim() || null,
+          paymentPriority: editPriority,
+          paymentKind: editPayKind,
+          vatRate: editWithoutVat ? 0 : editVatRate,
         }),
       });
       if (res.ok) {
@@ -1105,13 +1326,84 @@ export function PaymentControls({
               <div className="wh-form-grid">
                 <div className="admin-field">
                   <label className="admin-label">Номер счёта</label>
-                  <input type="text" className="admin-input" value={editInvoiceNumber} onChange={(e) => setEditInvoiceNumber(e.target.value)} placeholder="Номер из вашей программы" />
+                  <input type="text" className="admin-input" value={editInvoiceNumber} onChange={(e) => setEditInvoiceNumber(e.target.value)} placeholder="№ счёта от поставщика" />
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Комментарий</label>
                   <input type="text" className="admin-input" value={editComment} onChange={(e) => setEditComment(e.target.value)} placeholder="Необязательно" />
                 </div>
               </div>
+
+              {edit.direction === "outgoing" && editType === "regular" && (
+                <div className="admin-card" style={{ marginTop: 4, padding: 12, background: "rgba(0,0,0,.02)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>Платёжное поручение (поля для банка)</div>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost admin-btn--sm"
+                      onClick={() => { setEditPurpose(""); setEditPurposeTouched(false); }}
+                    >
+                      Авто
+                    </button>
+                  </div>
+                  <div className="wh-form-grid">
+                    <div className="admin-field">
+                      <label className="admin-label">Вид оплаты</label>
+                      <select className="admin-select" value={editPayKind} onChange={(e) => setEditPayKind(e.target.value)}>
+                        {PAYMENT_KINDS.map((k) => (<option key={k.value} value={k.value}>{k.label}</option>))}
+                      </select>
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">Очерёдность</label>
+                      <select className="admin-select" value={editPriority} onChange={(e) => setEditPriority(Number(e.target.value))}>
+                        {PAYMENT_PRIORITIES.map((p) => (<option key={p} value={p}>{p}</option>))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="wh-form-grid">
+                    <div className="admin-field">
+                      <label className="admin-label">Ставка НДС</label>
+                      <select
+                        className="admin-select"
+                        value={editWithoutVat ? "-1" : String(editVatRate)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "-1") { setEditWithoutVat(true); }
+                          else { setEditWithoutVat(false); setEditVatRate(Number(v) || VAT_RATE); }
+                        }}
+                      >
+                        <option value="22">22%</option>
+                        <option value="20">20%</option>
+                        <option value="10">10%</option>
+                        <option value="0">0%</option>
+                        <option value="-1">Без НДС</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="admin-field">
+                    <label className="admin-label">Назначение платежа (редактируемое)</label>
+                    <textarea
+                      className="admin-textarea"
+                      rows={2}
+                      value={editPurpose}
+                      onChange={(e) => { setEditPurpose(e.target.value); setEditPurposeTouched(true); }}
+                      placeholder="Оставьте пустым — автогенерация по 1С"
+                    />
+                  </div>
+                  <div style={{
+                    marginTop: 4, padding: "8px 10px", background: "var(--adm-bg)",
+                    borderRadius: 6, fontSize: 12,
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    border: "1px dashed var(--adm-border)", lineHeight: 1.45, wordBreak: "break-word",
+                  }}>
+                    <div style={{ color: "var(--ink-light)", marginBottom: 4 }}>Предпросмотр:</div>
+                    <div>1: {editPurposePreview.main}</div>
+                    <div>2: {editPurposePreview.sumLine}</div>
+                    <div>3: {editPurposePreview.vatLine}</div>
+                    <div style={{ color: "var(--adm-kraft)", marginTop: 4 }}>→ {editPurposePreview.combined}</div>
+                  </div>
+                </div>
+              )}
 
               <label className="admin-check">
                 <input type="checkbox" checked={editExclude} onChange={(e) => setEditExclude(e.target.checked)} />

@@ -16,6 +16,7 @@ import {
 } from "@/lib/client-bank-exchange";
 import { encodeWindows1251 } from "@/lib/cp1251";
 import type { PayerParty, PaymentDoc } from "@/lib/client-bank-exchange";
+import { buildPurposeLines } from "@/lib/payment-purpose";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -182,21 +183,23 @@ export async function GET(request: NextRequest) {
           ? String(receipt.number)
           : "";
       const invDateRaw = isoDate(receipt?.invoice_date || receipt?.date);
-      const invDateLabel = invDateRaw ? longRuDate(invDateRaw) : "";
 
-      let basePurpose = txt(p.payment_purpose);
-      if (!basePurpose) {
-        const parts: string[] = [];
-        if (partLabel) parts.push(`оплата ${partLabel}`);
-        else parts.push("оплата");
-        if (invNum) parts.push(`по счёту № ${invNum}`);
-        if (invDateLabel) parts.push(`от ${invDateLabel}`);
-        parts.push(".");
-        const vatRate = num(p.vat_rate, 22);
-        if (vatRate > 0) parts.push(` В том числе НДС ${vatRate}%, ${moneyDash(num(p.vat_amount))}`);
-        else parts.push(" Без НДС");
-        basePurpose = parts.join("").replace(/\s+\./g, ".").replace(/\s+,/g, ",").trim();
-      }
+      // Назначение платежа: если пользователь вписал свой текст в
+      // payment_purpose — используем его как основу; если нет — строим
+      // автоматически по части/номеру/дате/НДС (как в 1С).
+      const purpose = buildPurposeLines({
+        amount: num(p.amount),
+        vatRate: num(p.vat_rate, 22),
+        vatAmount: num(p.vat_amount),
+        docNumber: invNum || null,
+        docDate: invDateRaw || null,
+        docKind: "по счёту",
+        partIndex: totalParts > 1 ? indexInGroup : null,
+        partTotal: totalParts > 1 ? totalParts : null,
+        baseText: txt(p.payment_purpose) || null,
+        withoutVat: num(p.vat_rate, 22) <= 0,
+      });
+      const basePurpose = purpose.main;
 
       const payee: PayerParty = {
         name: payeeName,
