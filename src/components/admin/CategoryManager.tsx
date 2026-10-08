@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { GlyphIcon, GLYPH_CHOICES } from "@/components/ui/Glyph";
+import type { DimensionProfile } from "@/lib/dimension-profiles";
 
 interface Category {
   id: string;
@@ -28,12 +29,15 @@ interface Category {
   imageUrl?: string | null;
   createdAt?: string | null;
   productCount: number;
+  dimensionProfileId?: string | null;
 }
 
 export function CategoryManager({
   categories: initialCats,
+  dimensionProfiles = [],
 }: {
   categories: Category[];
+  dimensionProfiles?: DimensionProfile[];
 }) {
   const router = useRouter();
   const [categories, setCategories] = useState(initialCats);
@@ -82,6 +86,32 @@ export function CategoryManager({
       setError("Ошибка сети при удалении категории");
     }
     setDeletingId(null);
+  }
+
+  const defaultProfile = dimensionProfiles.find((p) => p.isDefault);
+  const [savingProfileId, setSavingProfileId] = useState<string | null>(null);
+
+  async function changeProfile(cat: Category, profileId: string) {
+    setSavingProfileId(cat.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/categories/${cat.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dimensionProfileId: profileId || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || "Не удалось сохранить тип размеров");
+      } else {
+        setCategories((prev) =>
+          prev.map((c) => (c.id === cat.id ? { ...c, dimensionProfileId: profileId || null } : c))
+        );
+      }
+    } catch {
+      setError("Ошибка сети при сохранении категории");
+    }
+    setSavingProfileId(null);
   }
 
   async function addCategory() {
@@ -226,6 +256,7 @@ export function CategoryManager({
                 <th>Категория</th>
                 <th>Slug</th>
                 <th>Товаров</th>
+                {dimensionProfiles.length > 0 && <th>Тип размеров</th>}
                 <th>Видимость</th>
                 <th>Дата создания</th>
                 <th style={{ width: 60 }}>Действия</th>
@@ -253,6 +284,28 @@ export function CategoryManager({
                       {cat.productCount}
                     </strong>
                   </td>
+                  {dimensionProfiles.length > 0 && (
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <select
+                          className="admin-select"
+                          style={{ minWidth: 190 }}
+                          value={cat.dimensionProfileId || ""}
+                          disabled={savingProfileId === cat.id}
+                          onChange={(e) => changeProfile(cat, e.target.value)}
+                          aria-label={`Тип размеров категории ${cat.name}`}
+                        >
+                          <option value="">
+                            По умолчанию{defaultProfile ? ` (${defaultProfile.name})` : ""}
+                          </option>
+                          {dimensionProfiles.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        {savingProfileId === cat.id && <Loader2 size={14} className="animate-spin" />}
+                      </div>
+                    </td>
+                  )}
                   <td>
                     {cat.isVisible !== false ? (
                       <span className="admin-badge admin-badge--green">

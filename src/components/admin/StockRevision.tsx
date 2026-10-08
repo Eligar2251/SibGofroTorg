@@ -185,6 +185,7 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
             dimensionWidth: p.dimensionWidth ?? null,
             dimensionHeight: p.dimensionHeight ?? null,
             dimensionUnit: p.dimensionUnit ?? null,
+            dimensionValues: p.dimensionValues ?? null,
             // Цена варианта (если задана отдельная) — иначе цена товара.
             price: v.price != null ? Number(v.price) : p.price ?? null,
           });
@@ -203,6 +204,7 @@ export function StockRevision({ stock }: { stock: WarehouseStockRow[] }) {
           dimensionWidth: p.dimensionWidth ?? null,
           dimensionHeight: p.dimensionHeight ?? null,
           dimensionUnit: p.dimensionUnit ?? null,
+            dimensionValues: p.dimensionValues ?? null,
           price: p.price ?? null,
         });
       }

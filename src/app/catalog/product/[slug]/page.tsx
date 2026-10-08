@@ -49,6 +49,7 @@ import {
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { formatProductSize } from "@/lib/product-size";
+import { dimensionOrderLabel } from "@/lib/dimension-profiles";
 import {
   SITE_URL,
   SITE_NAME,
@@ -203,7 +204,12 @@ export default async function ProductPage({
   const dims = formatProductSize(product);
 
   const specs = [
-    dims && { label: "Размеры (ДхШхВ)", value: dims },
+    dims && {
+      label: product.dimensionValues?.length
+        ? `Размеры (${dimensionOrderLabel(product.dimensionValues.filter((v) => v.value != null))})`
+        : "Размеры (ДхШхВ)",
+      value: dims,
+    },
     product.material && { label: "Материал", value: product.material },
     product.packQty && {
       label: "В упаковке",

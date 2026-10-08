@@ -21,6 +21,8 @@ import {
 import { notFound } from "next/navigation";
 import { ProductListClient } from "@/components/admin/ProductListClient";
 import { CategoryManager } from "@/components/admin/CategoryManager";
+import { DimensionProfilesManager } from "@/components/admin/DimensionProfilesManager";
+import { getDimensionProfiles } from "@/lib/dimension-profiles-db";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
@@ -38,10 +40,11 @@ export default async function AdminProductsPage({
   const { tab } = await searchParams;
   const activeTab = tab === "categories" ? "categories" : "products";
 
-  const [allProducts, cats, featuredOrderIds] = await Promise.all([
+  const [allProducts, cats, featuredOrderIds, dimensionProfiles] = await Promise.all([
     getProducts({ includeHidden: true }),
     getAllCategories(),
     getFeaturedProductOrderIds(),
+    getDimensionProfiles(),
   ]);
 
   const featuredOrderMap = new Map(
@@ -101,6 +104,7 @@ export default async function AdminProductsPage({
           : null
       : null,
     productCount: productCounts.get(cat.id) || 0,
+    dimensionProfileId: cat.dimensionProfileId ?? null,
   }));
 
   return (
@@ -165,7 +169,10 @@ export default async function AdminProductsPage({
       {activeTab === "products" ? (
         <ProductListClient products={serializedProducts} categories={serializedCats} adminPath={ADMIN_PATH} />
       ) : (
-        <CategoryManager categories={catsWithCounts} />
+        <div className="admin-stack">
+          <DimensionProfilesManager profiles={dimensionProfiles} />
+          <CategoryManager categories={catsWithCounts} dimensionProfiles={dimensionProfiles} />
+        </div>
       )}
     </div>
   );

@@ -28,6 +28,7 @@ interface SaleProduct {
   dimensionWidth?: number | null;
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
+  dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
   /** Размеры вариантов — когда у самого товара габариты не заполнены. */
   variantSizes?: ProductVariantSizeSource[] | null;
 }

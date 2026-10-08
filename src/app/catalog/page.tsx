@@ -1,3 +1,4 @@
+import { toCardProduct } from "@/lib/product-card";
 import type { Metadata } from "next";
 import { getCategories, getProducts } from "@/lib/supabase-queries";
 import { CatalogShopClient } from "@/components/catalog/CatalogShopClient";
@@ -35,28 +36,7 @@ export default async function CatalogPage() {
     icon: c.icon ?? "box",
   }));
 
-  const serializedProducts = products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    slug: p.slug,
-    sku: p.sku ?? null,
-    price: p.price,
-    priceWholesale: p.priceWholesale ?? null,
-    minWholesaleQty: p.minWholesaleQty ?? null,
-    packQty: p.packQty ?? null,
-    imageUrl: p.imageUrl ?? null,
-    inStock: p.inStock,
-    promoLabel: p.promoLabel ?? null,
-    promoLabelColor: p.promoLabelColor ?? null,
-    promoLabelTextColor: p.promoLabelTextColor ?? null,
-    madeToOrder: p.madeToOrder ?? false,
-    stockQty: p.stockQty ?? null,
-    dimensionLength: p.dimensionLength ?? null,
-    dimensionWidth: p.dimensionWidth ?? null,
-    dimensionHeight: p.dimensionHeight ?? null,
-    dimensionUnit: p.dimensionUnit ?? null,
-    material: p.material ?? null,
-  }));
+  const serializedProducts = products.map(toCardProduct);
 
   return (
     <>

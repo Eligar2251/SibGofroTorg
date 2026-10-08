@@ -1,3 +1,4 @@
+import { toCardProduct } from "@/lib/product-card";
 import { notFound } from "next/navigation";
 import { isProductAvailable } from "@/lib/stock-availability";
 import {
@@ -73,28 +74,7 @@ export default async function CategoryPage({
           slug: c.slug,
           icon: c.icon ?? "box",
         }))}
-        initialProducts={products.map((p) => ({
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          sku: p.sku ?? null,
-          price: p.price,
-          priceWholesale: p.priceWholesale ?? null,
-          minWholesaleQty: p.minWholesaleQty ?? null,
-          packQty: p.packQty ?? null,
-          imageUrl: p.imageUrl ?? null,
-          inStock: p.inStock,
-          promoLabel: p.promoLabel ?? null,
-          promoLabelColor: p.promoLabelColor ?? null,
-          promoLabelTextColor: p.promoLabelTextColor ?? null,
-          madeToOrder: p.madeToOrder ?? false,
-          stockQty: p.stockQty ?? null,
-          dimensionLength: p.dimensionLength ?? null,
-          dimensionWidth: p.dimensionWidth ?? null,
-          dimensionHeight: p.dimensionHeight ?? null,
-          dimensionUnit: p.dimensionUnit ?? null,
-          material: p.material ?? null,
-        }))}
+        initialProducts={products.map(toCardProduct)}
         initialCategorySlug={cat.slug}
         initialCategoryName={cat.name}
         initialSort={sort || "default"}

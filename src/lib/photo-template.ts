@@ -1,3 +1,4 @@
+import { formatDimensionValues } from "./dimension-profiles";
 // =========================================================
 // FILE: src/lib/photo-template.ts
 // Модель «шаблона фото» для авто-генерации карточек товаров:
@@ -123,6 +124,7 @@ export interface PhotoProduct {
   dimensionWidth: number | null;
   dimensionHeight: number | null;
   dimensionUnit: string | null;
+  dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
   material: string | null;
   volume: number | null;
   barcode: string | null;
@@ -181,7 +183,9 @@ export function buildProductTokens(
     .map((v) => (v != null && v > 0 ? trimNum(v) : null))
     .filter((v): v is string => v !== null);
   const unit = (p.dimensionUnit || "мм").trim();
-  const size = dims.length > 0 ? `${dims.join("×")} ${unit}` : "";
+  const size =
+    formatDimensionValues(p.dimensionValues) ||
+    (dims.length > 0 ? `${dims.join("×")} ${unit}` : "");
 
   const price =
     p.price != null ? `${p.price.toLocaleString("ru-RU")} ₽` : "по запросу";

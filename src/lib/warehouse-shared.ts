@@ -616,6 +616,7 @@ export interface WarehouseStockRow {
   dimensionWidth?: number | null;
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
+  dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
 }
 
  // ── Хелперы для резаных товаров ──

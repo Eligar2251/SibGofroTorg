@@ -6,6 +6,7 @@
 // =========================================================
 
 import * as XLSX from "xlsx";
+import { formatProductSize } from "./product-size";
 import { revalidateTag } from "next/cache";
 import { getAdminDb } from "./supabase";
 import {
@@ -335,6 +336,9 @@ export async function buildExcelExport(mode: "full" | "template" = "full"): Prom
           "Длина мм": p.dimensionLength ?? "",
           "Ширина мм": p.dimensionWidth ?? "",
           "Высота мм": p.dimensionHeight ?? "",
+          // Размеры по типу размеров (скотч: «48 мм × 120 м × 45 мкм»).
+          // Только для чтения — при импорте колонка игнорируется.
+          Размеры: formatProductSize(p as any, "any") || "",
           "Остаток": p.stockQty ?? 0,
           "Порог остатка": p.stockWarnQty ?? "",
           "В наличии": yn(p.inStock),

@@ -15,6 +15,7 @@ import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { ShoppingCart, Package, Clock3, Plus, Minus } from "lucide-react";
 import { ymGoal } from "@/lib/ym";
 import { formatProductSize } from "@/lib/product-size";
+import { getCardDiscount } from "@/lib/product-card";
 import {
   normalizeProductLabelColor,
   DEFAULT_PRODUCT_LABEL_COLOR,
@@ -55,6 +56,11 @@ interface CompactProduct {
   dimensionWidth?: number | null;
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
+  dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
+  basePrice?: number | null;
+  discountType?: "percent" | "fixed" | null;
+  discountValue?: number | null;
+  discountBadge?: string | null;
   material?: string | null;
   // ── Сводка по вариантам (если они у товара есть).
   //    Присылается сразу с getCachedProducts → здесь просто
@@ -91,13 +97,17 @@ export function ProductCardCompact({
     inCart != null && maxStock != null && inCart.quantity >= maxStock;
 
   const dims = formatProductSize(product);
+  // Скидка — как на странице товара: цена со скидкой, зачёркнутая
+  // старая цена и бейдж «−15%» (или своя подпись из discountBadge).
+  const discount = getCardDiscount(product);
+  const displayPrice = discount.price;
 
   function cartPayload() {
     return {
       productId: product.id,
       name: product.name,
       sku: product.sku,
-      price: product.price as number,
+      price: displayPrice as number,
       imageUrl: product.imageUrl,
       maxStock,
     };
@@ -127,7 +137,7 @@ export function ProductCardCompact({
       productId: product.id,
       name: product.name,
       imageUrl: product.imageUrl,
-      price: product.price,
+      price: displayPrice as number,
       qty: next,
     });
   }
@@ -147,7 +157,7 @@ export function ProductCardCompact({
         productId: product.id,
         name: product.name,
         imageUrl: product.imageUrl,
-        price: product.price,
+        price: displayPrice as number,
         qty: next,
       });
     }
@@ -161,7 +171,7 @@ export function ProductCardCompact({
       productId: product.id,
       name: product.name,
       imageUrl: product.imageUrl,
-      price: product.price,
+      price: displayPrice as number,
       qty,
     });
   }
@@ -189,6 +199,13 @@ export function ProductCardCompact({
             }}
           >
             {product.promoLabel}
+          </span>
+        )}
+        {discount.badge && (
+          <span
+            className={`pcc__badge pcc__badge--discount${product.promoLabel ? " pcc__badge--discount-shift" : ""}`}
+          >
+            {discount.badge}
           </span>
         )}
         {outOfStock && (
@@ -280,17 +297,22 @@ export function ProductCardCompact({
             <span className="pcc__price-muted pcc__price-muted--mto">
               Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
             </span>
-          ) : product.price != null ? (
+          ) : displayPrice != null ? (
             <>
               <div className="pcc__price-main">
                 {/* «от» — только когда есть варианты с разной ценой */}
                 {product.hasVariants && product.variantPriceMin !== product.variantPriceMax && (
                   <span className="pcc__price-from">от{"\u00a0"}</span>
                 )}
-                <span className="pcc__price-val">
-                  {product.price.toLocaleString("ru-RU")}
+                <span className={`pcc__price-val${discount.oldPrice != null ? " pcc__price-val--sale" : ""}`}>
+                  {displayPrice.toLocaleString("ru-RU")}
                 </span>
                 <span className="pcc__price-rub">₽/шт</span>
+                {discount.oldPrice != null && (
+                  <span className="pcc__price-old">
+                    {discount.oldPrice.toLocaleString("ru-RU")} ₽
+                  </span>
+                )}
               </div>
               {/* Бейдж «N вариантов» — намекает, что есть выбор */}
               {product.hasVariants && product.variantCount ? (

@@ -1,3 +1,4 @@
+import { toCardProduct } from "@/lib/product-card";
 import Link from "next/link";
 import {
   getCategories,
@@ -159,38 +160,7 @@ export default async function HomePage() {
     icon: cat.icon ?? "box",
   }));
 
-  const serializeHomeProduct = (p: FirestoreProduct) => ({
-    id: p.id,
-    name: p.name,
-    slug: p.slug,
-    sku: p.sku ?? null,
-    price: p.price,
-    priceWholesale: p.priceWholesale ?? null,
-    minWholesaleQty: p.minWholesaleQty ?? null,
-    packQty: p.packQty ?? null,
-    imageUrl: p.imageUrl ?? null,
-    inStock: p.inStock,
-    promoLabel: p.promoLabel ?? null,
-    promoLabelColor: p.promoLabelColor ?? null,
-    promoLabelTextColor: p.promoLabelTextColor ?? null,
-    madeToOrder: p.madeToOrder ?? false,
-    madeToOrderMinQty: (p as any).madeToOrderMinQty ?? null,
-    isCuttable: (p as any).isCuttable ?? false,
-    cutMetersPerRoll: (p as any).cutMetersPerRoll ?? null,
-    cutPricePerMeter: (p as any).cutPricePerMeter ?? null,
-    cutUnitName: (p as any).cutUnitName || 'м',
-    stockQty: p.stockQty ?? null,
-    dimensionLength: p.dimensionLength ?? null,
-    dimensionWidth: p.dimensionWidth ?? null,
-    dimensionHeight: p.dimensionHeight ?? null,
-    dimensionUnit: p.dimensionUnit ?? null,
-    material: p.material ?? null,
-    hasVariants: p.hasVariants ?? false,
-    variantCount: p.variantCount ?? 0,
-    variantPriceMin: p.variantPriceMin ?? null,
-    variantPriceMax: p.variantPriceMax ?? null,
-    variantTotalStock: p.variantTotalStock ?? 0,
-  });
+  const serializeHomeProduct = (p: FirestoreProduct) => toCardProduct(p);
   const serializedOrderProducts = orderProducts.map(serializeHomeProduct);
 
   // ── Плитки разделов (витрина главной) ──
@@ -313,6 +283,7 @@ export default async function HomePage() {
     dimensionWidth: p.dimensionWidth ?? null,
     dimensionHeight: p.dimensionHeight ?? null,
     dimensionUnit: p.dimensionUnit ?? null,
+    dimensionValues: p.dimensionValues ?? null,
     // У «родителя» с вариантами габариты обычно пустые — размеры
     // лежат в вариантах, поэтому передаём их подписи (только нужное
     // для строки размера: без цен, остатков и фото).
