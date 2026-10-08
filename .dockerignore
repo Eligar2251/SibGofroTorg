@@ -13,3 +13,12 @@ node_modules
 *.log
 coverage
 .DS_Store
+
+# Не нужно для сборки сайта — уменьшаем контекст и не ломаем кэш слоя COPY . .
+tools
+tests
+supabase
+package-lock.json
+*.md
+!README.md
+.github
