@@ -16,6 +16,10 @@ import {
   extractQueryDims,
   dimensionScore,
 } from "./dimension-search";
+import {
+  normalizeDimensionValues,
+  searchableDimensionNumbers,
+} from "./dimension-profiles";
 import { isProductAvailable } from "./stock-availability";
 import {
   WASTEPAPER_RATE_IDS,
@@ -227,6 +231,17 @@ function isMissingTagsColumnError(err: any): boolean {
   );
 }
 
+const DIMENSION_PROFILE_MISSING_HINT =
+  "[products] Нет колонок dimension_profile_id/dimension_values — выполните supabase/migration_dimension_profiles.sql";
+
+function isMissingDimensionProfileColumnError(err: any): boolean {
+  const text = `${err?.message || ""} ${err?.details || ""} ${err?.hint || ""}`;
+  return (
+    (err?.code === "PGRST204" || err?.code === "42703" || /column/i.test(text)) &&
+    /dimension_profile_id|dimension_values/.test(text)
+  );
+}
+
 function mapProductRow(row: any): FirestoreProduct {
   const images = normalizeProductImages(row.images);
   return {
@@ -276,6 +291,8 @@ function mapProductRow(row: any): FirestoreProduct {
     discountType: row.discount_type || null,
     discountValue: row.discount_value != null ? Number(row.discount_value) : null,
     discountBadge: row.discount_badge || null,
+    dimensionProfileId: row.dimension_profile_id || null,
+    dimensionValues: normalizeDimensionValues(row.dimension_values),
     isVisible: row.is_visible ?? true,
     isFeatured: row.is_featured ?? false,
     isSale: row.is_sale ?? false,
@@ -405,6 +422,7 @@ async function fetchAllCategories(): Promise<FirestoreCategory[]> {
       sortOrder: Number(row.sort_order || 0),
       isVisible: row.is_visible ?? true,
       imageUrl: row.image_url || null,
+      dimensionProfileId: row.dimension_profile_id || null,
       createdAt: toIso(row.created_at),
     }));
   } catch (error: any) {
@@ -646,6 +664,8 @@ export async function reorderHomeTiles(ids: string[]): Promise<void> {
 // ─── Products ──────────────────────────────────────────────
 
 function getProductDims(p: FirestoreProduct): number[] {
+  const byProfile = searchableDimensionNumbers(p.dimensionValues);
+  if (byProfile.length) return byProfile;
   const dims: number[] = [];
   for (const v of [p.dimensionLength, p.dimensionWidth, p.dimensionHeight]) {
     if (v != null && v > 0) dims.push(v);
@@ -984,6 +1004,8 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     discount_type: data.discountType || null,
     discount_value: data.discountValue ?? null,
     discount_badge: data.discountBadge || null,
+    dimension_profile_id: data.dimensionProfileId || null,
+    dimension_values: normalizeDimensionValues(data.dimensionValues),
     is_visible: data.isVisible ?? true,
     is_featured: data.isFeatured ?? false,
     is_sale: data.isSale ?? false,
@@ -1001,7 +1023,13 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
   // всегда.
   let result: { id: string } | null = null;
   let insertErr: any = null;
-  const first = await db.from("products").insert(payload).select("id").single();
+  let first = await db.from("products").insert(payload).select("id").single();
+  if (first.error && isMissingDimensionProfileColumnError(first.error)) {
+    console.warn(DIMENSION_PROFILE_MISSING_HINT);
+    delete payload.dimension_profile_id;
+    delete payload.dimension_values;
+    first = await db.from("products").insert(payload).select("id").single();
+  }
   if (first.error) {
     insertErr = first.error;
     if (isMissingBarcodeColumnError(first.error)) {
@@ -1103,6 +1131,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
     discountType: "discount_type", discountValue: "discount_value",
     discountBadge: "discount_badge", isVisible: "is_visible",
+    dimensionProfileId: "dimension_profile_id", dimensionValues: "dimension_values",
     isFeatured: "is_featured", isSale: "is_sale", imageUrl: "image_url", images: "images",
     // Штрихкод можно поменять только явно (форма товара). Значение
     // валидируется на API-слое; пустая строка = очистить (потом
@@ -1128,6 +1157,12 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   }
   if (data.tags !== undefined) {
     payload.tags = sanitizeTagsForSave(data.tags);
+  }
+  if (data.dimensionValues !== undefined) {
+    payload.dimension_values = normalizeDimensionValues(data.dimensionValues);
+  }
+  if (data.dimensionProfileId !== undefined) {
+    payload.dimension_profile_id = data.dimensionProfileId || null;
   }
   if (data.promoLabelColor !== undefined) {
     payload.promo_label_color = normalizeProductLabelColor(data.promoLabelColor);
@@ -1186,6 +1221,12 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   // Ретрай без barcode/purchase_price, если колонки ещё нет в БД (миграция не
   // применена) — сохранение товара не должно падать из-за этого.
   let { error } = await db.from("products").update(payload).eq("id", id);
+  if (error && isMissingDimensionProfileColumnError(error)) {
+    console.warn(DIMENSION_PROFILE_MISSING_HINT);
+    delete payload.dimension_profile_id;
+    delete payload.dimension_values;
+    ({ error } = await db.from("products").update(payload).eq("id", id));
+  }
   if (error && isMissingBarcodeColumnError(error) && "barcode" in payload) {
     console.warn(BARCODE_COLUMN_MISSING_HINT);
     const { barcode: _bc, ...payloadNoBarcode } = payload;
@@ -2409,6 +2450,7 @@ export async function createCategory(data: Record<string, any>): Promise<{ id: s
     sort_order: data.sortOrder || 0,
     is_visible: data.isVisible ?? true,
     image_url: data.imageUrl || null,
+    ...(data.dimensionProfileId ? { dimension_profile_id: data.dimensionProfileId } : {}),
   }).select("id, slug").single();
   if (error) throw error;
   revalidateTag("categories", { expire: 0 });
@@ -2421,6 +2463,27 @@ export async function createCategory(data: Record<string, any>): Promise<{ id: s
  * В БД связи категория↔товар логическая (без FK), поэтому чистим
  * ссылки руками перед удалением самой категории.
  */
+/** Частичное обновление категории (сейчас — тип размеров, название, описание, видимость). */
+export async function updateCategory(id: string, data: Record<string, any>): Promise<void> {
+  const db = getAdminDb();
+  const payload: Record<string, any> = {};
+  if (data.name !== undefined) payload.name = String(data.name || "").trim();
+  if (data.description !== undefined) payload.description = data.description || null;
+  if (data.isVisible !== undefined) payload.is_visible = Boolean(data.isVisible);
+  if (data.dimensionProfileId !== undefined) {
+    payload.dimension_profile_id = data.dimensionProfileId || null;
+  }
+  if (Object.keys(payload).length === 0) return;
+  const { error } = await db.from("categories").update(payload).eq("id", id);
+  if (error) {
+    if (isMissingDimensionProfileColumnError(error)) {
+      throw new Error("Нет колонки categories.dimension_profile_id — выполните supabase/migration_dimension_profiles.sql");
+    }
+    throw error;
+  }
+  revalidateTag("categories", { expire: 0 });
+}
+
 export async function deleteCategory(id: string): Promise<void> {
   const db = getAdminDb();
   const { error: unlinkError } = await db

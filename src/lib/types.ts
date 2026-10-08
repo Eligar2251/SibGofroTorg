@@ -7,6 +7,8 @@ export interface FirestoreCategory {
   sortOrder?: number | null | undefined;
   isVisible?: boolean | null | undefined;
   imageUrl?: string | null | undefined;
+  /** Тип размеров товаров категории (product_dimension_profiles.id). */
+  dimensionProfileId?: string | null | undefined;
   createdAt?: any;
 }
 
@@ -52,6 +54,10 @@ export interface FirestoreProduct {
   discountType?: "percent" | "fixed" | null | undefined;
   discountValue?: number | null | undefined;
   discountBadge?: string | null | undefined;
+  /** Свой тип размеров товара (иначе — тип категории). */
+  dimensionProfileId?: string | null | undefined;
+  /** Размеры по профилю: [{key,label,value,unit}] — у каждого поля своя единица. */
+  dimensionValues?: import("./dimension-profiles").DimensionValue[] | null | undefined;
   isVisible: boolean;
   isFeatured: boolean;
   /** Ручной порядок в блоке «Популярные товары» на главной. */

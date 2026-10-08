@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProducts } from "@/lib/supabase-queries";
+import { formatProductSize } from "@/lib/product-size";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +28,7 @@ export async function GET(request: NextRequest) {
       inStock: p.inStock,
       stockQty: p.stockQty ?? null,
       imageUrl: p.imageUrl ?? null,
-      dimensions:
-        p.dimensionLength && p.dimensionWidth && p.dimensionHeight
-          ? `${p.dimensionLength}×${p.dimensionWidth}×${p.dimensionHeight} ${p.dimensionUnit || "мм"}`
-          : null,
+      dimensions: formatProductSize(p, p.dimensionValues?.length ? "any" : "full"),
     }));
 
     return NextResponse.json(result, {

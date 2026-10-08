@@ -218,7 +218,7 @@ export function buildClientBankExchange(params: {
     lines.push(`ПлательщикБанк1=${p.payer.bankName}`);
     lines.push(`ПлательщикБанк2=${p.payer.bankCity || ""}`);
     lines.push(`ПлательщикБИК=${p.payer.bik}`);
-    lines.push(`ПлательщикКорсчет=${p.payer.corAccount}`);
+    lines.push(`ПлательщикКорсчет=${p.payer.corrAccount}`);
 
     // ── Получатель ──
     lines.push(`ПолучательСчет=${p.payee.account}`);
@@ -231,7 +231,7 @@ export function buildClientBankExchange(params: {
     lines.push(`ПолучательБанк1=${p.payee.bankName}`);
     lines.push(`ПолучательБанк2=${p.payee.bankCity || ""}`);
     lines.push(`ПолучательБИК=${p.payee.bik}`);
-    lines.push(`ПолучательКорсчет=${p.payee.corAccount}`);
+    lines.push(`ПолучательКорсчет=${p.payee.corrAccount}`);
 
     // ── Общие поля ──
     lines.push(`ВидПлатежа=${p.paymentType || "электронно"}`);

@@ -5,7 +5,7 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { deleteCategory } from "@/lib/supabase-queries";
+import { deleteCategory, updateCategory } from "@/lib/supabase-queries";
 import { requireAdminApi } from "@/lib/auth";
 
 export async function DELETE(
@@ -29,6 +29,27 @@ export async function DELETE(
           ? `Не удалось удалить категорию: ${detail}`
           : "Ошибка сервера при удалении категории",
       },
+      { status: 500 }
+    );
+  }
+}
+
+/** Частичное обновление категории — в т.ч. тип размеров товаров. */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    await updateCategory(id, body);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("Update category error:", error);
+    return NextResponse.json(
+      { error: error?.message || "Ошибка сервера при сохранении категории" },
       { status: 500 }
     );
   }

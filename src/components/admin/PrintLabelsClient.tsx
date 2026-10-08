@@ -41,6 +41,7 @@
 
 /* eslint-disable @next/next/no-img-element -- SVG codes must be rendered at native vector URLs for print fidelity. */
 
+import { formatProductSize } from "@/lib/product-size";
 import { useEffect, useMemo, useState } from "react";
 import {
   Printer,
@@ -73,6 +74,7 @@ type Product = {
   dimensionWidth: number | null;
   dimensionHeight: number | null;
   dimensionUnit: string | null;
+  dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
 };
 
 interface Props {
@@ -106,6 +108,7 @@ function formatBarcode(s: string): string {
  * в каталоге (catalog/product/[slug]). Нужны минимум Д и Ш.
  */
 function formatDims(p: Product): string | null {
+  if (p.dimensionValues?.length) return formatProductSize(p, "any");
   const L = p.dimensionLength;
   const W = p.dimensionWidth;
   if (!L || !W) return null;

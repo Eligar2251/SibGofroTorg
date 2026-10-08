@@ -21,6 +21,7 @@
 
 /* eslint-disable @next/next/no-img-element -- SVG штрихкода должен печататься нативным вектором. */
 
+import { formatProductSize } from "@/lib/product-size";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Filter,
@@ -47,6 +48,7 @@ type Product = {
   dimensionWidth: number | null;
   dimensionHeight: number | null;
   dimensionUnit: string | null;
+  dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
 };
 
 /** Шрифты этикетки, pt. Общие лежат в настройках, у этикетки — переопределение. */
@@ -156,6 +158,7 @@ function clampNum(value: number, min: number, max: number, fallback: number): nu
 
 /** Автоматические размеры из карточки товара: «400×300×200 мм». */
 function autoSizes(p: Product): string {
+  if (p.dimensionValues?.length) return formatProductSize(p, "any") || "";
   const parts = [p.dimensionLength, p.dimensionWidth, p.dimensionHeight].filter(
     (v) => v != null && Number(v) > 0
   );

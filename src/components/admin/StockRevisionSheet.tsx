@@ -7,6 +7,7 @@
 //     форме, плюс колонка «Расхождение» с итогами.
 "use client";
 
+import { formatProductSize } from "@/lib/product-size";
 import { useEffect, useRef, useState } from "react";
 import { SITE_ADDRESS, SITE_PHONE } from "@/lib/site-config";
 import { SITE_NAME } from "@/lib/seo";
@@ -16,6 +17,8 @@ import { SITE_NAME } from "@/lib/seo";
  * Пусто/нули → «—», иначе «Д×Ш×В ед.» (например «670×370×370 мм»).
  */
 function formatDimensions(row: RevisionSheetRow): string {
+  const byProfile = formatProductSize(row, "any");
+  if (row.dimensionValues?.length) return byProfile || "—";
   const l = Number(row.dimensionLength) || 0;
   const w = Number(row.dimensionWidth) || 0;
   const h = Number(row.dimensionHeight) || 0;
@@ -52,6 +55,7 @@ export interface RevisionSheetRow {
   dimensionWidth?: number | null;
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
+  dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
   /** Розничная цена за единицу — показывается в бланке ревизии,
    *  чтобы при расхождениях сразу было видно, сколько стоит
    *  «недостача» / «излишек». */

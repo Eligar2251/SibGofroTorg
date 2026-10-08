@@ -37,6 +37,11 @@ interface CatalogProduct {
   dimensionWidth?: number | null;
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
+  dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
+  basePrice?: number | null;
+  discountType?: "percent" | "fixed" | null;
+  discountValue?: number | null;
+  discountBadge?: string | null;
   material?: string | null;
 }
 

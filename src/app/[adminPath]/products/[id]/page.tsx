@@ -10,6 +10,7 @@ import {
   getProducts,
 } from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
+import { getDimensionProfiles } from "@/lib/dimension-profiles-db";
 import { collectProductTags } from "@/lib/home-tiles";
 
 const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
@@ -27,10 +28,11 @@ export default async function EditProductPage({
   const product = await getProductByIdForAdmin(id);
   if (!product) notFound();
 
-  const [categories, featuredOrderIds, allProducts] = await Promise.all([
+  const [categories, featuredOrderIds, allProducts, dimensionProfiles] = await Promise.all([
     getAllCategories(),
     getFeaturedProductOrderIds(),
     getProducts({ includeHidden: true }),
+    getDimensionProfiles(),
   ]);
 
   const serializedProduct = {
@@ -60,6 +62,7 @@ export default async function EditProductPage({
     id: cat.id,
     name: cat.name,
     slug: cat.slug,
+    dimensionProfileId: cat.dimensionProfileId ?? null,
     createdAt:
       typeof cat.createdAt === "string"
         ? cat.createdAt
@@ -73,6 +76,7 @@ export default async function EditProductPage({
       <h1 className="admin-h1">Редактировать товар</h1>
       <ProductFormClient
         categories={serializedCategories}
+        dimensionProfiles={dimensionProfiles}
         product={serializedProduct}
         featuredOrderIds={featuredOrderIds}
         knownTags={collectProductTags(allProducts)}

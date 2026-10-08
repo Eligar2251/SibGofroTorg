@@ -29,11 +29,22 @@ import {
   DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
 } from "@/lib/product-fields";
 import { normalizeTag, parseTagList } from "@/lib/home-tiles";
+import {
+  DIMENSION_UNITS,
+  initialDimensionValues,
+  legacyColumnsFromValues,
+  normalizeDimensionValues,
+  resolveDimensionProfile,
+  formatDimensionValues,
+  type DimensionProfile,
+  type DimensionValue,
+} from "@/lib/dimension-profiles";
 
 interface Category {
   id: string;
   name: string;
   slug: string;
+  dimensionProfileId?: string | null;
   createdAt?: string | null;
 }
 
@@ -59,6 +70,8 @@ interface ProductData {
   dimensionWidth?: number | null;
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
+  dimensionProfileId?: string | null;
+  dimensionValues?: DimensionValue[] | null;
   material?: string | null;
   packQty?: number | null;
   volume?: number | null;
@@ -113,8 +126,11 @@ export function ProductFormClient({
   product,
   featuredOrderIds = [],
   knownTags = [],
+  dimensionProfiles = [],
 }: {
   categories: Category[];
+  /** Типы размеров (Коробки / Скотч / …) — набор полей зависит от категории. */
+  dimensionProfiles?: DimensionProfile[];
   product?: ProductData;
   featuredOrderIds?: string[];
   /** Метки, уже использованные на сайте — подсказки при вводе. */
@@ -151,16 +167,52 @@ export function ProductFormClient({
     product?.cutPricePerMeter != null ? String(product.cutPricePerMeter) : ""
   );
   const [cutUnitName, setCutUnitName] = useState<string>(product?.cutUnitName || "м");
-  const [dimensionLength, setDimensionLength] = useState(
-    product?.dimensionLength != null ? String(product.dimensionLength) : ""
+  // ── Размеры по типу размеров категории ──
+  // Набор полей и порядок задаёт тип (Коробки: Д×Ш×В, Скотч: Ш×Д×мкм),
+  // у каждого поля своя единица. Значения храним по ключу поля, чтобы
+  // при смене категории совпадающие поля (ширина/длина) не терялись.
+  const [categoryId, setCategoryId] = useState<string>(product?.categoryId || "");
+  const [dimensionProfileId, setDimensionProfileId] = useState<string>(
+    product?.dimensionProfileId || ""
   );
-  const [dimensionWidth, setDimensionWidth] = useState(
-    product?.dimensionWidth != null ? String(product.dimensionWidth) : ""
+  const categoryProfileId =
+    categories.find((cat) => cat.id === categoryId)?.dimensionProfileId || null;
+  const activeProfile = resolveDimensionProfile(
+    dimensionProfiles,
+    dimensionProfileId || null,
+    categoryProfileId,
   );
-  const [dimensionHeight, setDimensionHeight] = useState(
-    product?.dimensionHeight != null ? String(product.dimensionHeight) : ""
+  const categoryProfileName = resolveDimensionProfile(dimensionProfiles, null, categoryProfileId).name;
+  const [dimValues, setDimValues] = useState<Record<string, { value: string; unit: string }>>(() => {
+    // Сразу заполняем значения для всех типов — по ключу поля.
+    const all: Record<string, { value: string; unit: string }> = {};
+    const fieldsAll = [
+      ...activeProfile.fields,
+      ...dimensionProfiles.flatMap((p) => p.fields),
+    ];
+    const seen = new Set<string>();
+    const uniq = fieldsAll.filter((f) => (seen.has(f.key) ? false : (seen.add(f.key), true)));
+    Object.assign(all, initialDimensionValues(uniq, product));
+    // Единицы активного типа приоритетнее единиц полей других типов.
+    Object.assign(all, initialDimensionValues(activeProfile.fields, product));
+    return all;
+  });
+  function dimFor(key: string, defaultUnit: string) {
+    return dimValues[key] || { value: "", unit: defaultUnit };
+  }
+  function setDim(key: string, defaultUnit: string, patch: Partial<{ value: string; unit: string }>) {
+    setDimValues((prev) => ({ ...prev, [key]: { ...(prev[key] || { value: "", unit: defaultUnit }), ...patch } }));
+  }
+  const currentDimensionValues: DimensionValue[] | null = normalizeDimensionValues(
+    activeProfile.fields.map((f) => {
+      const v = dimFor(f.key, f.unit);
+      return { key: f.key, label: f.label, value: v.value === "" ? null : Number(v.value), unit: v.unit || f.unit };
+    })
   );
-  const [dimensionUnit, setDimensionUnit] = useState(product?.dimensionUnit || "мм");
+  const legacyDims = legacyColumnsFromValues(currentDimensionValues);
+  const hasBoxKeys = ["length", "width", "height"].every((k) =>
+    activeProfile.fields.some((f) => f.key === k)
+  );
   const [promoLabel, setPromoLabel] = useState(product?.promoLabel || "");
   // Метки товара («озон», «вб», «сдэк», «гост»...). По ним строятся
   // плитки на главной; у товара их может быть сколько угодно.
@@ -186,12 +238,14 @@ export function ProductFormClient({
   const [promoLabelTextColor, setPromoLabelTextColor] = useState(
     product?.promoLabelTextColor || DEFAULT_PRODUCT_LABEL_TEXT_COLOR
   );
-  const calculatedVolume = calculateBoxVolumeLiters(
-    dimensionLength,
-    dimensionWidth,
-    dimensionHeight,
-    dimensionUnit,
-  );
+  const calculatedVolume = hasBoxKeys
+    ? calculateBoxVolumeLiters(
+        legacyDims.dimensionLength,
+        legacyDims.dimensionWidth,
+        legacyDims.dimensionHeight,
+        "мм",
+      )
+    : null;
 
   // Markdown-редактор описания
   const [descValue, setDescValue] = useState(product?.description || "");
@@ -302,16 +356,14 @@ export function ProductFormClient({
       minWholesaleQty: data.get("minWholesaleQty")
         ? Number(data.get("minWholesaleQty"))
         : null,
-      dimensionLength: data.get("dimensionLength")
-        ? Number(data.get("dimensionLength"))
-        : null,
-      dimensionWidth: data.get("dimensionWidth")
-        ? Number(data.get("dimensionWidth"))
-        : null,
-      dimensionHeight: data.get("dimensionHeight")
-        ? Number(data.get("dimensionHeight"))
-        : null,
-      dimensionUnit: data.get("dimensionUnit") || "мм",
+      // Старые колонки (мм) — для подбора коробок/объёма/поиска;
+      // источник правды для вывода — dimensionValues.
+      dimensionLength: legacyDims.dimensionLength,
+      dimensionWidth: legacyDims.dimensionWidth,
+      dimensionHeight: legacyDims.dimensionHeight,
+      dimensionUnit: legacyDims.dimensionUnit,
+      dimensionValues: currentDimensionValues,
+      dimensionProfileId: dimensionProfileId || null,
       material: data.get("material") || null,
       packQty: data.get("packQty") ? Number(data.get("packQty")) : null,
       volume: calculatedVolume,
@@ -506,7 +558,8 @@ export function ProductFormClient({
             <label className="admin-label">Категория</label>
             <select
               name="categoryId"
-              defaultValue={product?.categoryId || ""}
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
               className="admin-select"
             >
               <option value="">Без категории</option>
@@ -733,61 +786,80 @@ export function ProductFormClient({
       <div className="admin-card">
         <div className="admin-card__pad admin-stack">
           <h2 className="admin-h2">Характеристики</h2>
-          <div className="admin-grid-4">
-            <div className="admin-field">
-              <label className="admin-label">Длина, {dimensionUnit}</label>
-              <input
-                name="dimensionLength"
-                type="number"
-                min="0"
-                step="any"
-                value={dimensionLength}
-                onChange={(event) => setDimensionLength(event.target.value)}
-                className="admin-input"
-              />
-            </div>
-            <div className="admin-field">
-              <label className="admin-label">Ширина, {dimensionUnit}</label>
-              <input
-                name="dimensionWidth"
-                type="number"
-                min="0"
-                step="any"
-                value={dimensionWidth}
-                onChange={(event) => setDimensionWidth(event.target.value)}
-                className="admin-input"
-              />
-            </div>
-            <div className="admin-field">
-              <label className="admin-label">Высота, {dimensionUnit}</label>
-              <input
-                name="dimensionHeight"
-                type="number"
-                min="0"
-                step="any"
-                value={dimensionHeight}
-                onChange={(event) => setDimensionHeight(event.target.value)}
-                className="admin-input"
-              />
-            </div>
-            <div className="admin-field">
-              <label className="admin-label">Объём, л</label>
-              <input
-                name="volume"
-                type="number"
-                step="0.001"
-                value={calculatedVolume ?? ""}
-                readOnly
-                placeholder="Заполните Д × Ш × В"
-                className="admin-input"
-                aria-describedby="product-volume-hint"
-              />
-              <span id="product-volume-hint" className="admin-hint">
-                {calculatedVolume != null
-                  ? "Рассчитан автоматически по трём размерам"
-                  : "Появится автоматически, когда заполнены длина, ширина и высота"}
+          {dimensionProfiles.length > 0 && (
+            <div className="admin-field" style={{ maxWidth: 420 }}>
+              <label className="admin-label">Тип размеров</label>
+              <select
+                value={dimensionProfileId}
+                onChange={(e) => setDimensionProfileId(e.target.value)}
+                className="admin-select"
+              >
+                <option value="">Как у категории — {categoryProfileName}</option>
+                {dimensionProfiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <span className="admin-hint">
+                Набор и порядок полей задаются в «Товары → Категории → Типы размеров».
               </span>
             </div>
+          )}
+          <div className="admin-grid-4">
+            {activeProfile.fields.map((f) => {
+              const v = dimFor(f.key, f.unit);
+              const units = Array.from(new Set<string>([...DIMENSION_UNITS, f.unit, v.unit].filter(Boolean)));
+              return (
+                <div className="admin-field" key={f.key}>
+                  <label className="admin-label">{f.label}</label>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={v.value}
+                      onChange={(event) => setDim(f.key, f.unit, { value: event.target.value })}
+                      className="admin-input"
+                      style={{ flex: 1, minWidth: 0 }}
+                      aria-label={f.label}
+                    />
+                    <select
+                      value={v.unit}
+                      onChange={(event) => setDim(f.key, f.unit, { unit: event.target.value })}
+                      className="admin-select"
+                      style={{ width: 78, flex: "none" }}
+                      aria-label={`Единица: ${f.label}`}
+                    >
+                      {units.map((u) => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              );
+            })}
+            {hasBoxKeys && (
+              <div className="admin-field">
+                <label className="admin-label">Объём, л</label>
+                <input
+                  name="volume"
+                  type="number"
+                  step="0.001"
+                  value={calculatedVolume ?? ""}
+                  readOnly
+                  placeholder="Заполните Д × Ш × В"
+                  className="admin-input"
+                  aria-describedby="product-volume-hint"
+                />
+                <span id="product-volume-hint" className="admin-hint">
+                  {calculatedVolume != null
+                    ? "Рассчитан автоматически по трём размерам"
+                    : "Появится автоматически, когда заполнены длина, ширина и высота"}
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="admin-hint">
+            На сайте: <strong>{formatDimensionValues(currentDimensionValues) || "размеры не заданы"}</strong>
           </div>
 
           <div className="admin-grid-3">
@@ -835,19 +907,6 @@ export function ProductFormClient({
             </div>
           </div>
 
-          <div className="admin-field" style={{ maxWidth: 200 }}>
-            <label className="admin-label">Ед. измерения</label>
-            <select
-              name="dimensionUnit"
-              value={dimensionUnit}
-              onChange={(event) => setDimensionUnit(event.target.value)}
-              className="admin-select"
-            >
-              <option value="мм">мм</option>
-              <option value="см">см</option>
-              <option value="м">м</option>
-            </select>
-          </div>
         </div>
       </div>
 

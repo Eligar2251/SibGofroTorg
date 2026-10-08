@@ -269,7 +269,7 @@ export async function GET(request: NextRequest) {
     const body = encodeWindows1251(content);
     const filename = `kl_to_1c_${dateFrom}_${dateTo}.txt`;
 
-    return new NextResponse(body, {
+    return new NextResponse(new Uint8Array(body), {
       status: 200,
       headers: {
         "Content-Type": "text/plain; charset=windows-1251",

@@ -4,6 +4,7 @@
 // Полная версия с созданием контрагентов, связями и кэшем.
 // =========================================================
 
+import { normalizeDimensionValues } from "./dimension-profiles";
 import { createHash } from "crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getAdminDb } from "./supabase";
@@ -4772,9 +4773,14 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
 
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   const db = getAdminDb();
-  const { data, error } = await db.from("products")
-    .select("id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, purchase_price, is_visible, is_cuttable, cut_meters_per_roll, cut_price_per_meter, cut_unit_name, dimension_length, dimension_width, dimension_height, dimension_unit")
+  const baseCols = "id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, purchase_price, is_visible, is_cuttable, cut_meters_per_roll, cut_price_per_meter, cut_unit_name, dimension_length, dimension_width, dimension_height, dimension_unit";
+  let { data, error } = await db.from("products")
+    .select(`${baseCols}, dimension_values`)
     .order("name", { ascending: true });
+  // БД без migration_dimension_profiles.sql — читаем без dimension_values.
+  if (error && /dimension_values/.test(String(error.message || ""))) {
+    ({ data, error } = await db.from("products").select(baseCols).order("name", { ascending: true }) as any);
+  }
   if (error) throw error;
   return (data || []).map((row: any) => ({
     id: row.id, name: row.name, sku: row.sku || null,
@@ -4794,6 +4800,7 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     dimensionWidth: row.dimension_width != null ? Number(row.dimension_width) : null,
     dimensionHeight: row.dimension_height != null ? Number(row.dimension_height) : null,
     dimensionUnit: row.dimension_unit ?? null,
+    dimensionValues: normalizeDimensionValues(row.dimension_values),
   }));
 }
 

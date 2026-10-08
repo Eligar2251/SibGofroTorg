@@ -23,13 +23,19 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc* ./
 # Ускоряем и делаем установку устойчивее к сети в РФ: retries + offline-cache
-RUN pnpm config set fetch-retries 5 && \
+# Кэш pnpm-store переживает пересборку слоя при смене lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm config set fetch-retries 5 && \
     pnpm config set fetch-retry-mintimeout 20000 && \
     pnpm config set fetch-retry-maxtimeout 120000 && \
+    pnpm config set store-dir /pnpm/store && \
     pnpm install --frozen-lockfile --prefer-offline
 
 COPY . .
-RUN pnpm build
+# Кэш .next/cache между сборками: инкрементальная компиляция webpack/turbopack
+# и tsbuildinfo — повторные деплои заметно быстрее.
+RUN --mount=type=cache,id=next-cache,target=/app/.next/cache \
+    NODE_OPTIONS=--max-old-space-size=4096 pnpm build
 
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app

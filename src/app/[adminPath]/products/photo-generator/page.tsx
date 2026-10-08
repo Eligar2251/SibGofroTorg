@@ -38,6 +38,7 @@ export default async function PhotoGeneratorPage({
     dimensionWidth: p.dimensionWidth ?? null,
     dimensionHeight: p.dimensionHeight ?? null,
     dimensionUnit: p.dimensionUnit ?? "мм",
+    dimensionValues: p.dimensionValues ?? null,
     material: p.material ?? null,
     volume: p.volume ?? null,
     barcode: p.barcode ?? null,

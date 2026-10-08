@@ -30,6 +30,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
+import { formatDimensionValues } from "@/lib/dimension-profiles";
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
@@ -982,6 +983,8 @@ const SAMPLE_PRODUCT: PhotoProduct = {
 };
 
 function formatDims(p: PhotoProduct): string {
+  const byProfile = formatDimensionValues(p.dimensionValues);
+  if (byProfile) return byProfile;
   const dims = [p.dimensionLength, p.dimensionWidth, p.dimensionHeight]
     .filter((v): v is number => v != null && v > 0)
     .map((v) => String(parseFloat(v.toFixed(2))));

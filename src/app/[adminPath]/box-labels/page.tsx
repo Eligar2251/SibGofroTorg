@@ -43,6 +43,7 @@ export default async function BoxLabelsPage({
       dimensionWidth: p.dimensionWidth ?? null,
       dimensionHeight: p.dimensionHeight ?? null,
       dimensionUnit: p.dimensionUnit ?? null,
+      dimensionValues: p.dimensionValues ?? null,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "ru"));
 

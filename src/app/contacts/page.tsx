@@ -120,7 +120,7 @@ export default async function ContactsPage() {
                     href="/wastepaper"
                     style={{ color: "var(--green)", textDecoration: "underline" }}
                   >
-                    цены и калькулятор
+                    условия и телефон
                   </Link>
                 </div>
               </div>

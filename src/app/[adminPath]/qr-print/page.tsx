@@ -63,6 +63,7 @@ export default async function QrPrintPage({
     dimensionWidth: p.dimensionWidth ?? null,
     dimensionHeight: p.dimensionHeight ?? null,
     dimensionUnit: p.dimensionUnit ?? null,
+    dimensionValues: p.dimensionValues ?? null,
   }));
 
   // Сортировка по имени для удобства выбора

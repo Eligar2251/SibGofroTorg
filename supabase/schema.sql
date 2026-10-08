@@ -1103,3 +1103,5 @@ CREATE TRIGGER trg_client_requests_updated
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ALTER TABLE client_requests ENABLE ROW LEVEL SECURITY;
 -- Политик нет: чтение/запись только с сервера (service_role).
+
+-- Типы размеров товаров — см. supabase/migration_dimension_profiles.sql

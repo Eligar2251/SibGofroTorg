@@ -9,8 +9,12 @@
 // размер просто забывали вывести.
 // =========================================================
 
+import { formatDimensionValues, type DimensionValue } from "./dimension-profiles";
+
 /** Что нужно, чтобы показать размер: габариты товара и единица. */
 export interface ProductSizeSource {
+  /** Размеры по профилю категории (скотч: Ш×Д×мкм) — приоритетнее старых колонок. */
+  dimensionValues?: DimensionValue[] | null;
   dimensionLength?: number | null;
   dimensionWidth?: number | null;
   dimensionHeight?: number | null;
@@ -36,6 +40,8 @@ export function formatProductSize(
   mode: "full" | "any" = "full"
 ): string | null {
   if (!product) return null;
+  const byProfile = formatDimensionValues(product.dimensionValues);
+  if (byProfile) return byProfile;
   const length = positiveNumber(product.dimensionLength);
   const width = positiveNumber(product.dimensionWidth);
   const height = positiveNumber(product.dimensionHeight);

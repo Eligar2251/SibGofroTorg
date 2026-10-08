@@ -114,9 +114,21 @@ export async function PUT(request: NextRequest) {
           firstImageUrl(normalizeProductImages(rest.images)) ||
           null;
       }
+      // Габариты Д/Ш/В правят в массовом редакторе в мм — тогда они и
+      // становятся источником размеров (dimension_values сбрасываем, иначе
+      // на сайте остались бы старые значения). Товары другого типа
+      // (скотч: Д/Ш/В пустые) не трогаем.
+      const legacyDims = [rest.dimensionLength, rest.dimensionWidth, rest.dimensionHeight];
+      if (legacyDims.some((v) => v != null && v !== "")) {
+        payload.dimension_values = null;
+      }
       // Поля закупки/штрихкода добавлены миграциями и могут отсутствовать
       // в конкретной БД — в этом случае сохраняем остальное без них.
       let { error } = await db.from("products").update(payload).eq("id", p.id);
+      if (error && "dimension_values" in payload && /dimension_values/.test(String(error.message || ""))) {
+        delete payload.dimension_values;
+        ({ error } = await db.from("products").update(payload).eq("id", p.id));
+      }
       if (
         error &&
         isMissingOptionalProductColumnError(error) &&
