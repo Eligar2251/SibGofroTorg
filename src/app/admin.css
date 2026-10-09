@@ -16478,3 +16478,212 @@ button.admin-nav-group__toggle .admin-nav-ico,
     max-width: none;
   }
 }
+
+/* =========================================================
+   Выгрузка платёжек в Клиент-Банк (1С/Альфа-Банк):
+   модалка со списком платежей и выбором галочками.
+   См. src/components/admin/ClientBankExport.tsx
+   ========================================================= */
+.bankx-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+
+.bankx-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 10px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.bankx-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.bankx-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.bankx-search > svg {
+  position: absolute;
+  left: 10px;
+  color: var(--adm-sand);
+  pointer-events: none;
+}
+
+.bankx-search .admin-input {
+  width: 100%;
+  padding-left: 30px;
+  padding-right: 28px;
+}
+
+.bankx-search__clear {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--adm-sand);
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.bankx-search__clear:hover {
+  color: var(--adm-ink);
+  background: var(--adm-paper-warm);
+}
+
+.bankx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+  background: var(--adm-paper);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+}
+
+.bankx-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 26px 12px;
+  color: var(--adm-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.bankx-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  background: var(--adm-card);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  cursor: pointer;
+}
+
+.bankx-row:hover {
+  border-color: var(--adm-border-mid);
+}
+
+.bankx-row--on {
+  border-color: var(--adm-kraft-line);
+  background: var(--adm-kraft-pale);
+}
+
+.bankx-row--warn {
+  border-style: dashed;
+  border-color: var(--adm-rust-line);
+  cursor: not-allowed;
+}
+
+.bankx-row > input[type="checkbox"] {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--adm-kraft);
+}
+
+.bankx-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bankx-row__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--adm-ink);
+}
+
+.bankx-row__date {
+  font-weight: 700;
+  color: var(--adm-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bankx-row__cp {
+  font-size: 12px;
+  color: var(--adm-ink);
+  overflow-wrap: anywhere;
+}
+
+.bankx-row__purpose {
+  font-size: 11px;
+  color: var(--adm-muted);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.bankx-row__issue {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--adm-rust);
+  line-height: 1.4;
+}
+
+.bankx-row__sum {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bankx-note {
+  font-size: 11px;
+  color: var(--adm-muted);
+}
+
+.bankx-done {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--adm-pine-pale);
+  border: 1px solid var(--adm-pine-line);
+  border-radius: var(--adm-r-sm);
+  color: var(--adm-pine);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .bankx-list {
+    max-height: min(52vh, 420px);
+  }
+
+  .bankx-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .bankx-row__sum {
+    grid-column: 2;
+  }
+}

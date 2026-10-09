@@ -10,7 +10,10 @@
     "admin:sql": "node scripts/generate-admin-sql.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:variants": "node --experimental-strip-types --test tests/variant-aggregation.test.mjs",
+    "test:variants": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/variant-aggregation.test.mjs",
+    "test:payments": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/payment-export.test.mjs",
+    "test:export-api": "node --experimental-strip-types --import ./tests/api-register.mjs --test tests/api-payment-export.test.mjs",
+    "test": "npm run test:variants && npm run test:payments && npm run test:export-api",
     "dev:plain": "next dev"
   },
   "dependencies": {

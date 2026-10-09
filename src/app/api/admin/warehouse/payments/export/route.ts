@@ -1,69 +1,185 @@
 // =========================================================
-// GET /api/admin/warehouse/payments/export
-//   ?from=YYYY-MM-DD&to=YYYY-MM-DD
-// Выгрузка платёжных поручений (исходящих, проведённых) за период
-// в формате 1CClientBankExchange v1.03 для загрузки в Альфа-Банк.
-// Кодировка ответа — Windows-1251, переводы строк — CRLF.
+// /api/admin/warehouse/payments/export
+//
+// GET  ?from=YYYY-MM-DD&to=YYYY-MM-DD   — выгрузка ВСЕХ исходящих платежей
+//       периода (устаревший режим: без выбора руками).
+// GET  ?list=1[&from&to | &all=1]        — список платежей «на выгрузку»
+//       (JSON) для модалки с галочками.
+// POST { ids: [...] }                    — выгрузка только ВЫБРАННЫХ платежей
+//       в формате 1CClientBankExchange v1.03 (Windows-1251, CRLF) для
+//       загрузки в Альфа-Банк.
+//
+// В выгрузку попадают исходящие платежи поставщикам (type "regular"),
+// в том числе НЕ проведённые (is_paid = false): платёжку можно отправить
+// в банк до проведения платежа в учёте.
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth";
 import { getAdminDb } from "@/lib/supabase";
-import {
-  buildClientBankExchange,
-  ourCompanyParty,
-  partLabelFor,
-} from "@/lib/client-bank-exchange";
-import { encodeWindows1251 } from "@/lib/cp1251";
+import { buildClientBankExchange, ourCompanyParty } from "@/lib/client-bank-exchange";
 import type { PayerParty, PaymentDoc } from "@/lib/client-bank-exchange";
-import { buildPurposeLines } from "@/lib/payment-purpose";
+import { encodeWindows1251 } from "@/lib/cp1251";
+import {
+  buildExportRows,
+  dateSpanOf,
+  matchesDateRange,
+  sortExportRows,
+  summarize,
+  type ExportCounterpartyDbRow,
+  type ExportPaymentDbRow,
+  type ExportPaymentRow,
+  type ExportReceiptDbRow,
+} from "@/lib/payment-export";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function isoDate(raw: string | null): string {
-  if (!raw) return "";
-  return String(raw).slice(0, 10);
+/** Сколько платежей максимум отдаём в списке/выгружаем за раз. */
+const MAX_ROWS = 1000;
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function num(raw: any, fallback = 0): number {
-  const v = Number(raw);
-  return Number.isFinite(v) ? v : fallback;
-}
-
-function txt(raw: any, fallback = ""): string {
-  return raw != null ? String(raw) : fallback;
+function validIsoDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 /**
- * Строит название месяца в родительном падеже для назначения платежа
- * вида «от 07 октября 2026».
+ * Грузит ВСЕ исходящие платежи поставщикам + реквизиты.
+ * Платежи нужны целиком (без фильтра по дате): по ним считается,
+ * какая это часть платежа — первая, вторая…
  */
-function monthGenitive(month0: number): string {
-  return [
-    "января", "февраля", "марта", "апреля", "мая", "июня",
-    "июля", "августа", "сентября", "октября", "ноября", "декабря",
-  ][month0] || "";
+async function loadExportData(): Promise<{
+  payments: ExportPaymentDbRow[];
+  counterparties: ExportCounterpartyDbRow[];
+  receipts: ExportReceiptDbRow[];
+}> {
+  const db = getAdminDb();
+  const [payRes, cpRes, recRes] = await Promise.all([
+    // Тип НЕ фильтруем в запросе: кроме оплаты поставщикам (regular)
+    // выгружаются «сторонние расходники» (реклама, сайт, ежемесячные,
+    // возвраты), а неподходящие типы (наличные, карты, внутренние
+    // переводы) отсеивает isExportableType() в buildExportRows.
+    db
+      .from("bank_payments")
+      .select(
+        "id,number,date,type,counterparty,counterparty_id,receipt_ids,receipt_numbers,amount,vat_rate,vat_amount,is_paid,exclude_from_balance,exported_at,payment_purpose,payment_priority,payment_kind,comment"
+      )
+      .eq("direction", "outgoing"),
+    // Вложенный select на контрагенте через .select не надёжен при
+    // произвольных ограничениях RLS — грузим справочники отдельно.
+    db.from("counterparties").select("*"),
+    db
+      .from("warehouse_receipts")
+      .select("id,number,date,supplier,invoice_number,invoice_date,bank_account,bank_name,bank_city,bik,correspondent_account,inn,kpp"),
+  ]);
+  if (payRes.error) throw payRes.error;
+  if (cpRes.error) throw cpRes.error;
+  if (recRes.error) throw recRes.error;
+  return {
+    payments: (payRes.data || []) as ExportPaymentDbRow[],
+    counterparties: (cpRes.data || []) as ExportCounterpartyDbRow[],
+    receipts: (recRes.data || []) as ExportReceiptDbRow[],
+  };
 }
 
-/** Форматирует дату в русском варианте для назначения платежа ("07 октября 2026"). */
-function longRuDate(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso.length === 10 ? iso + "T00:00:00" : iso);
-  if (isNaN(d.getTime())) return iso;
-  return `${d.getDate().toString().padStart(2, "0")} ${monthGenitive(
-    d.getMonth()
-  )} ${d.getFullYear()}`;
+/** Строки выгрузки → документы ПП для файла Клиент-Банка. */
+function toPaymentDocs(
+  rows: ExportPaymentRow[],
+  payer: PayerParty
+): { docs: PaymentDoc[]; errors: string[] } {
+  const docs: PaymentDoc[] = [];
+  const errors: string[] = [];
+
+  for (const row of rows) {
+    if (!row.payee) {
+      errors.push(`ПЛ-${row.number}: ${row.issue || "не заполнены реквизиты получателя"}`);
+      continue;
+    }
+    docs.push({
+      number: row.number,
+      date: row.date,
+      amount: row.amount,
+      payer,
+      payee: row.payee,
+      priority: row.priority,
+      paymentKind: row.paymentKind,
+      paymentType: "электронно",
+      purpose: row.purpose,
+      vatRate: row.vatRate,
+      vatAmount: row.vatAmount,
+      partLabel: row.partLabel || null,
+    });
+  }
+  return { docs, errors };
+}
+
+/** Отмечаем выгруженные платежи (один раз) — чтобы не задвоить платёжки. */
+async function markExported(rows: ExportPaymentRow[]): Promise<void> {
+  const db = getAdminDb();
+  const stamp = todayIso();
+  for (const row of rows) {
+    if (row.exportedAt) continue;
+    try {
+      await db
+        .from("bank_payments")
+        .update({ exported_at: stamp })
+        .eq("id", row.id)
+        .is("exported_at", null);
+    } catch {
+      // best-effort: отметка не должна ломать выгрузку
+    }
+  }
+}
+
+/** Текстовый файл Клиент-Банка в Windows-1251 как ответ. */
+function fileResponse(content: string, filename: string, extra: Record<string, string>) {
+  const body = encodeWindows1251(content);
+  return new NextResponse(new Uint8Array(body), {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain; charset=windows-1251",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "private, no-store",
+      ...extra,
+    },
+  });
+}
+
+function errorResponse(message: string, status = 400) {
+  return NextResponse.json({ error: message }, { status });
 }
 
 /**
- * Форматирует сумму для назначения в виде "20014-00" (тире вместо точки, копейки).
+ * Разбирает ?from/?to.
+ *   ?all=1            — без фильтра по дате («Показать все платежи»);
+ *   ?from&to          — указанный период;
+ *   без параметров    — сегодня.
+ * `allDates` отделён от пустых from/to именно потому, что «период не задан»
+ * и «период не ограничен» — разные вещи: иначе «все платежи» молча
+ * превращались бы в «сегодня».
  */
-function moneyDash(n: number): string {
-  const kopecks = Math.round((Number(n) || 0) * 100);
-  const rub = Math.floor(kopecks / 100);
-  const kop = kopecks % 100;
-  return `${rub}-${kop.toString().padStart(2, "0")}`;
+function readRange(searchParams: URLSearchParams): {
+  from: string | null;
+  to: string | null;
+  allDates: boolean;
+  invalid: boolean;
+} {
+  if (searchParams.get("all") === "1") {
+    return { from: null, to: null, allDates: true, invalid: false };
+  }
+  const from = searchParams.get("from");
+  const to = searchParams.get("to") || from;
+  if ((from && !validIsoDate(from)) || (to && !validIsoDate(to))) {
+    return { from: null, to: null, allDates: false, invalid: true };
+  }
+  if (!from && !to) {
+    const today = todayIso();
+    return { from: today, to: today, allDates: false, invalid: false };
+  }
+  return { from, to, allDates: false, invalid: false };
 }
 
 export async function GET(request: NextRequest) {
@@ -72,192 +188,62 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const today = new Date().toISOString().slice(0, 10);
-    const dateFrom = searchParams.get("from") || today;
-    const dateTo = searchParams.get("to") || dateFrom;
+    const { from, to, allDates, invalid } = readRange(searchParams);
+    if (invalid) return errorResponse("from/to должны быть в формате YYYY-MM-DD");
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
-      return NextResponse.json(
-        { error: "from/to должны быть в формате YYYY-MM-DD" },
-        { status: 400 }
+    const list =
+      searchParams.get("list") === "1" || searchParams.get("list") === "true";
+
+    // ── Режим списка: все исходящие платежи (в т.ч. не проведённые) ──
+    // Модалка выгрузки показывает их с галочками, в файл идут только
+    // отмеченные. ?all=1 — «Показать все платежи» без фильтра по дате.
+    if (list) {
+      const data = await loadExportData();
+      const allRows = sortExportRows(
+        buildExportRows(data.payments, data.counterparties, data.receipts)
       );
+
+      const rows = allDates
+        ? allRows
+        : sortExportRows(allRows.filter((row) => matchesDateRange(row, from, to)));
+
+      const total = summarize(allRows);
+      return NextResponse.json({
+        rows,
+        range: { from, to },
+        allDates,
+        summary: summarize(rows),
+        totals: {
+          count: total.count,
+          total: total.total,
+          unexported: total.unexported,
+        },
+        limit: MAX_ROWS,
+      });
     }
 
-    const db = getAdminDb();
+    // ── Устаревший режим GET: выгрузка всех платежей периода ──
+    const dateFrom = from || todayIso();
+    const dateTo = to || dateFrom;
 
-    // Берём всех контрагентов, чтобы подтянуть банковские реквизиты.
-    // Вложенный select на контрагенте через .select не надёжен при
-    // произвольных ограничениях RLS — грузим counterparties отдельно.
-    const [{ data: payments, error: payErr }, { data: counterparties, error: cpErr }, { data: receipts, error: recErr }] = await Promise.all([
-      db
-        .from("bank_payments")
-        .select("*")
-        .eq("direction", "outgoing")
-        .eq("is_paid", true)
-        .eq("exclude_from_balance", false)
-        .eq("type", "regular")
-        .gte("date", dateFrom)
-        .lte("date", dateTo)
-        .order("date", { ascending: true })
-        .order("number", { ascending: true }),
-      db.from("counterparties").select("*"),
-      db.from("warehouse_receipts").select("id,number,date,supplier,invoice_number,invoice_date,total"),
-    ]);
-    if (payErr) throw payErr;
-    if (cpErr) throw cpErr;
-    if (recErr) throw recErr;
-
-    const cpById = new Map<string, any>();
-    for (const cp of counterparties || []) {
-      cpById.set(String(cp.id), cp);
-    }
-    const recById = new Map<string, any>();
-    for (const r of receipts || []) {
-      recById.set(String(r.id), r);
-    }
-
-    // Группируем платежи по поступлению (receipt_id), чтобы определить
-    // «часть» (первая/вторая/...) в назначении платежа.
-    const byReceipt = new Map<string, any[]>();
-    for (const p of payments || []) {
-      const rids = Array.isArray(p.receipt_ids) ? p.receipt_ids : [];
-      const key = rids[0] ? String(rids[0]) : `free-${p.id}`;
-      if (!byReceipt.has(key)) byReceipt.set(key, []);
-      byReceipt.get(key)!.push(p);
-    }
-    for (const list of byReceipt.values()) {
-      list.sort((a: any, b: any) => Number(a.number) - Number(b.number));
-    }
+    const data = await loadExportData();
+    const allRows = buildExportRows(data.payments, data.counterparties, data.receipts);
+    const rows = sortExportRows(
+      allRows.filter((row) => matchesDateRange(row, dateFrom, dateTo))
+    ).slice(0, MAX_ROWS);
 
     const payer = ourCompanyParty();
-    const docs: PaymentDoc[] = [];
-    const errors: string[] = [];
-
-    for (const p of payments || []) {
-      const rids = Array.isArray(p.receipt_ids) ? p.receipt_ids : [];
-      const rid = rids[0] ? String(rids[0]) : null;
-      const receipt = rid ? recById.get(rid) : null;
-      const cp = p.counterparty_id ? cpById.get(String(p.counterparty_id)) : null;
-
-      // Банковские реквизиты получателя: сначала из поступления,
-      // потом из карточки контрагента.
-      const payeeAcct = txt(receipt?.bank_account || cp?.bank_account);
-      const payeeBank = txt(receipt?.bank_name || cp?.bank_name);
-      const payeeBankCity = txt(receipt?.bank_city || cp?.bank_city);
-      const payeeBik = txt(receipt?.bik || cp?.bik);
-      const payeeCorr = txt(receipt?.correspondent_account || cp?.correspondent_account);
-      const payeeInn = txt(receipt?.inn || cp?.inn);
-      const payeeKpp = txt(receipt?.kpp || cp?.kpp);
-      const payeeName =
-        txt(cp?.full_name) ||
-        txt(cp?.short_name) ||
-        txt(p.counterparty);
-
-      if (!payeeAcct || !payeeBik || !payeeBank) {
-        errors.push(
-          `ПЛ-${p.number}: не заполнены банковские реквизиты поставщика «${p.counterparty}» (р/с, БИК или банк). Откройте поступление и заполните реквизиты.`
-        );
-        continue;
-      }
-      if (!payeeInn) {
-        errors.push(
-          `ПЛ-${p.number}: не заполнен ИНН поставщика «${p.counterparty}».`
-        );
-        continue;
-      }
-
-      // Определяем часть платежа (первая/вторая/...) — по группе платежей,
-      // привязанных к одному и тому же поступлению.
-      const groupKey = rid || `free-${p.id}`;
-      const group = byReceipt.get(groupKey) || [p];
-      const indexInGroup = group.findIndex((x: any) => x.id === p.id);
-      const totalParts = group.length;
-      const partLabel = partLabelFor(indexInGroup, totalParts);
-
-      // Назначение платежа:
-      //   «оплата [первой части] по счёту № N от DD MMMM YYYY. В том числе НДС X%»
-      // Если номера/даты счёта нет — используем номер поступления и дату.
-      const invNum = receipt?.invoice_number
-        ? String(receipt.invoice_number)
-        : receipt
-          ? String(receipt.number)
-          : "";
-      const invDateRaw = isoDate(receipt?.invoice_date || receipt?.date);
-
-      // Назначение платежа: если пользователь вписал свой текст в
-      // payment_purpose — используем его как основу; если нет — строим
-      // автоматически по части/номеру/дате/НДС (как в 1С).
-      const purpose = buildPurposeLines({
-        amount: num(p.amount),
-        vatRate: num(p.vat_rate, 22),
-        vatAmount: num(p.vat_amount),
-        docNumber: invNum || null,
-        docDate: invDateRaw || null,
-        docKind: "по счёту",
-        partIndex: totalParts > 1 ? indexInGroup : null,
-        partTotal: totalParts > 1 ? totalParts : null,
-        baseText: txt(p.payment_purpose) || null,
-        withoutVat: num(p.vat_rate, 22) <= 0,
-      });
-      const basePurpose = purpose.main;
-
-      const payee: PayerParty = {
-        name: payeeName,
-        inn: payeeInn,
-        kpp: payeeKpp || null,
-        account: payeeAcct,
-        bankName: payeeBank,
-        bankCity: payeeBankCity || "",
-        bik: payeeBik,
-        corrAccount: payeeCorr || "",
-      };
-
-      docs.push({
-        number: Number(p.number),
-        date: isoDate(p.date),
-        amount: num(p.amount),
-        payer,
-        payee,
-        priority: num(p.payment_priority, 5) || 5,
-        paymentKind: txt(p.payment_kind, "01") || "01",
-        paymentType: "электронно",
-        purpose: basePurpose,
-        vatRate: num(p.vat_rate, 22),
-        vatAmount: num(p.vat_amount),
-        partLabel,
-      });
-    }
+    const { docs, errors } = toPaymentDocs(rows, payer);
 
     if (docs.length === 0) {
-      return NextResponse.json(
-        {
-          error: errors.length > 0
-            ? errors.join("\n")
-            : `Нет проведённых исходящих платежей за период ${dateFrom} — ${dateTo}.`,
-        },
-        { status: 400 }
+      return errorResponse(
+        errors.length > 0
+          ? errors.join("\n")
+          : `Нет исходящих платежей поставщикам за период ${dateFrom} — ${dateTo}.`
       );
     }
 
-    // Помечаем успешно выгруженные платежи как экспортированные (один раз),
-    // чтобы при повторной выгрузке было видно, что платёжка уже ушла в банк.
-    // Не блокирует повторную выгрузку, но помогает не задвоить.
-    const exportedDocNumbers = new Set(docs.map((d) => d.number));
-    for (const p of payments || []) {
-      if (!exportedDocNumbers.has(Number(p.number))) continue;
-      try {
-        await db
-          .from("bank_payments")
-          .update({ exported_at: new Date().toISOString().slice(0, 10) })
-          .eq("id", p.id)
-          .is("exported_at", null);
-      } catch (e) {
-        // игнорируем best-effort
-      }
-    }
-    // Есть ошибки валидации? Покажем в ответе как предупреждение (в заголовке
-    // ответа) — пользователь сможет их увидеть, даже если файл сформировался
-    // частично (только с валидными платежами).
+    await markExported(rows.filter((row) => !row.issue));
 
     const content = buildClientBankExchange({
       ourAccount: payer.account,
@@ -266,22 +252,85 @@ export async function GET(request: NextRequest) {
       payments: docs,
     });
 
-    const body = encodeWindows1251(content);
-    const filename = `kl_to_1c_${dateFrom}_${dateTo}.txt`;
-
-    return new NextResponse(new Uint8Array(body), {
-      status: 200,
-      headers: {
-        "Content-Type": "text/plain; charset=windows-1251",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-        "Cache-Control": "private, no-store",
-      },
+    return fileResponse(content, `kl_to_1c_${dateFrom}_${dateTo}.txt`, {
+      "X-Export-Count": String(docs.length),
+      "X-Export-Skipped": String(errors.length),
     });
   } catch (error: any) {
     console.error("1C Client Bank export error:", error);
-    return NextResponse.json(
-      { error: error?.message || "Ошибка выгрузки" },
-      { status: 500 }
+    return errorResponse(error?.message || "Ошибка выгрузки", 500);
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const rawIds: unknown[] = Array.isArray(body?.ids) ? body.ids : [];
+    const ids = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
+
+    if (ids.length === 0) {
+      return errorResponse("Выберите хотя бы один платёж для выгрузки");
+    }
+    if (ids.length > MAX_ROWS) {
+      return errorResponse(`Слишком много платежей за раз (максимум ${MAX_ROWS})`);
+    }
+
+    const data = await loadExportData();
+    // Части платежа считаются по ВСЕМ платежам поставки (options.onlyIds
+    // ограничивает только итоговый набор строк).
+    const rows = sortExportRows(
+      buildExportRows(data.payments, data.counterparties, data.receipts, { onlyIds: ids })
     );
+
+    const found = new Set(rows.map((row) => row.id));
+    const missing = ids.filter((id) => !found.has(id));
+    if (missing.length > 0) {
+      return errorResponse(
+        `Не найдено платежей: ${missing.length}. Обновите список и выберите заново.`
+      );
+    }
+
+    const broken = rows.filter((row) => row.issue);
+    if (broken.length > 0) {
+      return errorResponse(
+        [
+          "Нельзя выгрузить: у платежей не заполнены банковские реквизиты получателя.",
+          ...broken.map((row) => `ПЛ-${row.number} (${row.counterparty}): ${row.issue}`),
+          "Заполните реквизиты в поставке/карточке контрагента или снимите эти платежи с выгрузки.",
+        ].join("\n")
+      );
+    }
+
+    const payer = ourCompanyParty();
+    const { docs } = toPaymentDocs(rows, payer);
+    if (docs.length === 0) {
+      return errorResponse("Нет платежей для выгрузки");
+    }
+
+    // Период в шапке файла — по фактическим датам выбранных платёжек.
+    const span = dateSpanOf(rows);
+    const dateFrom = span.from || todayIso();
+    const dateTo = span.to || dateFrom;
+
+    await markExported(rows);
+
+    const content = buildClientBankExchange({
+      ourAccount: payer.account,
+      dateFrom,
+      dateTo,
+      payments: docs,
+    });
+
+    return fileResponse(content, `kl_to_1c_${dateFrom}_${dateTo}.txt`, {
+      "X-Export-Count": String(docs.length),
+      "X-Export-From": dateFrom,
+      "X-Export-To": dateTo,
+    });
+  } catch (error: any) {
+    console.error("1C Client Bank export (selected) error:", error);
+    return errorResponse(error?.message || "Ошибка выгрузки", 500);
   }
 }
