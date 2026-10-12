@@ -102,6 +102,8 @@ export default function UserAgreementPage() {
         <footer className="privacy__footer">
           <Link href="/privacy">Политика конфиденциальности</Link>
           {" · "}
+          <Link href="/cookie-policy">Политика использования cookie</Link>
+          {" · "}
           <Link href="/user-agreement">Пользовательское соглашение</Link>
           <div>© {new Date().getFullYear()} ООО «СибГофроТорг». Все права защищены.</div>
         </footer>

@@ -29,6 +29,7 @@ import {
   buildWebSiteJsonLd,
 } from "@/lib/seo";
 import { adminThemeInitScript } from "@/lib/admin-theme";
+import { cookieConsentInitScript } from "@/lib/cookie-consent";
 
 // Шрифты Oswald/Inter/Montserrat — self-hosted (public/fonts/*.woff2,
 // @font-face в src/app/fonts.css). Google Fonts не используется:
@@ -174,6 +175,10 @@ export default async function RootLayout({
             до первой отрисовки (анти-FOUC). Список настроек и скрипт
             генерируются из единого источника — src/lib/admin-theme.ts. */}
         <script dangerouslySetInnerHTML={{ __html: adminThemeInitScript() }} />
+        {/* Согласие на cookie: если посетитель уже нажал «Принять»/«Отклонить»,
+            помечаем <html> атрибутом до первой отрисовки — CSS прячет баннер,
+            и он не мигает при каждой загрузке страницы. */}
+        <script dangerouslySetInnerHTML={{ __html: cookieConsentInitScript() }} />
       </head>
       <body>
         <CartProvider>

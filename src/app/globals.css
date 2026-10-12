@@ -5900,14 +5900,25 @@ select {
 
 .footer-bottom {
   display: flex;
+  /* Три блока: копирайт, юридические ссылки, почта. На средних экранах
+     переносим, чтобы ссылки не сжимались в нечитаемую строку. */
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 6px 16px;
   min-height: 38px;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   font-size: 11px;
   color: rgba(255, 255, 255, 0.3);
+}
+
+.footer-bottom__legal {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 6px;
 }
 
 /* ══════════════════════════════════════
@@ -8050,7 +8061,14 @@ body:has(.mobile-menu-panel) {
   color: #dc2626;
 }
 
-/* Cookie-баннер */
+/* Cookie-баннер.
+   Разметка приходит с сервера (её видят и посетители без JS, и сканеры
+   соответствия 152-ФЗ, которые не выполняют скрипты). Если посетитель уже
+   сделал выбор, скрипт в <head> выставляет на <html> атрибут
+   data-cookie-consent — ниже баннер прячется ещё до первой отрисовки,
+   чтобы не мигал при каждой загрузке страницы. */
+html[data-cookie-consent] .cookie-banner { display: none !important; }
+
 .cookie-banner {
   position: fixed;
   left: 16px;
@@ -8230,6 +8248,12 @@ body.cookie-banner-visible .cart-popup {
   color: var(--ink-muted, #777);
   margin: 0;
 }
+/* Дата редакции документа — под подзаголовком юридической страницы. */
+.privacy-hero__meta {
+  font-size: 12.5px;
+  color: var(--ink-muted, #888);
+  margin: 6px 0 0;
+}
 
 .privacy-card {
   background: #fff;
@@ -8327,6 +8351,9 @@ body.cookie-banner-visible .cart-popup {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+.privacy__footer-links { margin: 6px 0 0; }
+.privacy__footer p { margin: 0; }
+.privacy__footer p + p { margin-top: 6px; }
 
 @media (max-width: 640px) {
   .privacy-hero__title { font-size: 24px; }
@@ -8882,6 +8909,15 @@ body.cookie-banner-visible .cart-popup {
 
 .legal-card h2:first-child {
   margin-top: 0;
+}
+
+.legal-card h3 {
+  font-family: var(--font-head);
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--ink, #1b2b4b);
+  margin: 18px 0 8px;
+  line-height: 1.35;
 }
 
 .legal-card p {
