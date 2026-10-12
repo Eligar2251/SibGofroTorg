@@ -202,7 +202,11 @@ export function CatalogShopClient({
   }, [mode, activeSlug, site.boxBadge?.enabled]);
 
   const hasFilters = Boolean(q || (sort && sort !== "default") || stock);
-  const title = activeSlug ? activeName : q ? `Поиск: «${q}»` : "Все товары";
+  const title = activeSlug
+    ? `${activeName} — купить в Новосибирске`
+    : q
+      ? `Поиск: «${q}»`
+      : "Каталог гофротары в Новосибирске";
 
   return (
     <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: 64 }}>

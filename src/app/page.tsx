@@ -17,6 +17,7 @@ import {
 import { formatRate, getWastepaperPageConfig } from "@/lib/wastepaper";
 import { FirestoreCategory, FirestoreProduct, Promotion } from "@/lib/types";
 import { QuickOrderForm } from "@/components/forms/QuickOrderForm";
+import { LandingFaq } from "@/components/seo/LandingSections";
 import { HomeShowcase, type ShowcaseTile } from "@/components/home/HomeShowcase";
 import { type BoxFinderProduct } from "@/components/catalog/BoxSizeFinder";
 import { toMm } from "@/lib/box-search";
@@ -54,7 +55,6 @@ import {
 import { YandexMapEmbed } from "@/components/layout/YandexMapEmbed";
 import type { Metadata } from "next";
 import { SITE_URL, SITE_NAME, DEFAULT_DESCRIPTION } from "@/lib/seo";
-import { HomeSeoSection } from "@/components/seo/HomeSeoSection";
 import "./seo-blocks.css";
 
 import { buildHoursLabel } from "@/lib/hours-label";
@@ -80,6 +80,25 @@ export const metadata: Metadata = {
 // Данные читаем в рантайме: на этапе сборки БД недоступна.
 export const revalidate = 120;
 export const dynamic = "force-dynamic";
+
+const HOME_FAQ = [
+  {
+    q: "Можно ли купить гофротару от 1 штуки?",
+    a: "Да. Минимальный заказ на сайте — 1 шт. Ходовые коробки Т-22, Т-23, Т-25 и гофрокартон 3 и 5 слоёв есть в наличии на складе в Новосибирске.",
+  },
+  {
+    q: "Какие картонные коробки есть в наличии?",
+    a: "В каталоге — картонные коробки Т-22, Т-23, Т-25 и других типоразмеров, гофрокартон в листах, стрейч-плёнка и скотч. Нестандартные размеры изготавливаем под заказ.",
+  },
+  {
+    q: "Есть ли доставка по Новосибирску и области?",
+    a: `Да, доставляем по Новосибирску обычно за 2–3 дня и по Новосибирской области. При заказе от определённой суммы доставка по городу бесплатная, возможен самовывоз со склада: ${SITE_ADDRESS}.`,
+  },
+  {
+    q: "Как быстро оформить покупку?",
+    a: `Добавьте коробки в корзину и оформите заказ — сразу получите номер получения. Приезжайте на склад в часы работы (${SITE_HOURS_LABEL}) и забирайте товар, оплатив при получении.`,
+  },
+];
 
 export default async function HomePage() {
   // localizeMediaDeep переводит ссылки на фото в собственные /media/...
@@ -154,18 +173,11 @@ export default async function HomePage() {
     };
   });
 
-  const serializedCategories = categories.map((cat: FirestoreCategory) => ({
-    id: cat.id,
-    name: cat.name,
-    slug: cat.slug,
-    icon: cat.icon ?? "box",
-  }));
-
   const serializeHomeProduct = (p: FirestoreProduct) => toCardProduct(p);
   const serializedOrderProducts = orderProducts.map(serializeHomeProduct);
 
   // ── Плитки разделов (витрина главной) ──
-  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const categoryById = new Map(categories.map((c: FirestoreCategory) => [c.id, c]));
   const tileSource: HomeTile[] = homeTiles.length
     ? homeTiles
     : [
@@ -182,7 +194,7 @@ export default async function HomePage() {
           sortOrder: -1,
           isVisible: true,
         },
-        ...categories.map((cat, index) => ({
+        ...categories.map((cat: FirestoreCategory, index: number) => ({
           id: `auto-${cat.id}`,
           title: cat.name,
           subtitle: cat.description ?? null,
@@ -306,7 +318,7 @@ export default async function HomePage() {
               <br />
               <span className="hero__accent">от 1 штуки</span>
               <br />
-              со склада
+              в Новосибирске
             </h1>
             <p className="hero__sub">
               Марки Т-22, Т-23, Т-25 · 3 и 5-слойный.
@@ -481,8 +493,9 @@ export default async function HomePage() {
               <span className="consult-eyebrow">Оформление заказа</span>
               <h2 className="consult-title">Оформите заказ — заберите со склада</h2>
               <p className="consult-desc">
-                Добавьте товар в корзину и оформите заказ. Сразу получите номер
-                получения — приезжайте на склад и оплатите при получении.
+                Добавьте товар в корзину и оформите заказ — сразу получите номер
+                получения. Забирайте со склада в Новосибирске или закажите
+                доставку по городу и области.
               </p>
               <a href={homePhoneHref} className="consult-phone">
                 <Phone size={18} /> {homePhone}
@@ -493,6 +506,13 @@ export default async function HomePage() {
               <QuickOrderForm />
             </div>
           </div>
+
+          <LandingFaq
+            title="Частые вопросы"
+            items={HOME_FAQ}
+            headingClassName="consult-faq__title"
+            className="consult-faq"
+          />
         </div>
       </section>
 
@@ -533,9 +553,6 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
-
-      {/* SEO-текстовый блок с ключевыми запросами и FAQ */}
-      <HomeSeoSection categories={serializedCategories} />
     </div>
   );
 }

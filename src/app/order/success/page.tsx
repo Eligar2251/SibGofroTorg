@@ -3,9 +3,12 @@ import { CheckCircle2, ArrowRight, Package, Ticket } from "lucide-react";
 import { OrderSuccessGoal } from "@/components/analytics/OrderSuccessGoal";
 import { SuccessContactPhone } from "@/components/order/SuccessContactPhone";
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/seo";
 
 export const metadata: Metadata = {
-  title: "Заказ оформлен — СибГофроТорг",
+  title: "Заказ оформлен",
+  alternates: { canonical: `${SITE_URL}/order/success` },
+  robots: { index: false, follow: false },
 };
 
 function firstParam(value: string | string[] | undefined): string {

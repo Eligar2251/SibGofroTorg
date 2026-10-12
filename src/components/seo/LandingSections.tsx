@@ -27,10 +27,13 @@ export function LandingFaq({
   title,
   items,
   headingClassName,
+  className,
 }: {
   title: string;
   items: FaqItem[];
   headingClassName?: string;
+  /** Доп. класс обёртки — для встраивания в готовый блок (см. главную). */
+  className?: string;
 }) {
   const faqLd = {
     "@context": "https://schema.org",
@@ -45,7 +48,7 @@ export function LandingFaq({
   return (
     <>
       <JsonLd data={faqLd} />
-      <div className="seo-faq">
+      <div className={className ? `seo-faq ${className}` : "seo-faq"}>
         {headingClassName ? (
           <h2 className={headingClassName}>{title}</h2>
         ) : (
