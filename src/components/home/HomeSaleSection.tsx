@@ -137,9 +137,7 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
               price < p.price;
             const inCart = cart.find((i) => i.productId === p.id);
             const out = p.stockQty != null && p.stockQty <= 0;
-            // Размер: в распродаже товары часто без фото и с коротким
-            // названием («Гофрокороб Т-23»), поэтому габариты печатаем
-            // отдельной строкой — иначе выбрать нечего.
+            // В распродаже размер — главная подсказка о товаре.
             const size =
               formatProductSize(p, "any") || formatVariantSizes(p.variantSizes, 2);
             const atMax =

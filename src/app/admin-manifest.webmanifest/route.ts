@@ -19,9 +19,7 @@ export function GET() {
       // чтобы переход «Открыть сайт» не выталкивал установленное PWA в Safari/Chrome.
       scope: "/",
       display: "standalone",
-      // Современный Android сначала выбирает fullscreen — без адресной
-      // строки, вкладочной панели и системной кнопки «назад» браузера.
-      // На iOS используется appleWebApp.capable из админского layout.
+      // Android выбирает fullscreen из списка, иначе — standalone.
       display_override: ["fullscreen", "standalone"],
       orientation: "portrait-primary",
       launch_handler: { client_mode: "navigate-existing" },

@@ -189,9 +189,7 @@ export function MessengerFloatingBanner() {
       // Во время активного pointer-drag баннер не должен исчезнуть из-под пальца.
       if (dragRef.current) return;
       const side = corner.endsWith("left") ? "left" : "right";
-      // Автосворачивание не сохраняем: при следующем полном открытии сайта
-      // баннер снова будет виден пять секунд. Ручное скрытие по-прежнему
-      // запоминается отдельно через collapse().
+      // Автосворачивание не запоминаем: при новом открытии баннер развёрнут.
       setCollapsedSide(side);
     }, AUTO_COLLAPSE_DELAY_MS);
 

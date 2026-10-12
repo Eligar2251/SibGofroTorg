@@ -12,16 +12,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
 
   images: {
-    // Все внешние изображения (товарные фото из Cloudinary, фото из
-    // Unsplash) отдаются с нашего домена через /media/... — браузер
-    // посетителя не обращается к иностранным CDN. Лоадер превращает
-    // известные внешние ссылки в /media/..., локальные файлы из /public
-    // оставляет как есть. Прокси — src/app/media/[...path]/route.ts.
+    // Любые внешние картинки идут через наш /media (src/lib/image-loader.ts).
     loader: "custom",
     loaderFile: "./src/lib/image-loader.ts",
-    // Промежуточные ширины под карточки товаров на мобильных
-    // (DPR 2.6 × ~185px ≈ 480px): без них next/image отдавал исходники
-    // ~600px для слотов ~185px — лишние ~150 КиБ на главной (Lighthouse).
+    // Ширины под карточки товаров на мобильных.
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384, 480, 560],
   },
 
@@ -39,8 +33,6 @@ const nextConfig: NextConfig = {
   },
 
   // CSP + security — в src/proxy.ts.
-  // Здесь только кеш публичных ассетов.
-  // НЕ трогаем /_next/static — Next сам ставит immutable long-cache в prod.
   async headers() {
     if (!isProd) return [];
 

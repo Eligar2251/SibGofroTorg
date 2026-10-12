@@ -24,7 +24,7 @@ import { ProductViewTracker } from "@/components/catalog/ProductViewTracker";
 import { Stars } from "@/components/catalog/Stars";
 import { ReviewForm } from "@/components/catalog/ReviewForm";
 import { ReviewHelpfulButton } from "@/components/catalog/ReviewHelpfulButton";
-// Стили страницы товара — только на этой странице, а не в общем бандле
+// Стили страницы товара подключаются только здесь.
 import "@/app/pdp.css";
 import {
   FirestoreCategory,
@@ -131,9 +131,7 @@ export async function generateMetadata({
       title: `${title} — ${SITE_NAME}`,
       description,
       url: `${SITE_URL}/catalog/product/${product.slug}`,
-      // og:image — своя картинка (см. src/lib/media.ts): внешние CDN
-      // в разметке не светятся. toAbsoluteMediaUrl возвращает undefined,
-      // если ссылки нет, поэтому собираем массив только при наличии URL.
+      // og:image — с нашего домена (см. src/lib/media.ts).
       images: (() => {
         const ogImage = toAbsoluteMediaUrl(product.imageUrl, SITE_URL);
         return ogImage ? [{ url: ogImage }] : undefined;
@@ -149,10 +147,7 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  // getProductBySlugForPage подтягивает и сам товар, и
-  // полный список видимых вариантов в одном вызове. Для
-  // товаров БЕЗ вариантов variants будет пустым, и UI
-  // работает в обычном режиме.
+  // Товар вместе с вариантами — одним запросом.
   const { product, variants } = localizeMediaDeep(
     await getProductBySlugForPage(slug)
   );
@@ -181,10 +176,6 @@ export default async function ProductPage({
   );
 
   // Нет на складе — купить нельзя (автозаявка «Уточнить поступление»),
-  // но если цена задана, она показывается рядом с меткой «Нет в наличии».
-  // ★ Важно: effectivePrice/oldPrice/discountPercent считаем от
-  // СВОДНОЙ цены товара (для крупных бейджей). В блоке покупки
-  // (ProductPurchaseBlock) своя логика с вариантами.
   const outOfStock = isOutOfStock(product);
   const basePrice = product.basePrice ?? product.price;
   const effectivePrice = getProductEffectivePrice({ ...product, price: basePrice });
@@ -506,9 +497,12 @@ export default async function ProductPage({
               {product.madeToOrder ? (
                 <div className="pdp-price-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
                   <span className="pdp-price-current pdp-price-current--mto">
-                    Под заказ{(product as any).madeToOrderMinQty ? ` от ${(product as any).madeToOrderMinQty} шт.` : ""}
+                    Под заказ
+                    {(product as any).madeToOrderMinQty > 1
+                      ? ` от ${(product as any).madeToOrderMinQty} шт.`
+                      : ""}
                   </span>
-                  {(product as any).madeToOrderMinQty && (
+                  {(product as any).madeToOrderMinQty > 1 && (
                     <span style={{ fontSize: 13, color: "var(--ink-soft, #666)", fontWeight: 500 }}>
                       Минимальный заказ: {(product as any).madeToOrderMinQty} шт.
                     </span>
@@ -593,9 +587,11 @@ export default async function ProductPage({
                   <div className="pdp-made-to-order">
                     <div className="pdp-made-to-order__text">
                       <FileText size={15} />
-                      Изготавливается под заказ{(product as any).madeToOrderMinQty ? ` от ${(product as any).madeToOrderMinQty} шт.` : ""} — оставьте заявку, менеджер
-                      рассчитает стоимость и сроки
-                      {(product as any).madeToOrderMinQty ? ` (мин. ${(product as any).madeToOrderMinQty} шт.)` : ""}
+                      Под заказ
+                      {(product as any).madeToOrderMinQty > 1
+                        ? ` от ${(product as any).madeToOrderMinQty} шт.`
+                        : ""}
+                      — оставьте заявку, менеджер рассчитает стоимость и сроки
                     </div>
                     <PriceInquiryButton
                       productName={product.name}

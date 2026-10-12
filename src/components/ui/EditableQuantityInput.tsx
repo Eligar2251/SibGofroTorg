@@ -64,10 +64,7 @@ export function EditableQuantityInput({
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value;
-    // Пока пользователь печатает — держим сырой ввод, чтобы не рушить
-    // набор «100» из-за промежуточного «1». Запускаем обновление корзины
-    // сразу для валидных целых чисел (например, ввели 25 и ушли из поля —
-    // сумма уже актуальна).
+    // Пока печатают — держим сырой ввод, не перебивая его числом.
     setText(raw);
     const parsed = parseInt(raw, 10);
     if (!Number.isNaN(parsed)) {

@@ -7,9 +7,7 @@ import { GlyphIcon } from "@/components/ui/Glyph";
 import { SITE_URL } from "@/lib/seo";
 import { localizeMediaDeep } from "@/lib/media";
 
-// Сама страница /search — индексируется (полезный вход «подбор коробки
-// по размерам»), а страницы результатов /search?q=… — noindex:
-// служебные выдачи не должны попадать в индекс как дубли.
+// Страница /search индексируется: вход в «подбор коробки» из поиска.
 export async function generateMetadata({
   searchParams,
 }: {
@@ -97,8 +95,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               </p>
               <p style={{ marginTop: 8 }}>
                 Если нужного типоразмера нет в наличии —{" "}
-                <Link href="/korobki-na-zakaz">изготовим коробки на заказ</Link> по вашим
-                размерам от 1000 м². Популярные размеры собраны в{" "}
+                <Link href="/proizvodstvo-korobok">изготовим коробки на заказ</Link> по
+                вашим размерам: четырёхклапанные — от 3000 м², самосборные — от 1
+                штуки. Популярные размеры собраны в{" "}
                 <Link href="/catalog">каталоге</Link> и на страницах{" "}
                 <Link href="/korobki-dlya-pereezda">коробок для переезда</Link> и{" "}
                 <Link href="/korobki-dlya-marketplejsov">коробок для WB и Ozon</Link>.

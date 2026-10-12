@@ -1,6 +1,4 @@
 // src/app/trip-sheet-preview/page.tsx
-// Dev-стенд для просмотра путевого листа и редактора точек маршрута
-// на моковых данных (никакой БД не нужно). В проде страница 404.
 import { notFound } from "next/navigation";
 import { TripSheetPreviewClient } from "./client";
 

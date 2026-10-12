@@ -90,8 +90,6 @@ export function Header({
   }, []);
 
   // Список с сервера приходит новым массивом на каждый рендер layout,
-  // поэтому сравниваем по содержимому — иначе state обновлялся бы вхолостую
-  // на каждой навигации.
   const serverCategoriesKey = initialCategories.map((c) => c.id).join(",");
   useEffect(() => {
     if (!serverCategoriesKey) return;
@@ -100,15 +98,10 @@ export function Header({
         ? prev
         : initialCategories
     );
-    // initialCategories намеренно не в зависимостях: ключ выше описывает
-    // его содержимое, а сама ссылка меняется каждый рендер.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverCategoriesKey]);
 
-  // Фоллбэк на случай, если серверный layout категории не отдал
-  // (например, БД была недоступна в момент рендера). Запрос
-  // необязательный: не сработал — меню просто останется без разделов,
-  // ошибку в консоль не пишем.
+  // Если серверный layout не отдал категории — спрашиваем API.
   useEffect(() => {
     if (serverCategoriesKey) return;
     const controller = new AbortController();
@@ -121,9 +114,7 @@ export function Header({
     return () => controller.abort();
   }, [serverCategoriesKey]);
 
-  // Header живёт между клиентскими переходами. Перепроверяем cookie сессии
-  // на каждом маршруте, чтобы после регистрации второго номера на том же ПК
-  // не оставались данные предыдущего аккаунта.
+  // Шапка живёт между переходами — перепроверяем cookie сессии.
   useEffect(() => {
     let cancelled = false;
     setUserLoaded(false);
