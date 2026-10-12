@@ -18,6 +18,7 @@ import {
   LandingCta,
 } from "@/components/seo/LandingSections";
 import "@/app/seo-blocks.css";
+import { localizeMediaDeep } from "@/lib/media";
 
 export const revalidate = 600;
 
@@ -38,7 +39,9 @@ export const metadata: Metadata = {
 
 export default async function MadeToOrderPage() {
   // Товары с признаком «под заказ» — показываем как пример работ.
-  const all = await getProducts({ limitCount: 2000 }).catch(() => []);
+  const all = localizeMediaDeep(
+    await getProducts({ limitCount: 2000 }).catch(() => [])
+  );
   const madeToOrder = all
     .filter((p) => p.isVisible !== false)
     .filter((p) => p.madeToOrder)

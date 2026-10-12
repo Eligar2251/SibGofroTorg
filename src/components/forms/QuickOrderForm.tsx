@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Send, CheckCircle, Loader2, MessageSquareText, Phone } from "lucide-react";
 import { ymGoal } from "@/lib/ym";
-import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
+import { ConsentCheckbox, ConsentNote } from "@/components/forms/ConsentCheckbox";
 import { useSiteSettings } from "@/hooks/use-site-settings";
 import { digitsPhone, formatPhoneMask } from "@/lib/phone-mask";
 
@@ -175,7 +175,13 @@ export function QuickOrderForm({
         onChange={(v) => setConsent(v)}
         error={consentError}
         variant={variant === "dark" ? "dark" : "default"}
+        purpose="обработки заявки, консультации по товару и обратной связи со мной"
+        dataList="имя, номер телефона, комментарий к заявке"
       />
+
+      <ConsentNote variant={variant === "dark" ? "dark" : "default"}>
+        Отправляя форму, вы подтверждаете, что ознакомлены и согласны
+      </ConsentNote>
 
       <button
         type="submit"

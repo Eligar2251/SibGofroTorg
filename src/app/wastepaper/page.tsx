@@ -7,6 +7,7 @@ import { getSettings } from "@/lib/supabase-queries";
 import { getWastepaperPageConfig, WASTEPAPER_PHONE_DEFAULT } from "@/lib/wastepaper";
 import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 export const metadata: Metadata = {
   title: `Приём макулатуры в Новосибирске — вывоз, звоните ${WASTEPAPER_PHONE_DEFAULT}`,
@@ -53,7 +54,7 @@ export default async function WastepaperPage() {
       <div className="wp-hero">
         <div className="wp-hero__overlay" />
         <Image
-          src="https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=1400&q=80"
+          src={toSameOriginMediaUrl("https://images.unsplash.com/photo-1532996122724-e3c354a0b15b")}
           alt="Приём макулатуры"
           className="wp-hero__bg"
           fill

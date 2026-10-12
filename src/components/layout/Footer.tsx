@@ -26,6 +26,11 @@ const INFO_LINKS = [
   { href: "/wastepaper", label: "Приём макулатуры" },
   { href: "/contacts", label: "Контакты" },
   { href: "/privacy", label: "Политика конфиденциальности" },
+  { href: "/consent", label: "Согласие на обработку данных" },
+  // Ссылка на политику cookie обязана быть доступна с любой страницы сайта
+  // (требование РКН по 152-ФЗ) — поэтому она и в колонке «Информация»,
+  // и в нижней строке подвала, которую видно на всех страницах.
+  { href: "/cookie-policy", label: "Политика использования cookie" },
   { href: "/user-agreement", label: "Пользовательское соглашение" },
 ];
 
@@ -187,9 +192,17 @@ export function Footer() {
             <span>
               © {new Date().getFullYear()} ООО «СибГофроТорг» · Все права защищены
             </span>
-            <span>
+            <span className="footer-bottom__legal">
               <Link href="/privacy" className="footer-link footer-link--inline">
                 Политика конфиденциальности
+              </Link>
+              {" · "}
+              <Link href="/cookie-policy" className="footer-link footer-link--inline">
+                Политика использования cookie
+              </Link>
+              {" · "}
+              <Link href="/user-agreement" className="footer-link footer-link--inline">
+                Пользовательское соглашение
               </Link>
             </span>
             {footerEmail && <span>{footerEmail}</span>}

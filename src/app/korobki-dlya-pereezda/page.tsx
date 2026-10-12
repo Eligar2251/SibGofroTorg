@@ -22,6 +22,7 @@ import {
   LandingCta,
 } from "@/components/seo/LandingSections";
 import "@/app/seo-blocks.css";
+import { localizeMediaDeep } from "@/lib/media";
 
 export const revalidate = 600;
 
@@ -54,7 +55,9 @@ function volumeLiters(p: {
 export default async function MovingBoxesPage() {
   // Коробки для переезда: четырёхклапанные ящики объёмом 25–120 л,
   // отсортированные по объёму. При сбое БД страница остаётся текстовой.
-  const all = await getProducts({ limitCount: 2000 }).catch(() => []);
+  const all = localizeMediaDeep(
+    await getProducts({ limitCount: 2000 }).catch(() => [])
+  );
   // Порог бесплатной доставки, адрес и режим работы — из настроек
   // админки (единый источник для всех страниц сайта).
   const pub = await getPublicSettingsView();

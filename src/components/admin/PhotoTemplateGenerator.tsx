@@ -66,6 +66,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
+import { toSameOriginMediaUrl } from "@/lib/media";
 import {
   buildProductTokens,
   cloneTemplate,
@@ -2274,7 +2275,7 @@ export function PhotoTemplateGenerator({
                     <div className="ptg-item__thumb">
                       {p.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.imageUrl} alt="" loading="lazy" decoding="async" />
+                        <img src={toSameOriginMediaUrl(p.imageUrl)} alt="" loading="lazy" decoding="async" />
                       ) : (
                         <span>📦</span>
                       )}
@@ -3598,7 +3599,7 @@ export function PhotoTemplateGenerator({
                     <span className="ptg-result__name">{r.name}</span>
                     {r.ok && r.url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.url} alt="" loading="lazy" decoding="async" />
+                      <img src={toSameOriginMediaUrl(r.url)} alt="" loading="lazy" decoding="async" />
                     ) : (
                       <span className="ptg-result__errtext">{r.error}</span>
                     )}

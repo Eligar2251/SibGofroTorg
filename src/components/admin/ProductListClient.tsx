@@ -19,6 +19,7 @@ import { normalizeProductLabelColor } from "@/lib/product-fields";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { useWindowedList } from "@/hooks/use-windowed-list";
 import { ProductsMobile } from "./mobile/ProductsMobile";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 interface ProductItem {
   id: string;
@@ -384,7 +385,7 @@ export function ProductListClient({
                         <div className="admin-product-thumb">
                           {product.imageUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={product.imageUrl} alt="" loading="lazy" decoding="async" />
+                            <img src={toSameOriginMediaUrl(product.imageUrl)} alt="" loading="lazy" decoding="async" />
                           ) : (
                             <GlyphIcon value="box" size={16} />
                           )}

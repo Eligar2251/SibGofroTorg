@@ -22,6 +22,7 @@ import {
   LandingCta,
 } from "@/components/seo/LandingSections";
 import "@/app/seo-blocks.css";
+import { localizeMediaDeep } from "@/lib/media";
 
 export const revalidate = 600;
 
@@ -44,11 +45,13 @@ export default async function GofrotaraPage() {
   // Страница не должна падать при сбое БД: показываем текст и ссылки.
   // Ключевые цифры (порог бесплатной доставки) и контакты — из настроек
   // админки: меняются в одном месте и сразу во всех текстах сайта.
-  const [categories, featured, pub] = await Promise.all([
-    getCategories().catch(() => []),
-    getProducts({ featuredOnly: true, limitCount: 500 }).catch(() => []),
-    getPublicSettingsView(),
-  ]);
+  const [categories, featured, pub] = localizeMediaDeep(
+    await Promise.all([
+      getCategories().catch(() => []),
+      getProducts({ featuredOnly: true, limitCount: 500 }).catch(() => []),
+      getPublicSettingsView(),
+    ])
+  );
   const freeFrom = formatRubles(pub.freeDeliveryThreshold);
   const products = featured.filter((p) => p.isVisible !== false).slice(0, 8);
 

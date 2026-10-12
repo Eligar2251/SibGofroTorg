@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { ConsentNote } from "@/components/forms/ConsentCheckbox";
 import { Star, Send, Loader2, X, CheckCircle2, MessageSquare } from "lucide-react";
 
 interface ReviewFormProps {
@@ -187,6 +188,10 @@ export function ReviewForm({ productId }: ReviewFormProps) {
           )}
         </div>
       )}
+
+      <ConsentNote>
+        Отправляя отзыв, вы подтверждаете, что ознакомлены и согласны
+      </ConsentNote>
 
       <button
         type="submit"

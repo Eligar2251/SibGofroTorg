@@ -29,6 +29,8 @@ import {
   buildWebSiteJsonLd,
 } from "@/lib/seo";
 import { adminThemeInitScript } from "@/lib/admin-theme";
+import { cookieConsentInitScript } from "@/lib/cookie-consent";
+import { localizeMediaDeep } from "@/lib/media";
 
 // Шрифты Oswald/Inter/Montserrat — self-hosted (public/fonts/*.woff2,
 // @font-face в src/app/fonts.css). Google Fonts не используется:
@@ -117,7 +119,9 @@ export default async function RootLayout({
      LCP на мобильных сетях). */
   let popupCampaigns: PublicPopupCampaign[] = [];
   try {
-    popupCampaigns = preparePublicCampaigns(await getAllPopupCampaigns());
+    popupCampaigns = preparePublicCampaigns(
+      localizeMediaDeep(await getAllPopupCampaigns())
+    );
   } catch {
     popupCampaigns = [];
   }
@@ -141,8 +145,10 @@ export default async function RootLayout({
   return (
     <html lang="ru" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
-        {/* Ранние подключения источников (экономия на handshake/TLS). */}
-        <link rel="preconnect" href="https://res.cloudinary.com" />
+        {/* Ранние подключения источников (экономия на handshake/TLS).
+            Внешних CDN здесь больше нет: изображения отдаются с нашего
+            домена через /media/... (см. src/lib/media.ts), поэтому браузер
+            посетителя не соединяется с зарубежными серверами. */}
         {/* Preload основных шрифтов (кириллица) — они критичны для LCP:
             файлы локальные (public/fonts), подключены через @font-face
             в src/app/fonts.css с font-display: swap. */}
@@ -174,6 +180,10 @@ export default async function RootLayout({
             до первой отрисовки (анти-FOUC). Список настроек и скрипт
             генерируются из единого источника — src/lib/admin-theme.ts. */}
         <script dangerouslySetInnerHTML={{ __html: adminThemeInitScript() }} />
+        {/* Согласие на cookie: если посетитель уже нажал «Принять»/«Отклонить»,
+            помечаем <html> атрибутом до первой отрисовки — CSS прячет баннер,
+            и он не мигает при каждой загрузке страницы. */}
+        <script dangerouslySetInnerHTML={{ __html: cookieConsentInitScript() }} />
       </head>
       <body>
         <CartProvider>

@@ -33,6 +33,7 @@ import {
   Printer,
 } from "lucide-react";
 import { buildStockLabel, normalizeScanCode, type StockLabel } from "@/lib/scan";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 type ScanProduct = {
   id: string;
@@ -607,7 +608,7 @@ export function ScanCode({
             <div className="scan-page__thumb">
               {currentProduct.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={currentProduct.imageUrl} alt={currentProduct.name} />
+                <img src={toSameOriginMediaUrl(currentProduct.imageUrl)} alt={currentProduct.name} />
               ) : (
                 <Package size={42} />
               )}

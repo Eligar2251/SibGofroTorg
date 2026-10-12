@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Search, Loader2 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { isOutOfStock, OUT_OF_STOCK_LABEL } from "@/lib/stock-availability";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 interface Suggestion {
   id: string;
@@ -133,7 +134,7 @@ export function SearchBar({
             >
               <div className="search-suggestion-img">
                 {s.imageUrl ? (
-                  <Image src={s.imageUrl} alt={s.name} fill sizes="40px" style={{ objectFit: "cover" }} />
+                  <Image src={toSameOriginMediaUrl(s.imageUrl)} alt={s.name} fill sizes="40px" style={{ objectFit: "cover" }} />
                 ) : (
                   <GlyphIcon value="box" size={18} />
                 )}

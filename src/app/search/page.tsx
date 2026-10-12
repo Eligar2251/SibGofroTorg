@@ -5,6 +5,7 @@ import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { SearchBar } from "@/components/layout/SearchBar";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { SITE_URL } from "@/lib/seo";
+import { localizeMediaDeep } from "@/lib/media";
 
 // Сама страница /search — индексируется (полезный вход «подбор коробки
 // по размерам»), а страницы результатов /search?q=… — noindex:
@@ -32,7 +33,9 @@ export async function generateMetadata({
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
   const queryStr = q?.trim() || "";
-  const results = queryStr ? await getProducts({ search: queryStr }) : [];
+  const results = queryStr
+    ? localizeMediaDeep(await getProducts({ search: queryStr }))
+    : [];
 
   return (
     <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: 64 }}>

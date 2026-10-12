@@ -7,6 +7,7 @@ import { SITE_URL, SITE_NAME } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { buildBreadcrumbJsonLd } from "@/lib/seo";
 import "../seo-blocks.css";
+import { localizeMediaDeep } from "@/lib/media";
 
 export const metadata: Metadata = {
   title: "Купить гофротару и картонные коробки в Новосибирске — каталог",
@@ -27,7 +28,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CatalogPage() {
   const cats = await getCategories();
-  const products = await getProducts({ limitCount: 48 });
+  const products = localizeMediaDeep(await getProducts({ limitCount: 48 }));
 
   const serializedCategories = cats.map((c) => ({
     id: c.id,

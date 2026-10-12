@@ -51,6 +51,11 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import { formatProductSize } from "@/lib/product-size";
 import { dimensionOrderLabel } from "@/lib/dimension-profiles";
 import {
+  toSameOriginMediaUrl,
+  localizeMediaDeep,
+  toAbsoluteMediaUrl,
+} from "@/lib/media";
+import {
   SITE_URL,
   SITE_NAME,
   buildBreadcrumbJsonLd,
@@ -126,7 +131,13 @@ export async function generateMetadata({
       title: `${title} — ${SITE_NAME}`,
       description,
       url: `${SITE_URL}/catalog/product/${product.slug}`,
-      images: product.imageUrl ? [{ url: product.imageUrl }] : undefined,
+      // og:image — своя картинка (см. src/lib/media.ts): внешние CDN
+      // в разметке не светятся. toAbsoluteMediaUrl возвращает undefined,
+      // если ссылки нет, поэтому собираем массив только при наличии URL.
+      images: (() => {
+        const ogImage = toAbsoluteMediaUrl(product.imageUrl, SITE_URL);
+        return ogImage ? [{ url: ogImage }] : undefined;
+      })(),
       type: "website",
     },
   };
@@ -142,11 +153,14 @@ export default async function ProductPage({
   // полный список видимых вариантов в одном вызове. Для
   // товаров БЕЗ вариантов variants будет пустым, и UI
   // работает в обычном режиме.
-  const { product, variants } = await getProductBySlugForPage(slug);
+  const { product, variants } = localizeMediaDeep(
+    await getProductBySlugForPage(slug)
+  );
   if (!product) notFound();
 
   /* Все выборки параллельно — один раундтрип к кэшу данных */
-  const [allCats, reviews, reviewStats, related] = await Promise.all([
+  const [allCats, reviews, reviewStats, related] = localizeMediaDeep(
+    await Promise.all([
     getAllCategories(),
     /* Отзывы и статистика — не критичны для рендера страницы,
        при ошибке (нет индекса и т.п.) показываем пустую секцию */
@@ -156,10 +170,11 @@ export default async function ProductPage({
       sortBy: "newest",
     }).catch(() => []),
     getProductReviewStats(product.id).catch(() => EMPTY_REVIEW_STATS),
-    product.categoryId
-      ? getRelatedProducts(product.categoryId, product.id, 4).catch(() => [])
-      : Promise.resolve([]),
-  ]);
+      product.categoryId
+        ? getRelatedProducts(product.categoryId, product.id, 4).catch(() => [])
+        : Promise.resolve([]),
+    ])
+  );
 
   const category = allCats.find(
     (c: FirestoreCategory) => c.id === product.categoryId
@@ -323,7 +338,7 @@ export default async function ProductPage({
                   className={`thumb${idx === 0 ? " active" : ""}`}
                 >
                   <Image
-                    src={img.url}
+                    src={toSameOriginMediaUrl(img.url)}
                     alt={img.alt}
                     width={72}
                     height={72}
@@ -341,7 +356,7 @@ export default async function ProductPage({
                  соотношение сторон изображения, ничего не обрезается */
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={product.imageUrl}
+                src={toSameOriginMediaUrl(product.imageUrl)}
                 alt={product.name}
                 className="gallery-main__img"
                 loading="eager"
@@ -717,7 +732,7 @@ export default async function ProductPage({
                         {r.userAvatar ? (
                           <span className="review-avatar review-avatar--img">
                             <Image
-                              src={r.userAvatar}
+                              src={toSameOriginMediaUrl(r.userAvatar)}
                               alt=""
                               width={42}
                               height={42}
@@ -776,7 +791,7 @@ export default async function ProductPage({
                           {r.images.map((im, i) => (
                             <span key={i} className="review-photo">
                               <Image
-                                src={im.url}
+                                src={toSameOriginMediaUrl(im.url)}
                                 alt={`Фото покупателя ${i + 1}`}
                                 width={64}
                                 height={64}

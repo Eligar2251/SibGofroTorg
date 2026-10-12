@@ -5,6 +5,7 @@
 // =========================================================
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   COMPANY_FULL_NAME,
   COMPANY_LEGAL_NAME,
@@ -118,6 +119,16 @@ export default async function PrivacyPage() {
             <a href={SITE_URL} target="_blank" rel="noopener noreferrer">
               {SITE_URL_LABEL}
             </a>
+          </p>
+          {/* Ссылки на остальные юридические документы: требование РКН —
+              политика cookie и пользовательское соглашение должны быть
+              доступны с любой страницы сайта, включая саму политику. */}
+          <p className="privacy__footer-links">
+            <Link href="/consent">Согласие на обработку персональных данных</Link>
+            {" · "}
+            <Link href="/cookie-policy">Политика использования cookie</Link>
+            {" · "}
+            <Link href="/user-agreement">Пользовательское соглашение</Link>
           </p>
         </footer>
       </div>

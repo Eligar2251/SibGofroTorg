@@ -10,6 +10,7 @@ import { CatalogShopClient } from "@/components/catalog/CatalogShopClient";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { SITE_URL, SITE_NAME, buildBreadcrumbJsonLd } from "@/lib/seo";
+import { localizeMediaDeep } from "@/lib/media";
 
 export const revalidate = 120;
 
@@ -48,12 +49,14 @@ export default async function CategoryPage({
   const cat = await getCategoryBySlug(slug);
   if (!cat) notFound();
 
-  const allCats = await getCategories();
-  let products = await getProducts({
-    categoryId: cat.id,
-    sortBy: sort || "default",
-    search: q || undefined,
-  });
+  const allCats = localizeMediaDeep(await getCategories());
+  let products = localizeMediaDeep(
+    await getProducts({
+      categoryId: cat.id,
+      sortBy: sort || "default",
+      search: q || undefined,
+    })
+  );
   // Единое правило наличия: флаг in_stock + положительный остаток.
   if (stock === "yes") products = products.filter((p) => isProductAvailable(p));
 

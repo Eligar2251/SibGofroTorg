@@ -13,6 +13,7 @@ import { usePathname } from "next/navigation";
 import { Check, ShoppingCart, X } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { GlyphIcon } from "@/components/ui/Glyph";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 function isCheckoutPath(pathname: string | null): boolean {
   return pathname === "/order" || (pathname?.startsWith("/order/") ?? false);
@@ -69,7 +70,7 @@ export function CartPopup() {
           <span className="cart-popup__img">
             {shown.imageUrl ? (
               <Image
-                src={shown.imageUrl}
+                src={toSameOriginMediaUrl(shown.imageUrl)}
                 alt={shown.name}
                 fill
                 sizes="56px"

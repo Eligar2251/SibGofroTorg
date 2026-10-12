@@ -10,6 +10,7 @@ import { toMm } from "@/lib/box-search";
 import { SITE_URL, SITE_NAME, buildBreadcrumbJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import "@/app/seo-blocks.css";
+import { localizeMediaDeep } from "@/lib/media";
 
 const PAGE_PATH = "/podbor-korobki";
 
@@ -46,7 +47,7 @@ export default async function BoxFinderPage({
     height: dimParam(sp.h),
   };
 
-  const products = await getProducts({}).catch(() => []);
+  const products = localizeMediaDeep(await getProducts({}).catch(() => []));
 
   const finderProducts: BoxFinderProduct[] = products
     .filter((p) => p.dimensionLength != null && p.dimensionWidth != null)

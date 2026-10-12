@@ -29,6 +29,7 @@ import { ymGoal } from "@/lib/ym";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
 import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 import { useSiteSettings } from "@/hooks/use-site-settings";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 type Phase = "form" | "sending" | "success" | "error";
 
@@ -173,7 +174,7 @@ export function PriceInquiryButton({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               className="pi-product__img"
-              src={productImageUrl}
+              src={toSameOriginMediaUrl(productImageUrl)}
               alt=""
               width={44}
               height={44}
@@ -252,6 +253,8 @@ export function PriceInquiryButton({
               checked={consent}
               onChange={(v) => setConsent(v)}
               error={consentError}
+              purpose="расчёта цены по товару, ответа на заявку и обратной связи со мной"
+              dataList="имя, номер телефона, комментарий к заявке"
             />
 
             <button type="submit" className="pi-btn pi-btn--primary pi-submit">

@@ -2,6 +2,7 @@
 // FILE: src/lib/seo.ts
 // =========================================================
 
+import { toAbsoluteMediaUrl } from "@/lib/media";
 import {
   SITE_ADDRESS,
   SITE_PHONE,
@@ -122,7 +123,7 @@ export function buildProductJsonLd(product: {
       product.description ||
       `${product.name} — купить в Новосибирске в ${SITE_NAME}`,
     sku: product.sku || undefined,
-    image: product.imageUrl || undefined,
+    image: toAbsoluteMediaUrl(product.imageUrl, SITE_URL),
     url,
     brand: {
       "@type": "Brand",

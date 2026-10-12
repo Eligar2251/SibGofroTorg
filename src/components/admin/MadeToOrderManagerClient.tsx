@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Search, Save, Loader2, Eye, Pencil, Package } from "lucide-react";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 interface MadeToOrderProduct {
   id: string;
@@ -179,7 +180,7 @@ export function MadeToOrderManagerClient({
                   <tr key={p.id} style={changed ? { background: "rgba(200,134,10,0.06)" } : undefined}>
                     <td>
                       <div className="admin-product-thumb" style={{ width: 44, height: 44 }}>
-                        {p.imageUrl ? <img src={p.imageUrl} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Package size={18} />}
+                        {p.imageUrl ? <img src={toSameOriginMediaUrl(p.imageUrl)} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Package size={18} />}
                       </div>
                     </td>
                     <td>

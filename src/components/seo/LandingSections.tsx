@@ -25,7 +25,18 @@ import {
 
 export type FaqItem = { q: string; a: string };
 
-export function LandingFaq({ title, items }: { title: string; items: FaqItem[] }) {
+/** `headingClassName` — чтобы блок вписывался в типографику страницы:
+ *  на посадочных это `.seo-block h2`, на страницах со `.seo-home*`
+ *  передаём `.seo-home__h3`. По умолчанию — как было. */
+export function LandingFaq({
+  title,
+  items,
+  headingClassName,
+}: {
+  title: string;
+  items: FaqItem[];
+  headingClassName?: string;
+}) {
   const faqLd = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -40,7 +51,11 @@ export function LandingFaq({ title, items }: { title: string; items: FaqItem[] }
     <>
       <JsonLd data={faqLd} />
       <div className="seo-faq">
-        <h2>{title}</h2>
+        {headingClassName ? (
+          <h2 className={headingClassName}>{title}</h2>
+        ) : (
+          <h2>{title}</h2>
+        )}
         {items.map((item) => (
           <details key={item.q} className="seo-faq__item">
             <summary>{item.q}</summary>
@@ -87,13 +102,15 @@ export function LandingProducts({
 export function LandingLinks({
   title,
   links,
+  headingClassName = "seo-block__title",
 }: {
   title: string;
   links: { href: string; label: string }[];
+  headingClassName?: string;
 }) {
   return (
     <div className="seo-landing-links">
-      <h2 className="seo-block__title">{title}</h2>
+      <h2 className={headingClassName}>{title}</h2>
       <div className="seo-block__links">
         {links.map((l) => (
           <Link key={l.href} href={l.href} className="seo-block__link">

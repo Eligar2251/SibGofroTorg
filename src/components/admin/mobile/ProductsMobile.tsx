@@ -33,6 +33,7 @@ import { useBodyLock } from "@/hooks/use-body-lock";
 import { useWindowedList } from "@/hooks/use-windowed-list";
 import { normalizeProductLabelColor } from "@/lib/product-fields";
 import styles from "./ProductsMobile.module.css";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 export interface ProductsMobileItem {
   id: string;
@@ -236,7 +237,7 @@ function ProductCard({
             /* Внешние URL (Cloudinary) без конфигурации next/image. */
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={product.imageUrl}
+              src={toSameOriginMediaUrl(product.imageUrl)}
               alt=""
               loading="lazy"
               decoding="async"

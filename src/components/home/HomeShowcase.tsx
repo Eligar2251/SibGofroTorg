@@ -21,6 +21,7 @@ import { InstantSearchInput } from "@/components/catalog/InstantSearchInput";
 import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
 import { CatalogOrderNote } from "@/components/catalog/CatalogOrderNote";
 import { BoxSizeFinder, type BoxFinderProduct } from "@/components/catalog/BoxSizeFinder";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 export interface ShowcaseProduct {
   id: string;
@@ -247,7 +248,7 @@ export function HomeShowcase({
                   <span className="showcase-tile__media">
                     {tile.imageUrl ? (
                       <Image
-                        src={tile.imageUrl}
+                        src={toSameOriginMediaUrl(tile.imageUrl)}
                         alt={tile.title}
                         fill
                         sizes="(max-width: 768px) 50vw, 260px"

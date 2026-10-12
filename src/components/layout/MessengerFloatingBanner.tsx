@@ -17,6 +17,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { useSiteSettings } from "@/hooks/use-site-settings";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 type CollapsedSide = "left" | "right" | null;
@@ -391,7 +392,7 @@ export function MessengerFloatingBanner() {
         {channels.map((channel) => {
           const content = channel.iconUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={channel.iconUrl} alt="" style={imageStyle} />
+            <img src={toSameOriginMediaUrl(channel.iconUrl)} alt="" style={imageStyle} />
           ) : (
             <span>{channel.short}</span>
           );
