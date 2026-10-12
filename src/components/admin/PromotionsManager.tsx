@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2, Edit2, Save, X, Loader2, Megaphone, Copy } from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
 import { GlyphIcon, GLYPH_CHOICES } from "@/components/ui/Glyph";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 interface Promotion {
   id: string;
@@ -555,7 +556,7 @@ export function PromotionsManager({
                     <div className="admin-product-thumb">
                       {p.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.imageUrl} alt="" loading="lazy" decoding="async" />
+                        <img src={toSameOriginMediaUrl(p.imageUrl)} alt="" loading="lazy" decoding="async" />
                       ) : (
                         <Megaphone size={16} />
                       )}

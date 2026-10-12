@@ -9,6 +9,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, LogIn } from "lucide-react";
+import { ConsentNote } from "@/components/forms/ConsentCheckbox";
 import { safeNextPath } from "@/lib/safe-next";
 import { digitsPhone, formatPhoneMask } from "@/lib/phone-mask";
 
@@ -154,6 +155,10 @@ export function LoginClient() {
                 </>
               )}
             </button>
+
+            <ConsentNote>
+              Входя в кабинет, вы подтверждаете, что ознакомлены и согласны
+            </ConsentNote>
           </form>
 
           <p

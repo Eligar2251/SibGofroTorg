@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ProductPicker, type PickerProduct } from "@/components/admin/ProductPicker";
 import { ImageUploader } from "@/components/admin/ImageUploader";
+import { toSameOriginMediaUrl } from "@/lib/media";
 import {
   PURCHASE_ACCOUNT_LABEL,
   type PurchaseAccount,
@@ -573,7 +574,7 @@ export function PurchasePlanning({
             <div className="purchase-create__ozon-preview">
               {ozonPreview.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={ozonPreview.imageUrl} alt="" loading="lazy" decoding="async" />
+                <img src={toSameOriginMediaUrl(ozonPreview.imageUrl)} alt="" loading="lazy" decoding="async" />
               ) : (
                 <div className="purchase-create__ozon-placeholder">OZON</div>
               )}
@@ -719,7 +720,7 @@ export function PurchasePlanning({
                   <span className="purchase-tile__media">
                     {cover ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={cover} alt="" loading="lazy" decoding="async" />
+                      <img src={toSameOriginMediaUrl(cover)} alt="" loading="lazy" decoding="async" />
                     ) : (
                       <PiggyBank size={28} />
                     )}
@@ -767,7 +768,7 @@ export function PurchasePlanning({
                       <div className="purchase-tile__thumb">
                         {cover ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={cover} alt="" loading="lazy" decoding="async" />
+                          <img src={toSameOriginMediaUrl(cover)} alt="" loading="lazy" decoding="async" />
                         ) : (
                           <PiggyBank size={22} />
                         )}

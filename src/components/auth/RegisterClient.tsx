@@ -249,6 +249,8 @@ export function RegisterClient() {
               checked={consent}
               onChange={(v) => setConsent(v)}
               error={consentError}
+              purpose="регистрации, входа в личный кабинет и ведения истории моих заказов"
+              dataList="имя, номер телефона / адрес электронной почты, пароль"
             />
 
             {error && <div className="checkout-error">{error}</div>}

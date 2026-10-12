@@ -58,6 +58,7 @@ import { HomeSeoSection } from "@/components/seo/HomeSeoSection";
 import "./seo-blocks.css";
 
 import { buildHoursLabel } from "@/lib/hours-label";
+import { localizeMediaDeep } from "@/lib/media";
 
 export const metadata: Metadata = {
   // absolute — фиксирует title главной как есть, без суффикса-шаблона
@@ -84,15 +85,20 @@ export const revalidate = 120;
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
+  // localizeMediaDeep переводит ссылки на фото в собственные /media/...
+  // до передачи данных в клиентские компоненты: иначе адреса Cloudinary
+  // попадают в HTML (RSC-payload) и проверки 152-ФЗ видят зарубежный хост.
   const [categories, allVisibleProducts, promotions, wpRates, settings, homeTiles] =
-    await Promise.all([
-      getCategories(),
-      getProducts({}),
-      getPromotions(),
-      getWastepaperRates(),
-      getSettings().catch(() => ({} as Record<string, string>)),
-      getHomeTiles().catch(() => [] as HomeTile[]),
-    ]);
+    localizeMediaDeep(
+      await Promise.all([
+        getCategories(),
+        getProducts({}),
+        getPromotions(),
+        getWastepaperRates(),
+        getSettings().catch(() => ({} as Record<string, string>)),
+        getHomeTiles().catch(() => [] as HomeTile[]),
+      ])
+    );
   // «Распродажа остатков»: товары с флагом isSale, которые в наличии.
   const saleProducts = allVisibleProducts
     .filter((p) => p.isSale && isProductAvailable(p))

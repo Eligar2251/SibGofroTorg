@@ -6,6 +6,7 @@ import Image from "next/image";
 import { ArrowRight, BellRing, CircleAlert, Gift, X } from "lucide-react";
 import type { PublicPopupCampaign } from "@/lib/popup-campaign";
 import { lockBodyScroll, unlockBodyScroll } from "@/hooks/use-body-lock";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 const STORAGE_PREFIX = "sib-info-window:";
 
@@ -136,7 +137,7 @@ export function PromotionPopups({
           {current.buttonUrl ? (
             <Link href={current.buttonUrl} className="story-v2__link" onClick={closePopup}>
               <Image
-                src={current.imageUrl}
+                src={toSameOriginMediaUrl(current.imageUrl)}
                 alt={current.title}
                 fill
                 priority
@@ -146,7 +147,7 @@ export function PromotionPopups({
             </Link>
           ) : (
             <Image
-              src={current.imageUrl}
+              src={toSameOriginMediaUrl(current.imageUrl)}
               alt={current.title}
               fill
               priority

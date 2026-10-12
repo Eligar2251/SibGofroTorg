@@ -28,6 +28,7 @@ import {
 import { findNearestBoxes, type BoxProduct, type BoxTarget } from "@/lib/box-search";
 import { ymGoal } from "@/lib/ym";
 import "./box-size-finder.css";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 const TOLERANCE_MM = 30;
 const DEFAULT_VISIBLE = 10;
@@ -315,7 +316,7 @@ export function BoxSizeFinder({
                   >
                     {p.imageUrl ? (
                       <Image
-                        src={p.imageUrl}
+                        src={toSameOriginMediaUrl(p.imageUrl)}
                         alt={p.name}
                         width={64}
                         height={64}

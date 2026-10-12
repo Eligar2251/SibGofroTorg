@@ -21,6 +21,7 @@ import {
   LandingCta,
 } from "@/components/seo/LandingSections";
 import "@/app/seo-blocks.css";
+import { localizeMediaDeep } from "@/lib/media";
 
 export const revalidate = 600;
 
@@ -57,7 +58,9 @@ export default async function MarketplaceBoxesPage() {
   // затем упомянутые в названии, затем «паллетные» типоразмеры.
   // Списки объединяются без дублей — блок не остаётся с одной
   // карточкой, даже если метка проставлена всего у одного товара.
-  const all = await getProducts({ limitCount: 2000 }).catch(() => []);
+  const all = localizeMediaDeep(
+    await getProducts({ limitCount: 2000 }).catch(() => [])
+  );
   // Телефон отдела продаж — из настроек админки, не хардкодим
   const pub = await getPublicSettingsView();
   const visible = all.filter((p) => p.isVisible !== false);

@@ -16,6 +16,7 @@ import {
   normalizePhone,
 } from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { logConsent } from "@/lib/consent-log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,6 +101,12 @@ export async function POST(request: NextRequest) {
         phone: email, // в сессии храним идентификатор (email)
         name: result.name || undefined,
       });
+      await logConsent({
+        request,
+        form: "register",
+        subject: email,
+        accepted: { personal_data: true },
+      });
       return NextResponse.json(
         {
           success: true,
@@ -120,6 +127,14 @@ export async function POST(request: NextRequest) {
         uid: result.id,
         phone: phoneDigits,
         name: result.name || undefined,
+      });
+      // Фиксация согласия на обработку ПД (152-ФЗ): IP, время, форма и
+      // версия текста согласия. Сбой записи регистрацию не отменяет.
+      await logConsent({
+        request,
+        form: "register",
+        subject: phoneDigits,
+        accepted: { personal_data: true },
       });
       // Гость оформил заказ до регистрации по этому же номеру — привязываем.
       await claimGuestOrdersByPhone(result.id, phoneDigits).catch((e) =>

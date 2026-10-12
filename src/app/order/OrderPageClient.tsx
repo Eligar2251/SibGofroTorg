@@ -27,6 +27,7 @@ import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { ConsentCheckbox } from "@/components/forms/ConsentCheckbox";
 import { digitsPhone, formatPhoneMask } from "@/lib/phone-mask";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 type DeliveryMethod = "courier" | "pickup" | "transport";
 type PaymentMethod = "card" | "cash" | "invoice";
@@ -541,7 +542,7 @@ export function OrderPageClient({
                         <div className="cart-item__img">
                           {item.imageUrl ? (
                             <Image
-                              src={item.imageUrl}
+                              src={toSameOriginMediaUrl(item.imageUrl)}
                               alt={item.name}
                               fill
                               style={{ objectFit: "cover" }}
@@ -1188,6 +1189,8 @@ export function OrderPageClient({
                     checked={consent}
                     onChange={(v) => setConsent(v)}
                     error={consentError}
+                    purpose="оформления, оплаты и доставки заказа, гарантийной поддержки"
+                    dataList="имя (наименование организации), телефон, email, адрес доставки, состав заказа"
                   />
 
                   {error && (

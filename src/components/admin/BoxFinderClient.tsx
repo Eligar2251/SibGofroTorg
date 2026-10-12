@@ -10,6 +10,7 @@ import {
   type BoxTarget,
 } from "@/lib/box-search";
 import { isProductAvailable } from "@/lib/stock-availability";
+import { toSameOriginMediaUrl } from "@/lib/media";
 
 const TOLERANCES = [10, 20, 30, 40, 50];
 
@@ -200,7 +201,7 @@ export function BoxFinderClient({ products }: { products: BoxProduct[] }) {
                   {p.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={p.imageUrl}
+                      src={toSameOriginMediaUrl(p.imageUrl)}
                       alt=""
                       width={52}
                       height={52}

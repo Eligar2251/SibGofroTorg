@@ -7,6 +7,7 @@ import { useCart } from "@/context/CartContext";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { getProductEffectivePrice } from "@/lib/types";
+import { toSameOriginMediaUrl } from "@/lib/media";
 import {
   formatProductSize,
   formatVariantSizes,
@@ -149,7 +150,7 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
                 <Link href={`/catalog/product/${p.slug}`} className="sale-card__media">
                   {p.imageUrl ? (
                     <Image
-                      src={p.imageUrl}
+                      src={toSameOriginMediaUrl(p.imageUrl)}
                       alt={p.name}
                       fill
                       sizes="(max-width: 640px) 44vw, 180px"

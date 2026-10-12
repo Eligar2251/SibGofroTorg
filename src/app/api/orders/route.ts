@@ -17,6 +17,7 @@ import {
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { sendAdminNotifications } from "@/lib/notify";
 import { publishLocalChange } from "@/lib/realtime-hub";
+import { logConsent } from "@/lib/consent-log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -254,6 +255,16 @@ export async function POST(request: NextRequest) {
     }
 
     const createdOrder = await createOrder(orderData as any);
+
+    // ── Фиксация согласия на обработку ПД (152-ФЗ) ──
+    // IP, время, страница/форма и версия текста согласия — доказательство
+    // информированного согласия. Сбой записи заявку не отменяет.
+    await logConsent({
+      request,
+      form: typeRaw === "inquiry" ? "inquiry" : "order",
+      subject: finalPhoneDisplay || customerEmail,
+      accepted: { personal_data: true },
+    });
 
     // ── Мгновенное уведомление админки ──
     // Не ждём, пока об этой вставке расскажет Supabase Realtime: рассылаем

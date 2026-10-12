@@ -8048,12 +8048,27 @@ body:has(.mobile-menu-panel) {
   accent-color: var(--green, #16a34a);
   cursor: pointer;
 }
-.consent__text { flex: 1; }
+.consent__text {
+  flex: 1;
+  line-height: 1.5;
+}
 .consent__link {
   color: var(--green, #16a34a);
   text-decoration: underline;
 }
 .consent__label--dark .consent__link { color: #8ee29a; }
+
+/* Примечание под формой для случаев без чекбокса (вход, отзывы):
+   тот же смысл — ссылки на отдельное Согласие и Политику. */
+.consent-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-muted, #888);
+}
+.consent-note--light { color: rgba(255, 255, 255, 0.6); }
+.consent-note--dark { color: rgba(255, 255, 255, 0.55); }
+.consent-note .consent__link { font-weight: 600; }
 .consent__req { color: #ef4444; margin-left: 2px; }
 .consent__error {
   margin-top: 6px;

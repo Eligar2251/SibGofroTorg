@@ -124,6 +124,8 @@ export default async function PrivacyPage() {
               политика cookie и пользовательское соглашение должны быть
               доступны с любой страницы сайта, включая саму политику. */}
           <p className="privacy__footer-links">
+            <Link href="/consent">Согласие на обработку персональных данных</Link>
+            {" · "}
             <Link href="/cookie-policy">Политика использования cookie</Link>
             {" · "}
             <Link href="/user-agreement">Пользовательское соглашение</Link>

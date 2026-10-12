@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toSameOriginMediaUrl } from "@/lib/media";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/context/CartContext";
@@ -218,7 +219,7 @@ export function ProductCardCompact({
         <div className="pcc__img">
           {product.imageUrl ? (
             <Image
-              src={product.imageUrl}
+              src={toSameOriginMediaUrl(product.imageUrl)}
               alt={product.name}
               fill
               sizes="(max-width: 640px) 44vw, (max-width: 1100px) 30vw, 260px"
