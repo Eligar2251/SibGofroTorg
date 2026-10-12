@@ -57,9 +57,7 @@ export async function POST(request: NextRequest) {
     const customerType = body.customerType === "legal" ? "legal" : "individual";
     const isLegal = customerType === "legal";
 
-    // Телефон — основной способ связи с клиентом: заявка без номера
-    // бесполезна, менеджеру некуда перезванивать. Для юрлиц дополнительно
-    // нужна почта (туда уходит счёт).
+    // Телефон — основной способ связи: заявка без номера не проходит.
     let customerName = clip(body.customerName, MAX_NAME);
     const customerPhoneRaw = clip(body.customerPhone, 40);
     if (typeRaw === "inquiry" && !customerName) {
@@ -257,8 +255,6 @@ export async function POST(request: NextRequest) {
     const createdOrder = await createOrder(orderData as any);
 
     // ── Фиксация согласия на обработку ПД (152-ФЗ) ──
-    // IP, время, страница/форма и версия текста согласия — доказательство
-    // информированного согласия. Сбой записи заявку не отменяет.
     await logConsent({
       request,
       form: typeRaw === "inquiry" ? "inquiry" : "order",
@@ -267,10 +263,6 @@ export async function POST(request: NextRequest) {
     });
 
     // ── Мгновенное уведомление админки ──
-    // Не ждём, пока об этой вставке расскажет Supabase Realtime: рассылаем
-    // событие подписчикам SSE прямо отсюда. Менеджер слышит сигнал в тот же
-    // момент, когда клиент нажал «Оформить», где бы он ни находился.
-    // Realtime (если настроен) пришлёт дубль — он гасится дедупликацией.
     publishLocalChange({
       table: "orders",
       type: "INSERT",
@@ -305,10 +297,7 @@ export async function POST(request: NextRequest) {
       }).catch((e) => console.error("profile after order:", e));
     }
 
-    // В serverless нельзя отправлять уведомление fire-and-forget: после
-    // возврата HTTP-ответа рантайм может завершить процесс раньше fetch к
-    // мессенджеру. Заявку не отменяем при ошибке отправки, но дожидаемся
-    // попытки — иначе уведомление тихо потеряется.
+    // В serverless уведомление ждём: после ответа процесс может остановиться.
     try {
       await sendNotifications({
       id: createdOrder.id,

@@ -1,18 +1,3 @@
-// src/components/catalog/ProductPurchaseBlock.tsx
-//
-// Клиентский блок покупки на странице товара: «обёртка» над
-// VariantPicker + AddToCartButton. Вариант выбирается в picker,
-// передаётся в AddToCartButton — там же показывается актуальная
-// цена/остаток выбранного варианта и блокируется кнопка, если
-// вариант распродан.
-//
-// Всё это нужно, потому что:
-//   1. ProductPage — серверный компонент (Next.js App Router),
-//      в нём нельзя использовать useState.
-//   2. AddToCartButton не знает про список вариантов — только
-//      про один выбранный. Связь «управляемый picker →
-//      управляемый AddToCartButton» живёт в этом компоненте.
-
 "use client";
 
 import { useState, useMemo } from "react";
@@ -53,20 +38,14 @@ export function ProductPurchaseBlock({
   unavailable = false,
   unavailableSlot,
 }: ProductPurchaseBlockProps) {
-  // Остатки по вариантам считаются заданными, если хотя бы у одного
-  // варианта указано положительное количество. Иначе используется
-  // общий остаток родительского товара.
+  // Склад по вариантам ведётся, если у варианта есть остаток.
   const manageVariantStock = variants.some((variant) => variant.stockQty > 0);
 
   // Локальный state выбранного варианта. null = не выбран
   // (например, у товара вообще нет вариантов).
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
 
-  // Если выбран вариант — заменяем product.price/stock на
-  // данные варианта (только если они не null — иначе fallback
-  // на product). Но т.к. AddToCartButton сам умеет работать
-  // с selectedVariant, передаём ему product как есть, а
-  // вариант — отдельным пропсом.
+  // Выбранный вариант подменяет цену и остаток товара.
 
   // Мемоизация: чтобы AddToCartButton не перерисовывался на
   // каждый клик по chip-у варианта, если product не менялся.

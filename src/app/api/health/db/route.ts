@@ -1,10 +1,4 @@
 // src/app/health/db/route.ts → GET /api/health/db
-//
-// Readiness-проверка: реально ли доступен Supabase (PostgreSQL).
-// Возвращает 503, если переменные не заданы или запрос упал —
-// это диагностика, её НЕ должен использовать health-check контейнера
-// (см. комментарий в ../route.ts: зависимость ливнес-пробы от БД
-// приводила к restart-loop на Timeweb).
 
 import { getAdminDb } from "@/lib/supabase";
 

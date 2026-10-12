@@ -115,7 +115,7 @@ export function OrderPageClient({
         }
         const u = data.user;
         setSessionUser(u);
-        // автозаполнение из профиля — только пустые поля не затираем уже введённое
+        // Автозаполнение из профиля — только пустые поля.
         if (u.name) setName(u.name);
         if (u.phone) setPhone(formatPhoneMask(String(u.phone)));
         if (u.email) setEmail(u.email);
@@ -251,8 +251,6 @@ export function OrderPageClient({
       return;
     }
     if (step === 2) {
-      // Поле адреса помечено «*» — не даём уйти дальше с пустым
-      // адресом при курьерской доставке (тестировка: шаг 2 пропускал
       // пустое обязательное поле до самой оплаты).
       if (delivery === "courier" && !address.trim()) {
         setError("Укажите адрес доставки — курьеру он нужен обязательно");
@@ -322,8 +320,6 @@ export function OrderPageClient({
 
     try {
       // Гость оформляет без регистрации — придёт заявка с номером.
-      // Если пользователь вошёл (через модалку «Создать ЛК»), заказ
-      // автоматически привяжется к аккаунту по cookie сессии.
       const payload = {
         type: "order",
         customerType,

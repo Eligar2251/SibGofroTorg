@@ -77,9 +77,7 @@ interface UserInfo {
   name?: string | null;
 }
 
-// Подписи берём из общего справочника: ровно эти же строки админка
-// показывает менеджеру в карточке клиента («клиент видит: …»),
-// поэтому они не должны расходиться.
+// Подписи статусов — из общего справочника (те же строки в админке).
 const statusLabels = CLIENT_STATUS_LABELS;
 
 const statusStyles: Record<string, { bg: string; color: string; dot: string }> = {
@@ -545,7 +543,7 @@ export default function CabinetPage() {
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  // Телефон/часы для блока «Нужна помощь?» в сайдбаре — из настроек
+  // Телефон и часы в блоке «Нужна помощь?» — из настроек админки.
   const siteSettings = useSiteSettings();
   const cabPhone = siteSettings.phone || SITE_PHONE;
   const cabPhoneHref = siteSettings.phoneHref || SITE_PHONE_HREF;

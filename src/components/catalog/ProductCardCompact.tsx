@@ -64,8 +64,6 @@ interface CompactProduct {
   discountBadge?: string | null;
   material?: string | null;
   // ── Сводка по вариантам (если они у товара есть).
-  //    Присылается сразу с getCachedProducts → здесь просто
-  //    показываем «от X ₽» и бейдж «N вариантов».
   hasVariants?: boolean;
   variantCount?: number;
   variantPriceMin?: number | null;
@@ -296,7 +294,10 @@ export function ProductCardCompact({
         <div className="pcc__prices">
           {product.madeToOrder ? (
             <span className="pcc__price-muted pcc__price-muted--mto">
-              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
+              Под заказ
+              {product.madeToOrderMinQty && product.madeToOrderMinQty > 1
+                ? ` от ${product.madeToOrderMinQty} шт.`
+                : ""}
             </span>
           ) : displayPrice != null ? (
             <>
@@ -345,7 +346,10 @@ export function ProductCardCompact({
           {orderOffer && (
             <span className="pcc__mto-note">
               <Clock3 size={10} />
-              Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : " · 2–3 дня"}
+              Под заказ
+              {product.madeToOrderMinQty && product.madeToOrderMinQty > 1
+                ? ` от ${product.madeToOrderMinQty} шт.`
+                : " · 2–3 дня"}
             </span>
           )}
         </div>

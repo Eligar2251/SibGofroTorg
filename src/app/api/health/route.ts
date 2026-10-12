@@ -1,11 +1,4 @@
 // src/app/api/health/route.ts
-//
-// Liveness-проверка контейнера. НЕ должна зависеть от Supabase:
-// если health-check падает при недоступной БД/отсутствии env-переменных,
-// Timeweb считает контейнер нездоровым и перезапускает его — получается
-// restart-loop, хотя сам сервер жив и может отдавать страницы.
-//
-// Проверку доступности БД вынесли в GET /api/health/db (readiness).
 
 export const dynamic = "force-dynamic";
 

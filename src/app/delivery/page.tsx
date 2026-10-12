@@ -19,9 +19,7 @@ export const metadata: Metadata = {
 export const revalidate = 120;
 
 export default async function DeliveryPage() {
-  // Порог/цена доставки, адрес и режим работы склада — из настроек
-  // админки («Настройки → Доставка/Контакты»), чтобы на странице
-  // всегда были те же цифры, что в корзине и в подвале сайта.
+  // Цена, порог бесплатной доставки, адрес и часы — из настроек.
   const pub = await getPublicSettingsView();
   return (
     <div style={{ backgroundColor: "var(--bg-main)", paddingBottom: "64px" }}>

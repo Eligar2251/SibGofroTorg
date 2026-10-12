@@ -57,8 +57,6 @@ export function CookieConsent() {
   useEffect(() => {
     if (!bannerVisible) return;
     // Решение уже принято (скрипт в <head> выставил атрибут) — баннер скрыт
-    // правилом CSS, поэтому плавающую корзину не поднимаем: иначе она
-    // дёрнется вверх и тут же вернётся на место после гидратации.
     if (document.documentElement.hasAttribute(COOKIE_CONSENT_ATTR)) return;
     document.body.classList.add("cookie-banner-visible");
     return () => {

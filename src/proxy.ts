@@ -59,14 +59,10 @@ function buildCsp(): string {
     "default-src 'self'",
     `script-src ${scriptSrc}`,
     "style-src 'self' 'unsafe-inline'",
-    // Внешних CDN в img-src нет: изображения отдаются с нашего домена
-    // через /media/... (см. src/lib/media.ts) — браузер посетителя не
-    // обращается к зарубежным серверам.
+    // Внешних CDN в img-src нет: картинки идут через наш /media.
     "img-src 'self' data: blob: https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
     "font-src 'self' data:",
     // Метрика открывает WebSocket wss://mc.yandex.ru/solid.ws — схема wss://
-    // не покрывается https-источником, поэтому её нужно указать явно,
-    // иначе консоль засоряется "violates CSP directive: connect-src".
     "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com https://botapi.max.ru https://*.yandex.ru https://yandex.ru wss://mc.yandex.ru wss://mc.yandex.com wss://*.yandex.ru https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in",
     "frame-src 'self' https://yandex.ru https://*.yandex.ru https://yandex.com https://*.yandex.com https://mc.yandex.ru",
     "worker-src 'self' blob:",
@@ -94,9 +90,7 @@ function applySecurityHeaders(response: NextResponse) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set(
     "Permissions-Policy",
-    // Камера разрешена только собственному origin. Само разрешение всё равно
-    // запрашивает браузер у пользователя. `camera=()` полностью блокировал
-    // getUserMedia на Android (Chrome/Яндекс), ещё до показа системного окна.
+    // Камера — только своему origin (браузер спросит разрешение отдельно).
     "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
   );
   response.headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
@@ -118,13 +112,6 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // ── Короткие QR-ссылки /q/{code} ──
-  // QR-код зашивается в ВЕРХНЕМ регистре ("HTTPS://SITE/Q/XXXX"),
-  // чтобы попасть в alphanumeric-режим QR и получить символ на одну
-  // версию меньше (крупнее модули → надёжнее читается камерой,
-  // см. src/lib/qr.ts). Но роутинг в Next регистрозависимый, и
-  // сегмент "/Q/" не находил роут "/q/[code]" → 404.
-  // Нормализуем префикс здесь, до матчинга роутов.
-  // Сам {code} не трогаем — его приводит к нужному виду роут.
   const shortQr = pathname.match(/^\/[Qq]\/(.+)$/);
   if (shortQr && !pathname.startsWith("/q/")) {
     const url = request.nextUrl.clone();
@@ -170,10 +157,7 @@ export async function proxy(request: NextRequest) {
         return res;
       }
       if (!canAccessAdminPage(role, pathname, ADMIN_PATH)) {
-        // Запрещённые страницы ведут на гарантированно доступную стартовую
-        // страницу роли (для макулатурщика это его модуль, для остальных —
-        // дашборд), а не на логин. Так валидная сессия не попадает
-        // в бесконечный цикл редиректов.
+        // Нет прав на страницу — ведём на доступную стартовую.
         const res = NextResponse.redirect(
           new URL(getAdminLandingPath(role, ADMIN_PATH), request.url)
         );

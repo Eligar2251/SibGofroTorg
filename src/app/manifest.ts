@@ -1,10 +1,4 @@
 // src/app/manifest.ts
-// Web App Manifest — отдаётся Next.js по /manifest.webmanifest.
-//
-// display: "standalone" убирает адресную строку и панель браузера, когда
-// сайт добавлен на домашний экран (Android/Chrome, десктопные браузеры).
-// На iOS Safari за это отвечает <meta name="apple-mobile-web-app-capable">
-// в src/app/layout.tsx — манифест там пока не управляет режимом показа.
 
 import type { MetadataRoute } from "next";
 import { SITE_NAME, DEFAULT_DESCRIPTION } from "@/lib/seo";
@@ -36,7 +30,7 @@ export default function manifest(): MetadataRoute.Manifest {
         type: "image/png",
         purpose: "any",
       },
-      // maskable — чтобы Android не рисовал белую рамку вокруг иконки
+      // maskable — Android не рисует белую рамку вокруг иконки.
       {
         src: "/icon-maskable-192.png",
         sizes: "192x192",

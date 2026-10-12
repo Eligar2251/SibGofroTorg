@@ -1,10 +1,4 @@
 // src/app/settings/public — публичные настройки, которые читает сам сайт
-// (шапка, подвал, страница контактов, success-страница и т. п.).
-//
-// Ключи совпадают с тем, что сохраняется в админке «Настройки → Контактная
-// информация»: phone, email, address, working_hours. Если в БД значения
-// нет, отдаём дефолт из src/lib/site-config.ts — чтобы клиентский код
-// никогда не показывал «пустоту».
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/supabase-queries";
 import {
@@ -79,7 +73,7 @@ export async function GET() {
         wastepaperPhoneHref: wpCfg.phoneHref,
         // "Пн–Пт 8:30–17:00" или иной формат, сохранённый админом
         workingHours: (settings.working_hours || "").trim(),
-        // Чтобы клиент мог собрать SITE_HOURS_LABEL даже когда в БД пусто
+        // Дефолт нужен, чтобы клиент собрал SITE_HOURS_LABEL при пустой БД.
         hoursWeekday: SITE_HOURS_WEEKDAY,
         deliveryPrice:
           Number.isFinite(deliveryPrice) && deliveryPrice >= 0 ? deliveryPrice : 800,

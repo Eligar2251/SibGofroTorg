@@ -28,8 +28,6 @@ const INFO_LINKS = [
   { href: "/privacy", label: "Политика конфиденциальности" },
   { href: "/consent", label: "Согласие на обработку данных" },
   // Ссылка на политику cookie обязана быть доступна с любой страницы сайта
-  // (требование РКН по 152-ФЗ) — поэтому она и в колонке «Информация»,
-  // и в нижней строке подвала, которую видно на всех страницах.
   { href: "/cookie-policy", label: "Политика использования cookie" },
   { href: "/user-agreement", label: "Пользовательское соглашение" },
 ];
@@ -41,6 +39,7 @@ const SEO_LINKS = [
   { href: "/korobki-dlya-pereezda", label: "Коробки для переезда" },
   { href: "/korobki-dlya-marketplejsov", label: "Коробки для WB и Ozon" },
   { href: "/korobki-na-zakaz", label: "Коробки на заказ" },
+  { href: "/proizvodstvo-korobok", label: "Производство коробок" },
 ];
 
 const CLIENT_LINKS = [

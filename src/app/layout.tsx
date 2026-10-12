@@ -3,9 +3,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
-// Адаптивный слой подключается после базовых стилей. Раньше mobile.css
-// импортировался в начале globals.css, поэтому последующие desktop-правила
-// перекрывали мобильную сетку и растягивали карточки на всю ширину.
+// mobile.css идёт после globals.css: точечно перекрывает базовые стили.
 import "./mobile.css";
 
 import { CartProvider } from "@/context/CartContext";
@@ -33,11 +31,6 @@ import { cookieConsentInitScript } from "@/lib/cookie-consent";
 import { localizeMediaDeep } from "@/lib/media";
 
 // Шрифты Oswald/Inter/Montserrat — self-hosted (public/fonts/*.woff2,
-// @font-face в src/app/fonts.css). Google Fonts не используется:
-// запросы к fonts.googleapis.com/fonts.gstatic.com блокировались нашим
-// CSP (style-src/font-src 'self') и передавали бы данные посетителей
-// на зарубежные серверы (152-ФЗ / требования РКН о локализации).
-
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -88,11 +81,7 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
   },
   other: {
-    // Next.js 15+ вместо apple-mobile-web-app-capable выводит только
-    // современный mobile-web-app-capable (vercel/next.js#70272). Актуальные
-    // iOS читают display:"standalone" из манифеста, но версии до 16.4 —
-    // только этот тег, поэтому дублируем его вручную. Без него сайт
-    // открывается с домашнего экрана обычной вкладкой Safari.
+    // Next 15+ понимает только mobile-web-app-capable, apple-версия — для iOS.
     "apple-mobile-web-app-capable": "yes",
   },
 };
@@ -126,10 +115,7 @@ export default async function RootLayout({
     popupCampaigns = [];
   }
 
-  // Категории для меню шапки — тоже с сервера. Раньше Header дёргал
-  // /api/categories из браузера на каждой странице: лишний запрос в
-  // критическом пути и источник ошибки «Failed to fetch», когда запрос
-  // перехватывал антивирус или расширение.
+  // Категории меню шапки отдаём с сервера — без запроса после гидрации.
   let headerCategories: HeaderCategory[] = [];
   try {
     headerCategories = (await getCategories()).map((category) => ({

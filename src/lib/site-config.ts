@@ -1,10 +1,4 @@
-// src/lib/site-config.ts — ПОЛНАЯ ЗАМЕНА
-//
-// Дефолтные значения ниже используются только как fallback, если в БД ещё
-// не сохранены настройки (на свежей установке до первого захода в админку).
-// После сохранения настроек через /[adminPath]/settings эти значения
-// подхватываются через /api/settings/public и накладываются поверх дефолтов
-// в клиентских компонентах (см. useSiteSettings()).
+// src/lib/site-config.ts
 export const SITE_ADDRESS =
   process.env.NEXT_PUBLIC_COMPANY_ADDRESS ||
   "г. Новосибирск, ул. Ватутина, 42а к1";

@@ -77,17 +77,12 @@ export const metadata: Metadata = {
   },
 };
 
-// Firestore читается в рантайме (учётка Firebase недоступна на этапе сборки
-// образа), поэтому страницу не пытаемся пререндерить в `next build`.
-// Кэширование данных всё равно работает через unstable_cache (TTL 120с)
-// в src/lib/firestore-queries.ts — см. теги [categories]/[products]/...
+// Данные читаем в рантайме: на этапе сборки БД недоступна.
 export const revalidate = 120;
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   // localizeMediaDeep переводит ссылки на фото в собственные /media/...
-  // до передачи данных в клиентские компоненты: иначе адреса Cloudinary
-  // попадают в HTML (RSC-payload) и проверки 152-ФЗ видят зарубежный хост.
   const [categories, allVisibleProducts, promotions, wpRates, settings, homeTiles] =
     localizeMediaDeep(
       await Promise.all([
@@ -170,9 +165,6 @@ export default async function HomePage() {
   const serializedOrderProducts = orderProducts.map(serializeHomeProduct);
 
   // ── Плитки разделов (витрина главной) ──
-  // Порядок и содержимое задаёт админка. Если плитки ещё не заведены
-  // (или миграция не применена) — собираем их автоматически из
-  // видимых категорий каталога, чтобы главная не осталась пустой.
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   const tileSource: HomeTile[] = homeTiles.length
     ? homeTiles
@@ -248,9 +240,7 @@ export default async function HomePage() {
       return [showcaseTile];
   });
 
-  // Товары с заполненными габаритами — для плитки «Подбор коробки
-  // по размерам» на витрине (та же логика, что подбор в админке:
-  // размеры сравниваются в миллиметрах).
+  // Товары с габаритами — для плитки «Подбор коробки» на главной.
   const boxFinderProducts: BoxFinderProduct[] = allVisibleProducts
     .filter((p) => p.dimensionLength != null && p.dimensionWidth != null)
     .map((p) => ({
@@ -290,9 +280,7 @@ export default async function HomePage() {
     dimensionHeight: p.dimensionHeight ?? null,
     dimensionUnit: p.dimensionUnit ?? null,
     dimensionValues: p.dimensionValues ?? null,
-    // У «родителя» с вариантами габариты обычно пустые — размеры
-    // лежат в вариантах, поэтому передаём их подписи (только нужное
-    // для строки размера: без цен, остатков и фото).
+    // У «родителя» габариты часто пустые — берём размеры вариантов.
     variantSizes: (p.variants || []).map((v) => ({
       name: v.name ?? null,
       optionType: v.optionType ?? null,
