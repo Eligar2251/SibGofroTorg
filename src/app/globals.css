@@ -2182,6 +2182,43 @@ select {
   padding: 28px;
 }
 
+/* Частые вопросы — внутри блока «Оформление заказа» */
+.consult-faq.seo-faq {
+  margin-top: 44px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+  align-items: start;
+}
+
+.consult-faq__title {
+  grid-column: 1 / -1;
+  font-family: var(--font-head);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 700;
+  color: #ffffff;
+  text-transform: uppercase;
+  line-height: 1.15;
+  margin-bottom: 18px;
+}
+
+.consult-faq .seo-faq__item {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.consult-faq .seo-faq__item summary {
+  color: #ffffff;
+}
+
+.consult-faq .seo-faq__item p {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.consult-faq .seo-faq__item summary::after {
+  color: var(--green-lime);
+}
+
 /* ══════════════════════════════════════
    MAP SECTION
    ══════════════════════════════════════ */
@@ -6589,6 +6626,11 @@ select {
 
   .consult-phone {
     font-size: 18px;
+  }
+
+  .consult-faq.seo-faq {
+    grid-template-columns: 1fr;
+    margin-top: 28px;
   }
 
   /* ── Контейнер: уменьшаем боковые отступы на узких экранах ── */

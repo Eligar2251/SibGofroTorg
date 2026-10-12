@@ -1532,6 +1532,27 @@ html {
     text-align: left;
   }
 
+  .consult-faq.seo-faq {
+    margin-top: 24px;
+    text-align: left;
+  }
+
+  .consult-faq__title {
+    font-size: clamp(18px, 5.5vw, 24px);
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  .consult-faq .seo-faq__item summary {
+    font-size: 14px;
+    padding: 12px 14px;
+  }
+
+  .consult-faq .seo-faq__item p {
+    padding: 0 14px 14px;
+    font-size: 13px;
+  }
+
   /* ═══════════════════════════
      QUICK ORDER
      ═══════════════════════════ */

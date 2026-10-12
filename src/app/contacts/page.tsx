@@ -18,7 +18,7 @@ import type { Metadata } from "next";
 import { SITE_URL } from "@/lib/seo";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { YandexMapEmbed } from "@/components/layout/YandexMapEmbed";
-import { buildLocalBusinessJsonLd, buildBreadcrumbJsonLd } from "@/lib/seo";
+import { buildBreadcrumbJsonLd } from "@/lib/seo";
 import { getSettings } from "@/lib/supabase-queries";
 import { buildWeekdayLabel } from "@/lib/hours-label";
 import { getWastepaperPageConfig } from "@/lib/wastepaper";
@@ -56,13 +56,10 @@ export default async function ContactsPage() {
   return (
     <div className="contacts-page">
       <JsonLd
-        data={[
-          buildLocalBusinessJsonLd(),
-          buildBreadcrumbJsonLd([
-            { name: "Главная", url: "/" },
-            { name: "Контакты", url: "/contacts" },
-          ]),
-        ]}
+        data={buildBreadcrumbJsonLd([
+          { name: "Главная", url: `${SITE_URL}/` },
+          { name: "Контакты", url: `${SITE_URL}/contacts` },
+        ])}
       />
 
       {/* Breadcrumb */}
