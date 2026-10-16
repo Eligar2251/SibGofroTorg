@@ -5,8 +5,8 @@ import { Megaphone, BellRing } from "lucide-react";
 import { getAllPromotions, getProducts, getAllPopupCampaigns } from "@/lib/supabase-queries";
 import { PromotionsManager } from "@/components/admin/PromotionsManager";
 import { PopupCampaignsManager } from "@/components/admin/PopupCampaignsManager";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPromotionsPage({

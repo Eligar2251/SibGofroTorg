@@ -7,8 +7,8 @@ import { notFound } from "next/navigation";
 import { verifySession } from "@/lib/auth";
 import { canAccessAdminPage } from "@/lib/admin-rbac";
 import { SimpleDieCalc } from "@/components/admin/die-calc/SimpleDieCalc";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

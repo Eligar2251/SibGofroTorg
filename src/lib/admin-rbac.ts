@@ -173,6 +173,9 @@ export function canAccessAdminPage(
       // База данных — только владелец и администратор.
       relativePath === "/database" ||
       relativePath.startsWith("/database/") ||
+      // Диагностика — тоже только владелец и администратор.
+      relativePath === "/diagnostics" ||
+      relativePath.startsWith("/diagnostics/") ||
       // Отдельный учёт макулатуры доступен только admin и макулатурщику.
       relativePath === "/wastepaper-account" ||
       relativePath.startsWith("/wastepaper-account/")
@@ -255,6 +258,9 @@ export function canAccessAdminApi(
     if (pathname.startsWith("/api/admin/activity-logs/")) return false;
     if (pathname === "/api/admin/admin-users") return false;
     if (pathname.startsWith("/api/admin/admin-users/")) return false;
+    // Диагностика показывает переменные окружения и подключение к базе —
+    // только владелец и администратор.
+    if (pathname === "/api/admin/diagnostics") return false;
 
     // Точный маршрут нужен рабочим модулям (зарплаты и порядок товаров).
     // Сам route фильтрует ключи и не отдаёт менеджеру настройки сайта.

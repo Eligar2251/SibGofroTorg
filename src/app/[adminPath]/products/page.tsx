@@ -23,8 +23,8 @@ import { ProductListClient } from "@/components/admin/ProductListClient";
 import { CategoryManager } from "@/components/admin/CategoryManager";
 import { DimensionProfilesManager } from "@/components/admin/DimensionProfilesManager";
 import { getDimensionProfiles } from "@/lib/dimension-profiles-db";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

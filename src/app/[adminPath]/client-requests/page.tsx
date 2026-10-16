@@ -7,10 +7,10 @@
 import { notFound } from "next/navigation";
 import { getClientRequests } from "@/lib/supabase-queries";
 import { ClientRequestsManager } from "@/components/admin/ClientRequestsManager";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 function firstParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] || "" : value || "";

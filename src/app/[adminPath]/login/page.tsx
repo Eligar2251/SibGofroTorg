@@ -5,21 +5,26 @@
 import { redirect } from "next/navigation";
 import { verifySession } from "@/lib/auth";
 import { getAdminLandingPath } from "@/lib/admin-rbac";
+import { ADMIN_PATH } from "@/lib/admin-path";
 import { LoginForm } from "@/components/admin/LoginForm";
-
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export default async function AdminLoginPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ adminPath: string }>;
+  searchParams: Promise<{ expired?: string }>;
 }) {
   const { adminPath } = await params;
+  const { expired } = await searchParams;
 
   if (adminPath !== ADMIN_PATH) {
     redirect("/");
   }
 
+  // verifySession никогда не бросает: при отсутствии/смене секрета сессии
+  // просто «нет», и форма входа остаётся доступной (раньше здесь падал
+  // рендер всей страницы).
   const user = await verifySession();
   if (user) {
     // Стартовая страница зависит от роли (макулатурщик — сразу в свой модуль).
@@ -35,7 +40,7 @@ export default async function AdminLoginPage({
           <p className="admin-login__sub">Вход в админ-панель</p>
         </div>
         <div className="admin-login__card">
-          <LoginForm adminPath={ADMIN_PATH} />
+          <LoginForm adminPath={ADMIN_PATH} expired={expired === "1"} />
         </div>
       </div>
     </div>

@@ -13,8 +13,8 @@ import { FloatingCart } from "@/components/layout/FloatingCart";
 import { CartPopup } from "@/components/layout/CartPopup";
 import { PromotionPopups } from "@/components/promotions/PromotionPopups";
 import type { PublicPopupCampaign } from "@/lib/popup-campaign";
+import { CLIENT_ADMIN_PATH } from "@/lib/admin-path-client";
 
-const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || "admin";
 
 export function ConditionalChrome({
   children,
@@ -28,7 +28,7 @@ export function ConditionalChrome({
   categories?: HeaderCategory[];
 }) {
   const pathname = usePathname() || "";
-  const isAdmin = pathname === `/${ADMIN_PATH}` || pathname.startsWith(`/${ADMIN_PATH}/`);
+  const isAdmin = pathname === `/${CLIENT_ADMIN_PATH}` || pathname.startsWith(`/${CLIENT_ADMIN_PATH}/`);
 
   if (isAdmin) {
     return <>{children}</>;

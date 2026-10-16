@@ -14,7 +14,8 @@
     "test:payments": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/payment-export.test.mjs",
     "test:export-api": "node --experimental-strip-types --import ./tests/api-register.mjs --test tests/api-payment-export.test.mjs",
     "test:media": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/media-url.test.mjs tests/media-route.test.mjs",
-    "test": "npm run test:variants && npm run test:payments && npm run test:export-api && npm run test:media && npm run test:pallet",
+    "test": "npm run test:variants && npm run test:payments && npm run test:export-api && npm run test:media && npm run test:pallet && npm run test:recovery",
+    "test:recovery": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/admin-recovery.test.mjs",
     "dev:plain": "next dev",
     "test:pallet": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pallet.test.mjs"
   },

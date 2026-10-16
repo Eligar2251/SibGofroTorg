@@ -12,6 +12,9 @@ import {
   sanitizeNavLayout,
   type AdminNavLayout,
 } from "@/lib/admin-nav";
+// adminFetch: 401 (истёкшая/отозванная сессия) → переход на форму
+// входа с пометкой «Сессия истекла» вместо ошибок в каждом разделе.
+import { adminErrorText, adminFetch } from "@/lib/admin-fetch";
 
 const ALLOWED = ADMIN_NAV_CATALOG.map((item) => item.id);
 
@@ -75,9 +78,9 @@ async function refresh(username: string) {
   if (inflight) return inflight;
   inflight = (async () => {
     try {
-      const res = await fetch("/api/admin/nav-layout", { cache: "no-store" });
+      const res = await adminFetch("/api/admin/nav-layout");
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Не удалось загрузить меню");
+      if (!res.ok) throw new Error(adminErrorText(body, "Не удалось загрузить меню"));
       if (snap.username !== username) return;
       const layout = body.layout ? sanitizeNavLayout(body.layout, ALLOWED) : null;
       writeCache(username, layout);
@@ -120,13 +123,13 @@ export function useAdminNavLayout(username: string) {
     async (layout: AdminNavLayout) => {
       emit({ saving: true, error: null });
       try {
-        const res = await fetch("/api/admin/nav-layout", {
+        const res = await adminFetch("/api/admin/nav-layout", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ layout }),
         });
         const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Не удалось сохранить меню");
+        if (!res.ok) throw new Error(adminErrorText(body, "Не удалось сохранить меню"));
         const saved = sanitizeNavLayout(body.layout, ALLOWED) || layout;
         writeCache(username, saved);
         emit({ layout: saved, saving: false, ready: true, error: null });
@@ -143,9 +146,9 @@ export function useAdminNavLayout(username: string) {
   const reset = useCallback(async () => {
     emit({ saving: true, error: null });
     try {
-      const res = await fetch("/api/admin/nav-layout", { method: "DELETE" });
+      const res = await adminFetch("/api/admin/nav-layout", { method: "DELETE" });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Не удалось сбросить меню");
+      if (!res.ok) throw new Error(adminErrorText(body, "Не удалось сбросить меню"));
       writeCache(username, null);
       emit({ layout: null, saving: false, ready: true, error: null });
     } catch (error) {

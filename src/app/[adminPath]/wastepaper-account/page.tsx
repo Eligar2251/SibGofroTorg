@@ -23,8 +23,8 @@ import { getEmployees, getTransports, getWarehouseStock } from "@/lib/warehouse"
 import { SITE_ADDRESS, SITE_PHONE } from "@/lib/site-config";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { WastepaperAccountManager } from "@/components/admin/WastepaperAccountManager";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

@@ -5,6 +5,7 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/api-errors";
 import { requireAdminApi } from "@/lib/auth";
 import {
   ADMIN_NAV_CATALOG,
@@ -37,7 +38,7 @@ export async function GET() {
     return noStore({ layout });
   } catch (error) {
     console.error("Read admin nav layout error:", error);
-    return noStore({ error: "Не удалось прочитать меню" }, 500);
+    return apiErrorResponse(error, "nav-layout:GET");
   }
 }
 
@@ -58,7 +59,7 @@ export async function PUT(request: NextRequest) {
     return noStore({ ok: true, layout });
   } catch (error) {
     console.error("Save admin nav layout error:", error);
-    return noStore({ error: "Не удалось сохранить меню" }, 500);
+    return apiErrorResponse(error, "nav-layout:PUT");
   }
 }
 
@@ -70,6 +71,6 @@ export async function DELETE() {
     return noStore({ ok: true, layout: null });
   } catch (error) {
     console.error("Reset admin nav layout error:", error);
-    return noStore({ error: "Не удалось сбросить меню" }, 500);
+    return apiErrorResponse(error, "nav-layout:DELETE");
   }
 }

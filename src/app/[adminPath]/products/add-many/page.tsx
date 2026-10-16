@@ -9,8 +9,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { BulkProductAdder } from "@/components/admin/BulkProductAdder";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Массовое добавление товаров — СибГофроТорг" };

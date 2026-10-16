@@ -7,6 +7,7 @@ import {
   supplyPlansItemsCount,
   type SupplyPlan,
 } from "@/lib/supply-plans-shared";
+import { adminErrorText, adminFetch } from "@/lib/admin-fetch";
 
 function formatDate(raw?: string | null): string {
   if (!raw) return "Дата не указана";
@@ -26,9 +27,9 @@ export function AdminSupplyPlans({ adminPath }: { adminPath: string }) {
     else setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/admin/warehouse/supply-plans", { cache: "no-store" });
+      const response = await adminFetch("/api/admin/warehouse/supply-plans");
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Не удалось загрузить планы");
+      if (!response.ok) throw new Error(adminErrorText(body, "Не удалось загрузить планы"));
       setPlans(Array.isArray(body.plans) ? body.plans : []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Ошибка планов поставок");

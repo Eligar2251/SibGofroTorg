@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProducts, getProductById } from "@/lib/supabase-queries";
 import { computeQrSlug, computeBarcode, computeLegacyQrSlug } from "@/lib/qr";
 import { buildStockLabel, normalizeScanCode } from "@/lib/scan";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 /** Минимальная проекция продукта — ровно то, что нужно сканеру. */
 function projectForScan(p: any) {
@@ -39,8 +40,7 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> }
 ) {
   const { code: codeParam } = await params;
-  const adminPath = process.env.ADMIN_SECRET_PATH || "admin";
-  const code = normalizeScanCode(codeParam, adminPath);
+  const code = normalizeScanCode(codeParam, ADMIN_PATH);
 
   if (!code) {
     return NextResponse.json(

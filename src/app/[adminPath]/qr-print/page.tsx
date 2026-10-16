@@ -17,8 +17,8 @@ import { SITE_ADDRESS } from "@/lib/site-config";
 import QRCode from "qrcode";
 import { formatBarcode, computeBarcode, computeQrSlug } from "@/lib/qr";
 import { PrintLabelsClient } from "@/components/admin/PrintLabelsClient";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Печать этикеток — СибГофроТорг" };

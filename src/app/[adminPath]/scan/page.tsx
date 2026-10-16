@@ -5,8 +5,8 @@
 // =========================================================
 
 import { ScanCode } from "@/components/admin/ScanCode";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Сканер товара — СибГофроТорг" };

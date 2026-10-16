@@ -39,6 +39,7 @@ import {
   type DimensionProfile,
   type DimensionValue,
 } from "@/lib/dimension-profiles";
+import { CLIENT_ADMIN_PATH } from "@/lib/admin-path-client";
 
 interface Category {
   id: string;
@@ -282,10 +283,6 @@ export function ProductFormClient({
   }
 
   const isEdit = !!product?.id;
-  const adminPath =
-    process.env.NEXT_PUBLIC_ADMIN_PATH ||
-    process.env.ADMIN_SECRET_PATH ||
-    "admin";
 
   // Принудительно сменить штрихкод товара (ручное действие админа).
   // Сервер сохраняет новый код сразу; поле подставляется в форму.
@@ -450,7 +447,7 @@ export function ProductFormClient({
         }
       }
 
-      router.push(`/${adminPath}/products`);
+      router.push(`/${CLIENT_ADMIN_PATH}/products`);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Произошла ошибка");
@@ -465,7 +462,7 @@ export function ProductFormClient({
 
     try {
       await fetch(`/api/admin/products/${product.id}`, { method: "DELETE" });
-      router.push(`/${adminPath}/products`);
+      router.push(`/${CLIENT_ADMIN_PATH}/products`);
       router.refresh();
     } catch {
       setError("Ошибка удаления");

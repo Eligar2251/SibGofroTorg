@@ -2,8 +2,8 @@
 import { notFound } from "next/navigation";
 import { ClientsManager } from "@/components/admin/ClientsManager";
 import { getAdminDb } from "@/lib/supabase";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";
 
 function toIso(raw: any): string | null {

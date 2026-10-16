@@ -1,37 +1,28 @@
 // =========================================================
 // FILE: src/lib/auth.ts
 // Админская аутентификация — JWT в cookie с поддержкой ролей.
+//
+// Подпись/проверка токена живут в src/lib/admin-session-token.ts: тот же
+// код использует proxy (middleware), поэтому «в proxy сессия валидна, а в
+// layout нет» больше невозможно. Здесь только работа с cookie и React.
 // =========================================================
 
-import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
   hasAdminPermission,
-  parseAdminRole,
   type AdminPermission,
   type AdminRole,
 } from "@/lib/admin-rbac";
+import {
+  ADMIN_SESSION_COOKIE,
+  adminSessionCookieOptions,
+  adminSessionSecretProblem,
+  signAdminSession,
+  verifyAdminSessionToken,
+} from "@/lib/admin-session-token";
 
-function getAdminSecret(): Uint8Array {
-  const fromEnv = process.env.ADMIN_SESSION_SECRET;
-  if (fromEnv && fromEnv.length >= 32) {
-    return new TextEncoder().encode(fromEnv);
-  }
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "ADMIN_SESSION_SECRET must be set (≥32 chars) in production"
-    );
-  }
-  console.warn(
-    "[auth] ADMIN_SESSION_SECRET не задан — используется dev-секрет. Задайте в .env.local"
-  );
-  return new TextEncoder().encode(
-    "dev-only-admin-session-secret-min-32-chars!!"
-  );
-}
-
-const COOKIE = "admin-session";
+const COOKIE = ADMIN_SESSION_COOKIE;
 
 export interface AdminSession {
   username: string;
@@ -39,50 +30,49 @@ export interface AdminSession {
   displayName: string;
 }
 
+/**
+ * Выдать сессию и положить её в cookie.
+ * Если ADMIN_SESSION_SECRET не настроен, бросаем понятную ошибку: маршрут
+ * входа покажет её администратору, а не безликое «Ошибка сервера».
+ */
 export async function createSession(data: {
   username: string;
   role: AdminRole;
   displayName?: string;
 }) {
-  const secret = getAdminSecret();
-  const token = await new SignJWT({
-    username: data.username,
-    role: data.role,
-    displayName: data.displayName || data.username,
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime("7d")
-    .sign(secret);
+  const problem = adminSessionSecretProblem();
+  if (problem && process.env.NODE_ENV === "production") {
+    throw new Error(problem);
+  }
+
+  const token = await signAdminSession(data);
 
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7,
-    path: "/",
-  });
+  cookieStore.set(COOKIE, token, adminSessionCookieOptions());
 }
 
+/**
+ * Проверить текущую сессию. Никогда не бросает: истёкший токен, отсутствие
+ * секрета или битая cookie — это просто «нет сессии» (→ страница входа),
+ * а не падение рендера админки.
+ */
 export async function verifySession(): Promise<AdminSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE)?.value;
   if (!token) return null;
 
-  try {
-    const { payload } = await jwtVerify(token, getAdminSecret());
-    const role = parseAdminRole(payload.role);
-    if (!role) return null;
-    return {
-      username: (payload.username as string) || "",
-      role,
-      displayName:
-        (payload.displayName as string) || (payload.username as string) || "",
-    };
-  } catch {
+  const session = await verifyAdminSessionToken(token);
+  if (!session) {
+    const problem = adminSessionSecretProblem();
+    if (problem) console.warn(`[auth] сессия не проверена: ${problem}`);
     return null;
   }
+
+  return {
+    username: session.username,
+    role: session.role,
+    displayName: session.displayName,
+  };
 }
 
 export async function deleteSession() {
@@ -90,12 +80,16 @@ export async function deleteSession() {
   cookieStore.delete(COOKIE);
 }
 
-export async function requireAdminApi(): Promise<
-  AdminSession | NextResponse
-> {
+export async function requireAdminApi(): Promise<AdminSession | NextResponse> {
   const session = await verifySession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      {
+        error: "Сессия истекла — войдите в админку заново",
+        code: "session_expired",
+      },
+      { status: 401 }
+    );
   }
   return session;
 }
@@ -106,4 +100,27 @@ export function hasPermission(
   action: AdminPermission | string
 ): boolean {
   return hasAdminPermission(session.role, action);
+}
+
+/** Количество доступных ролей-разрешений (для диагностики). */
+export function permissionCount(session: AdminSession): number {
+  const candidates: AdminPermission[] = [
+    "view_dashboard",
+    "view_finance",
+    "view_deliveries",
+    "view_payment_details",
+    "view_settings",
+    "manage_settings",
+    "use_operational_settings",
+    "view_logs",
+    "delete",
+    "manage_users",
+    "view_database",
+    "manage_database",
+    "view_money",
+    "manage_money",
+  ];
+  return candidates.filter((permission) =>
+    hasAdminPermission(session.role, permission)
+  ).length;
 }

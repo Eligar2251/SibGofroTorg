@@ -36,6 +36,7 @@ import { RealtimeStatusIndicator } from "@/components/admin/RealtimeStatusIndica
 import { AdminNotifications } from "@/components/admin/AdminNotifications";
 import { AdminRequestAlerts } from "@/components/admin/AdminRequestAlerts";
 import { AdminSupplyPlans } from "@/components/admin/AdminSupplyPlans";
+import { DbStatusBanner } from "@/components/admin/DbStatusBanner";
 import { MobileTabBar, type MobileNavItem } from "./MobileTabBar";
 import styles from "./MobileAdminShell.module.css";
 
@@ -121,6 +122,9 @@ export function MobileAdminShell({
       {/* admin-main сохранён нарочно: страницы (склад, аренда, …)
           уже имеют мобильные стили под этот класс, и вся типографика
           (admin-h1, admin-card, …) продолжает работать. */}
+      <div style={{ padding: "10px 12px 0" }}>
+        <DbStatusBanner adminPath={adminPath} />
+      </div>
       <main ref={mainRef} className={`admin-main ${styles.main}`}>{children}</main>
 
       <MobileTabBar items={items} pathname={pathname} adminPath={adminPath} />

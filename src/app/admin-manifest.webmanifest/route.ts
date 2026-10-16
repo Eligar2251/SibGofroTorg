@@ -1,20 +1,17 @@
 import { NextResponse } from "next/server";
 import { SITE_NAME } from "@/lib/seo";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 export const dynamic = "force-static";
 
 export function GET() {
-  const adminPath =
-    process.env.NEXT_PUBLIC_ADMIN_PATH ||
-    process.env.ADMIN_SECRET_PATH ||
-    "admin";
   return NextResponse.json(
     {
-      id: `/${adminPath}`,
+      id: `/${ADMIN_PATH}`,
       name: `${SITE_NAME} — управление`,
       short_name: `${SITE_NAME} Админ`,
       description: "Мобильная панель управления СибГофроТорг",
-      start_url: `/${adminPath}`,
+      start_url: `/${ADMIN_PATH}`,
       // scope «/» нужен из-за нормализации Next.js /admin/ → /admin и
       // чтобы переход «Открыть сайт» не выталкивал установленное PWA в Safari/Chrome.
       scope: "/",
@@ -35,9 +32,9 @@ export function GET() {
         { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
       shortcuts: [
-        { name: "Панель", url: `/${adminPath}`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
-        { name: "Товары", url: `/${adminPath}/products`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
-        { name: "Учёт СибГофроТорг", url: `/${adminPath}/warehouse`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+        { name: "Панель", url: `/${ADMIN_PATH}`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+        { name: "Товары", url: `/${ADMIN_PATH}/products`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+        { name: "Учёт СибГофроТорг", url: `/${ADMIN_PATH}/warehouse`, icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
       ],
     },
     {
