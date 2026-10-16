@@ -8,9 +8,8 @@ import { notFound, redirect } from "next/navigation";
 import { hasPermission, verifySession } from "@/lib/auth";
 import { canAccessDatabase } from "@/lib/admin-rbac";
 import { DatabaseBrowser } from "@/components/admin/DatabaseBrowser";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH =
-  process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

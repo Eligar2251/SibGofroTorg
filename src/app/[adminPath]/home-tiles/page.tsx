@@ -14,8 +14,8 @@ import {
 } from "@/lib/supabase-queries";
 import { HomeTilesManager } from "@/components/admin/HomeTilesManager";
 import { collectProductTags, productMatchesTile } from "@/lib/home-tiles";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

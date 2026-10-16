@@ -10,8 +10,8 @@ import { notFound } from "next/navigation";
 import { getProducts, getAllCategories } from "@/lib/supabase-queries";
 import { PhotoTemplateGenerator } from "@/components/admin/PhotoTemplateGenerator";
 import "@/app/photo-generator.css";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

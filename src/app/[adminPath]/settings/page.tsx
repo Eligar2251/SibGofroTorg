@@ -12,11 +12,10 @@ import { OwnerMoneyPanel } from "@/components/admin/OwnerMoneyPanel";
 import { redirect } from "next/navigation";
 import { hasPermission, verifySession } from "@/lib/auth";
 import { isOwner } from "@/lib/admin-rbac";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_PATH =
-  process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 export default async function AdminSettingsPage() {
   const session = await verifySession();

@@ -22,10 +22,10 @@ import { TransportManager, type TransportDeal } from "@/components/admin/Transpo
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import { DeliveriesRealtime } from "@/components/admin/DeliveriesRealtime";
 import { SITE_ADDRESS, SITE_PHONE } from "@/lib/site-config";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export default async function AdminDeliveriesPage({
   params,

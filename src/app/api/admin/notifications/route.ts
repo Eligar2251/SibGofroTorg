@@ -1,6 +1,7 @@
 // src/app/api/admin/notifications/route.ts
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth";
+import { ADMIN_PATH } from "@/lib/admin-path";
 import { getAdminDb } from "@/lib/supabase";
 import { getRentInvoices, getRentTenants } from "@/lib/rent";
 import {
@@ -22,8 +23,6 @@ type AdminNotification = {
   href: string;
   createdAt?: string | null;
 };
-
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 function toIso(raw: any): string | null {
   if (!raw) return null;

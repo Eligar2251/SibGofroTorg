@@ -59,10 +59,10 @@ import {
 import { DashboardFinanceHistory, type DashboardFinanceRow } from "@/components/admin/DashboardFinanceHistory";
 import { DashboardQuickActions } from "@/components/admin/DashboardQuickActions";
 import { DashboardRealtime } from "@/components/admin/DashboardRealtime";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 /**
  * Дашборд должен оставаться доступным и при временном сбое Supabase:

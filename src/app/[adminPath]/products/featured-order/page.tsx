@@ -7,8 +7,8 @@ import {
   sortByProductOrder,
 } from "@/lib/home-product-order";
 import { isProductAvailable } from "@/lib/stock-availability";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

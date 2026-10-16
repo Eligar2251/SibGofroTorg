@@ -2,8 +2,8 @@
 import { getProductsForBulkEditor, getAllCategories } from "@/lib/supabase-queries";
 import { BulkProductEditor } from "@/components/admin/BulkProductEditor";
 import { notFound } from "next/navigation";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";
 
 export default async function BulkProductsPage({

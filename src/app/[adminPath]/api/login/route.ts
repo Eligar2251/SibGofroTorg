@@ -1,5 +1,11 @@
 // =========================================================
 // FILE: src/app/[adminPath]/api/login/route.ts
+//
+// Ключевое отличие от прошлой версии: сбой подключения к базе больше НЕ
+// выглядит как «Неверный логин или пароль». Если запрос к таблице admins
+// упал (проект Supabase на паузе, отозванный ключ, сеть), маршрут отвечает
+// 503 с кодом db_unavailable, пояснением и ссылкой на отчёт о базе. Именно
+// из-за прежнего поведения казалось, что «истёк JWT» или слетел пароль.
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -9,8 +15,8 @@ import { hashPassword, verifyPassword } from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { logActivity } from "@/lib/activity-log";
 import { parseAdminRole } from "@/lib/admin-rbac";
-
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
+import { ADMIN_PATH } from "@/lib/admin-path";
+import { isDbUnavailable, noStoreJson } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
 
@@ -52,7 +58,24 @@ export async function POST(
       .limit(1)
       .maybeSingle();
 
-    if (error || !admin) {
+    // Ошибка БД — это НЕ «неверный пароль»: показываем настоящую причину.
+    if (error) {
+      console.error("Admin login db error:", error);
+      return noStoreJson(
+        {
+          error: "База данных недоступна",
+          code: "db_unavailable",
+          detail: error.message,
+          hint:
+            "Логин и пароль верны, но приложение не может обратиться к базе. " +
+            "Откройте /api/health/db?deep=1 — там причина (Supabase на паузе, отозванный ключ, сеть).",
+          diagnostics: "/api/health/db",
+        },
+        503
+      );
+    }
+
+    if (!admin) {
       return NextResponse.json(
         { error: "Неверный логин или пароль" },
         { status: 401 }
@@ -77,12 +100,13 @@ export async function POST(
       valid = (admin as any).password === password;
       if (valid) {
         try {
-          await db.from("admins").update({
-            password_hash: hashPassword(password),
-            updated_at: new Date().toISOString(),
-          }).eq("id", admin.id);
-          // Удаляем plaintext пароль
-          await db.from("admins").update({ password_hash: hashPassword(password) } as any).eq("id", admin.id);
+          await db
+            .from("admins")
+            .update({
+              password_hash: hashPassword(password),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", admin.id);
         } catch (e) {
           console.error("Admin password migration failed:", e);
         }
@@ -107,11 +131,26 @@ export async function POST(
       );
     }
 
-    await createSession({
-      username,
-      role,
-      displayName: admin.display_name || username,
-    });
+    try {
+      await createSession({
+        username,
+        role,
+        displayName: admin.display_name || username,
+      });
+    } catch (sessionError) {
+      console.error("Admin session error:", sessionError);
+      return noStoreJson(
+        {
+          error: "Не удалось создать сессию админки",
+          code: "session_secret_missing",
+          detail:
+            sessionError instanceof Error ? sessionError.message : String(sessionError),
+          hint:
+            "Задайте переменную ADMIN_SESSION_SECRET (строка 32+ символов) в переменных окружения приложения и перезапустите его. Логин и пароль при этом верны.",
+        },
+        503
+      );
+    }
 
     await logActivity({
       adminName: admin.display_name || username,
@@ -121,11 +160,26 @@ export async function POST(
       entityId: admin.id,
       entityLabel: `Вход: ${username}`,
       ipAddress: clientIp(request),
+    }).catch((error) => {
+      // Журнал не должен мешать входу.
+      console.error("Admin login log error:", error);
     });
 
     return NextResponse.json({ success: true, role });
   } catch (error) {
     console.error("Login error:", error);
+    if (isDbUnavailable(error)) {
+      return noStoreJson(
+        {
+          error: "База данных недоступна",
+          code: "db_unavailable",
+          detail: error instanceof Error ? error.message : String(error),
+          hint: "Откройте /api/health/db?deep=1 — там причина и что делать.",
+          diagnostics: "/api/health/db",
+        },
+        503
+      );
+    }
     return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 });
   }
 }

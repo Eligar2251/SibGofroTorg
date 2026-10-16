@@ -19,10 +19,10 @@ import {
   ORDER_STATUS_TONE,
   formatOrderDate,
 } from "@/lib/orders-labels";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 const statusLabels = ORDER_STATUS_LABELS;
 

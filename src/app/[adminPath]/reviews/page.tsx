@@ -2,8 +2,8 @@
 import { notFound } from "next/navigation";
 import { ReviewsManager } from "@/components/admin/ReviewsManager";
 import { ReviewsRealtime } from "@/components/admin/ReviewsRealtime";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";
 
 export default async function AdminReviewsPage({

@@ -13,8 +13,8 @@ import { ArrowLeft } from "lucide-react";
 import { getAllCategories, getProducts } from "@/lib/supabase-queries";
 import { computeBarcode } from "@/lib/qr";
 import { BoxLabelsClient } from "@/components/admin/BoxLabelsClient";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Печать этикеток ящиков — СибГофроТорг" };

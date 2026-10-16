@@ -194,6 +194,9 @@ export const ADMIN_NAV_CATALOG: readonly AdminNavCatalogItem[] = [
   { id: "die-calc-jobs", suffix: "/die-calc/jobs", label: "Расчёты штанцформ", icon: "table-2" },
   { id: "database", suffix: "/database", label: "База Данных", icon: "database" },
   { id: "settings", suffix: "/settings", label: "Настройки", icon: "settings" },
+  // Диагностика подключения к базе: открывают, когда админка «лежит» —
+  // страница не тянет данные из БД и показывает причину сбоя.
+  { id: "diagnostics", suffix: "/diagnostics", label: "Диагностика", icon: "wrench" },
 ];
 
 export type AdminNavItemDef = {

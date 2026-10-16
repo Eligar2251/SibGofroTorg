@@ -23,8 +23,8 @@ import {
   listDieCalcJobs,
 } from "@/lib/die-calc-db";
 import { DieCalcJobsClient } from "@/components/admin/DieCalcJobsClient";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

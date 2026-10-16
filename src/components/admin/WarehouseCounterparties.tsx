@@ -17,6 +17,7 @@ import type { CounterpartyRole, PriceTier } from "@/lib/warehouse-shared";
 import { normalizePriceTier } from "@/lib/warehouse-shared";
 import { ModalPortal } from "@/components/admin/ModalPortal";
 import { useEscapeClose } from "@/hooks/use-escape-close";
+import { CLIENT_ADMIN_PATH } from "@/lib/admin-path-client";
 
 export interface CounterpartyOption {
   id: string;
@@ -107,7 +108,6 @@ const EMPTY: FormState = {
 };
 
 const fmt = (value: number) => value.toLocaleString("ru-RU");
-const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 /** Убирает дубли по id — защита от «two children with the same key». */
 function uniqueById(list: CounterpartyOption[]): CounterpartyOption[] {
@@ -438,8 +438,8 @@ export function CounterpartiesManager({
                                   className="cp-doc"
                                   href={
                                     doc.kind === "deal"
-                                      ? `/${ADMIN_PATH}/warehouse?tab=deals&deal=${doc.id}`
-                                      : `/${ADMIN_PATH}/warehouse?tab=receipts&receipt=${doc.id}`
+                                      ? `/${CLIENT_ADMIN_PATH}/warehouse?tab=deals&deal=${doc.id}`
+                                      : `/${CLIENT_ADMIN_PATH}/warehouse?tab=receipts&receipt=${doc.id}`
                                   }
                                   prefetch={false}
                                   style={{ textDecoration: "none" }}

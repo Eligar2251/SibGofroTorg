@@ -41,6 +41,7 @@ import {
   type WarehouseReceipt,
 } from "@/lib/warehouse-shared";
 import { useEscapeClose } from "@/hooks/use-escape-close";
+import { CLIENT_ADMIN_PATH } from "@/lib/admin-path-client";
 
 interface ReceiptItemDraft {
   productId: string;
@@ -119,7 +120,6 @@ function receivedQtyMap(receipt: WarehouseReceipt): Map<string, number> {
   return map;
 }
 
-const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
 
 /** Округление до копеек, чтобы не копился хвост из float-арифметики */
 function roundKopeck(n: number): number {
@@ -1130,7 +1130,7 @@ export function ReceiptCard({
                 return (
                   <div key={idx} className="admin-order__item">
                     <Link
-                      href={`/${ADMIN_PATH}/products/${it.productId}`}
+                      href={`/${CLIENT_ADMIN_PATH}/products/${it.productId}`}
                       prefetch={false}
                       style={{ color: "inherit", fontWeight: 650 }}
                     >
@@ -1189,7 +1189,7 @@ export function ReceiptCard({
                       <Link
                         key={n}
                         className="admin-badge admin-badge--blue"
-                        href={`/${ADMIN_PATH}/warehouse?tab=deals&deal=${r.linkedDealIds?.[idx] || ""}`}
+                        href={`/${CLIENT_ADMIN_PATH}/warehouse?tab=deals&deal=${r.linkedDealIds?.[idx] || ""}`}
                         prefetch={false}
                         style={{ textDecoration: "none" }}
                       >
@@ -1343,7 +1343,7 @@ export function ReceiptDebts({ receipts }: { receipts: WarehouseReceipt[] }) {
                   <div className="receipt-debt-row__main">
                     <div className="receipt-debt-row__top">
                       <Link
-                        href={`/${ADMIN_PATH}/warehouse?tab=receipts&receipt=${debt.receiptId}`}
+                        href={`/${CLIENT_ADMIN_PATH}/warehouse?tab=receipts&receipt=${debt.receiptId}`}
                         prefetch={false}
                         className="receipt-debt-row__receipt"
                       >

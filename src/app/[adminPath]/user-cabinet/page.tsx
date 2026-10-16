@@ -5,10 +5,10 @@
 
 import { notFound } from "next/navigation";
 import { UserCabinetViewer } from "@/components/admin/UserCabinetViewer";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export default async function AdminUserCabinetPage({
   params,

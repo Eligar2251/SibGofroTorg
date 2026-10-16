@@ -11,8 +11,8 @@ import { verifySession } from "@/lib/auth";
 import { isFullAccessRole } from "@/lib/admin-rbac";
 import { doorSignFromSettings } from "@/lib/door-sign";
 import { DoorSignPrint } from "@/components/admin/DoorSignPrint";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = {

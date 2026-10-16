@@ -8,8 +8,8 @@ import { getWarehouseStock, getCounterparties } from "@/lib/warehouse";
 import { BulkDealImporter } from "@/components/admin/BulkDealImporter";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import type { CounterpartyOption } from "@/components/admin/WarehouseCounterparties";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 

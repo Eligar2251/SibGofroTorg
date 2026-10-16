@@ -19,8 +19,8 @@ import {
   type ClientOrderRow,
   type ClientWasteRow,
 } from "@/components/admin/ClientOrdersManager";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";
 
 function toIso(raw: unknown): string | null {

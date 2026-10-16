@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiErrorResponse } from "@/lib/api-errors";
 import { requireAdminApi } from "@/lib/auth";
 import { getSupplyPlans, saveSupplyPlans } from "@/lib/supply-plans";
 
@@ -15,10 +16,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Get supply plans error:", error);
-    return NextResponse.json(
-      { error: "Не удалось загрузить планы поставок" },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, "supply-plans:GET");
   }
 }
 

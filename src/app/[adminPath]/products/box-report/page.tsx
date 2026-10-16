@@ -8,8 +8,8 @@ import { notFound } from "next/navigation";
 import { BoxReportClient } from "@/components/admin/BoxReportClient";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 export const dynamic = "force-dynamic";
 
 export default async function BoxReportPage({

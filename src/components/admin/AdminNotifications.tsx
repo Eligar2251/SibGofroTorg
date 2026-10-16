@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Bell, Building2, ClipboardList, Loader2, PackageSearch, RefreshCw, Wallet, X } from "lucide-react";
 import { useAdminRealtime } from "@/lib/use-admin-realtime";
+import { adminErrorText, adminFetch } from "@/lib/admin-fetch";
 
 type NotificationType = "order" | "stock" | "unpaid_released" | "rent";
 type NotificationSeverity = "danger" | "warning" | "info";
@@ -64,9 +65,9 @@ export function AdminNotifications({ adminPath }: { adminPath: string }) {
     else setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/notifications", { cache: "no-store" });
+      const res = await adminFetch("/api/admin/notifications");
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Не удалось загрузить уведомления");
+      if (!res.ok) throw new Error(adminErrorText(body, "Не удалось загрузить уведомления"));
       setData({
         total: Number(body.total) || 0,
         counts: {

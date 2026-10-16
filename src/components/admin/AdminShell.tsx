@@ -21,6 +21,7 @@ import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
 import { RealtimeStatusIndicator } from "./RealtimeStatusIndicator";
+import { DbStatusBanner } from "./DbStatusBanner";
 import { type AdminRole } from "@/lib/admin-rbac";
 import {
   buildAccessibleNav,
@@ -393,6 +394,9 @@ export function AdminShell({
             <AdminNotifications adminPath={adminPath} />
           </>
         )}
+        {/* Полоса «база недоступна»: одна понятная причина вместо
+            десятка разных ошибок в каждом разделе. */}
+        {role && <DbStatusBanner adminPath={adminPath} />}
         <main className="admin-main">{children}</main>
 
         {/* Мобильная навигация: нижнее меню + лист «Ещё».

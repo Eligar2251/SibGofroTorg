@@ -7,6 +7,7 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { verifySession } from "@/lib/auth";
+import { ADMIN_PATH } from "@/lib/admin-path";
 // Стили админки грузятся только здесь, а не на всём сайте (раньше
 // admin.css импортировался в globals.css и попадал в бандл каждой страницы).
 import "../admin.css";
@@ -36,10 +37,11 @@ import "../admin-dashboard.css";
 import { AdminThemeProvider } from "@/components/admin/AdminTheme";
 import { AdminNavProvider } from "@/components/admin/AdminNavProvider";
 
-// Этот путь читается и клиентской оболочкой (ConditionalChrome), поэтому
-// единственный источник истины — публичная переменная. Legacy-переменная
-// оставлена только как fallback для существующих окружений.
-const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || process.env.ADMIN_SECRET_PATH || "admin";
+// Путь админки читается ЕДИНЫМ модулем @/lib/admin-path. Раньше значение
+// собиралось в каждом файле отдельно (где-то брался только ADMIN_SECRET_PATH,
+// где-то публичная переменная первой), и при расхождении переменных панель
+// открывалась по одному адресу, а проверка сессии/вход — по другому.
+// Импорт из "@/lib/admin-path" добавлен ниже.
 
 // generateMetadata вместо статического metadata: любой неизвестный URL
 // первого уровня (/something) попадает в этот маршрут и получает notFound().
@@ -101,7 +103,16 @@ export default async function AdminLayout({
     notFound();
   }
 
-  const session = await verifySession();
+  // Сессия читается «мягко»: если токен испорчен, секрет подписи не задан
+  // или cookie нечитаема, страница всё равно отрисуется (как гость), а proxy
+  // уведёт на форму входа. Раньше исключение здесь валило весь рендер
+  // админки сообщением «An error occurred in the Server Components render».
+  let session: Awaited<ReturnType<typeof verifySession>> = null;
+  try {
+    session = await verifySession();
+  } catch (error) {
+    console.error("[админка] не удалось прочитать сессию:", error);
+  }
 
   return (
     <>

@@ -26,6 +26,7 @@ import {
   requestDesktopNotifyPermission,
   showDesktopNotification,
 } from "@/lib/desktop-notification";
+import { adminErrorText, adminFetch } from "@/lib/admin-fetch";
 
 type AlertItem = {
   id: string;
@@ -184,11 +185,11 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
         // из-за этого «мгновенное» уведомление приходило с задержкой,
         // а сами заявки могли не долететь вовсе (их вытесняли из первых
         // 50 элементов уведомления об остатках).
-        const res = await fetch("/api/admin/notifications/requests", {
-          cache: "no-store",
-        });
+        // adminFetch: при истёкшей сессии уводит на вход с пометкой
+        // «Сессия истекла» вместо потока непонятных ошибок.
+        const res = await adminFetch("/api/admin/notifications/requests");
         const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || "Не удалось загрузить заявки");
+        if (!res.ok) throw new Error(adminErrorText(body, "Не удалось загрузить заявки"));
 
         const orderItems: AlertItem[] = (Array.isArray(body.items) ? body.items : []).map(
           (item: {

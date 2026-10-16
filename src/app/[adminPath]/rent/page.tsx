@@ -30,8 +30,8 @@ import type {
 import type { RentBuilding, RentFloorPlan } from "@/lib/rent-building";
 import { RentManager, type RentMode } from "@/components/admin/rent/RentManager";
 import { RentRealtime } from "@/components/admin/RentRealtime";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
-const ADMIN_PATH = process.env.ADMIN_SECRET_PATH || "admin";
 
 export const dynamic = "force-dynamic";
 
