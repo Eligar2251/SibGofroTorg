@@ -111,12 +111,8 @@ export function LoginForm({
           </div>
           <div style={{ marginTop: 6 }}>
             Логин и пароль здесь ни при чём: приложение не может подключиться к
-            базе. Откройте{" "}
-            <a href="/api/health/db?deep=1" target="_blank" rel="noreferrer">
-              отчёт о базе
-            </a>{" "}
-            — там указана причина (проект Supabase на паузе, отозванный ключ,
-            сеть) и что делать.
+            базе. Проверьте, запущена ли база (сервер базы данных / проект
+            Supabase), и перезапустите её.
           </div>
           {dbError.detail ? (
             <div style={{ marginTop: 6, opacity: 0.85, wordBreak: "break-word" }}>

@@ -7,9 +7,8 @@
 // понять по этому тексту причину невозможно, и он же попадал в консоль.
 //
 // ТЕПЕРЬ: страница объясняет, что чаще всего происходит (нет связи с базой,
-// истекла сессия, сбой в модуле), даёт кнопки «Повторить», «Диагностика» и
-// открыть JSON-отчёт /api/health/db. Причина при этом не скрывается: digest
-// ошибки показывается для поиска в логах контейнера.
+// истекла сессия, сбой в модуле), и даёт кнопки «Повторить» и «Войти заново».
+// Digest ошибки показывается для поиска в логах контейнера.
 // =========================================================
 
 "use client";
@@ -17,7 +16,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useEffect } from "react";
-import { CircleAlert, ExternalLink, RefreshCw, Stethoscope } from "lucide-react";
+import { CircleAlert, RefreshCw } from "lucide-react";
 
 const card: React.CSSProperties = {
   maxWidth: 640,
@@ -70,14 +69,6 @@ export default function AdminError({
           <RefreshCw size={15} />
           <span style={{ marginLeft: 6 }}>Повторить</span>
         </button>
-        <Link className="admin-btn" href={`/${adminPath}/diagnostics`}>
-          <Stethoscope size={15} />
-          <span style={{ marginLeft: 6 }}>Диагностика</span>
-        </Link>
-        <a className="admin-btn" href="/api/health/db?deep=1" target="_blank" rel="noreferrer">
-          <ExternalLink size={15} />
-          <span style={{ marginLeft: 6 }}>Отчёт о базе</span>
-        </a>
         <Link className="admin-btn" href={`/${adminPath}/login`}>
           <span>Войти заново</span>
         </Link>

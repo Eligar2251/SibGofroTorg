@@ -7,13 +7,11 @@
 // Браузер показывал только «500» в консоли, а сбой базы выглядел как
 // «сломался вход/JWT», хотя причина была в подключении.
 //
-// ТЕПЕРЬ: маршруты отдают 503 с кодом db_unavailable, человеческим
-// объяснением и ссылкой на диагностику. 401 остаётся только за сессией.
+// ТЕПЕРЬ: маршруты отдают 503 с кодом db_unavailable и человеческим
+// объяснением. 401 остаётся только за сессией.
 // =========================================================
 
 import { NextResponse } from "next/server";
-
-export const DIAGNOSTICS_PATH = "/api/health/db";
 
 const DB_FAILURE_MARKERS = [
   "fetch failed",
@@ -100,8 +98,8 @@ export function apiErrorResponse(error: unknown, context: string) {
         error: "База данных недоступна",
         code: "db_unavailable",
         detail,
-        hint: "Откройте страницу диагностики — там указана причина и что нажать.",
-        diagnostics: DIAGNOSTICS_PATH,
+        hint:
+          "Проверьте, работает ли база (сервер базы данных / проект Supabase) и перезапустите её.",
         context,
       },
       503
@@ -114,7 +112,6 @@ export function apiErrorResponse(error: unknown, context: string) {
       code: "internal",
       detail: sanitize(errorText(error)),
       context,
-      diagnostics: DIAGNOSTICS_PATH,
     },
     500
   );
