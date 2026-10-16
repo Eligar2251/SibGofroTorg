@@ -42,9 +42,6 @@ export function isAdminPath(pathname: string): boolean {
 /** Путь к странице входа. */
 export const ADMIN_LOGIN_PATH = `/${ADMIN_PATH}/login`;
 
-/** Путь к странице диагностики (её открывают, когда админка «лежит»). */
-export const ADMIN_DIAGNOSTICS_PATH = `/${ADMIN_PATH}/diagnostics`;
-
 /**
  * Состояние переменных пути — для диагностики. Расхождение переменных
  * (или пропавший NEXT_PUBLIC_ADMIN_PATH на хостинге, где раньше он был)

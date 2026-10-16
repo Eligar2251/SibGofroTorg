@@ -275,7 +275,7 @@ export async function POST(request: Request) {
     const hint =
       code === "23514"
         ? "База не знает роль owner: примените supabase/migration_owner_role_and_money.sql в Supabase → SQL Editor (он расширяет список ролей) и повторите."
-        : "Сначала убедитесь, что база доступна: откройте /api/health/db?deep=1. Если таблицы admins нет — примените supabase/schema.sql в Supabase → SQL Editor.";
+        : "Сначала убедитесь, что база доступна (запущен ли сервер базы). Если таблицы admins нет — примените supabase/schema.sql в SQL-редакторе базы (Supabase → SQL Editor).";
     return noStoreJson(
       {
         ok: false,

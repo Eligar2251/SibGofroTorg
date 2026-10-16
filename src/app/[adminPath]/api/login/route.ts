@@ -68,8 +68,7 @@ export async function POST(
           detail: error.message,
           hint:
             "Логин и пароль верны, но приложение не может обратиться к базе. " +
-            "Откройте /api/health/db?deep=1 — там причина (Supabase на паузе, отозванный ключ, сеть).",
-          diagnostics: "/api/health/db",
+            "Проверьте, запущена ли база (сервер базы данных / проект Supabase), и перезапустите её.",
         },
         503
       );
@@ -174,8 +173,8 @@ export async function POST(
           error: "База данных недоступна",
           code: "db_unavailable",
           detail: error instanceof Error ? error.message : String(error),
-          hint: "Откройте /api/health/db?deep=1 — там причина и что делать.",
-          diagnostics: "/api/health/db",
+          hint:
+            "Проверьте, запущена ли база (сервер базы данных / проект Supabase), и перезапустите её.",
         },
         503
       );
