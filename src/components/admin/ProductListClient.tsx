@@ -3,6 +3,7 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Search,
   Eye,
@@ -13,6 +14,7 @@ import {
   QrCode,
   RefreshCw,
   Printer,
+  BadgePercent,
 } from "lucide-react";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { normalizeProductLabelColor } from "@/lib/product-fields";
@@ -62,6 +64,7 @@ export function ProductListClient({
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedStock, setSelectedStock] = useState<"all" | "in" | "out">("all");
   const [selectedVisibility, setSelectedVisibility] = useState<"all" | "visible" | "hidden">("all");
+  const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [fixingBarcodes, setFixingBarcodes] = useState(false);
@@ -183,6 +186,23 @@ export function ProductListClient({
     setDeleting(false);
   }
 
+  // «Изменить цены»: отмеченные товары уезжают на страницу массовых цен.
+  // Набор id передаём через sessionStorage — так в адресной строке не
+  // окажется сотни идентификаторов, а страница цен применит предвыбор
+  // сразу при открытии (и уберёт его из хранилища).
+  function handleEditPrices() {
+    if (selectedIds.size === 0) return;
+    try {
+      sessionStorage.setItem(
+        "bulk-prices:preselect",
+        JSON.stringify(Array.from(selectedIds))
+      );
+    } catch {
+      /* приватный режим — страница цен откроется без предвыбора */
+    }
+    router.push(`/${adminPath}/products/prices`);
+  }
+
   // Мобильный слой: карточки вместо таблицы — отдельный компонент,
   // десктопная вёрстка ниже не меняется. Фильтрация общая (тот же
   // useMemo), мобильный экран лишь управляет этими же значениями.
@@ -297,6 +317,27 @@ export function ProductListClient({
         >
           <Printer size={14} /> Отчёт по коробкам
         </Link>
+
+        <Link
+          href={`/${adminPath}/products/prices`}
+          className="admin-btn admin-btn--ghost"
+          style={{ background: 'rgba(200,134,10,0.10)', color: 'var(--adm-kraft)', borderColor: 'rgba(200,134,10,0.35)' }}
+          prefetch={false}
+          title="Массовые цены: выбрать товары, поставить одну цену или наценку к закупке — накрутка и маржа считаются сразу"
+        >
+          <BadgePercent size={14} /> Массовые цены
+        </Link>
+
+        {selectedIds.size > 0 && (
+          <button
+            type="button"
+            onClick={handleEditPrices}
+            className="admin-btn admin-btn--primary"
+            title="Открыть массовые цены с уже отмеченными товарами"
+          >
+            <BadgePercent size={14} /> Изменить цены ({selectedIds.size})
+          </button>
+        )}
 
         {selectedIds.size > 0 && (
           <button
