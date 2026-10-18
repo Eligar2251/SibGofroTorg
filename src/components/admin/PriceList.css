@@ -1,0 +1,1147 @@
+/* =========================================================
+   FILE: src/components/admin/PriceList.css
+   Стили конструктора прайс-листа (админка → «Прайс-лист»).
+
+   Всё завязано на .pl-* и не задевает другие разделы. Печать:
+   скрываем всё, кроме .pl-print-area, через display:none (а не
+   visibility:hidden) — иначе скрытые блоки занимают место и дают
+   пустые страницы, а длинная таблица не разбивается на листы.
+   ========================================================= */
+
+.pl-root {
+  --pl-manual: #c98a1b;
+  --pl-manual-bg: #fff8e8;
+  --pl-danger: #c0392b;
+  --pl-line: #dcd9d1;
+  --pl-soft: #f4f2ec;
+}
+
+/* ── Шапка раздела ── */
+.pl-root .admin-page-head {
+  align-items: flex-start;
+}
+
+.pl-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Заголовки секций с номером шага ── */
+.pl-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.pl-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--adm-ink, #1a1a18);
+  letter-spacing: 0.2px;
+}
+
+.pl-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--adm-navy, #1b2b4b);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.pl-section-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--adm-muted, #7a7a74);
+  line-height: 1.5;
+  max-width: 720px;
+}
+
+/* ── Поля настроек ── */
+.pl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 10px 12px;
+}
+
+.pl-grid--wide {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.pl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pl-field--full {
+  grid-column: 1 / -1;
+}
+
+.pl-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--adm-muted, #7a7a74);
+}
+
+.pl-field .admin-input,
+.pl-field .admin-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.pl-field-note {
+  font-size: 11px;
+  color: var(--adm-muted, #7a7a74);
+  line-height: 1.4;
+}
+
+.pl-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pl-inline > .admin-input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.pl-suffix {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--adm-muted, #7a7a74);
+  white-space: nowrap;
+}
+
+/* ── Переключатели-сегменты ── */
+.pl-seg {
+  display: inline-flex;
+  border: 1px solid var(--adm-border, #e2dfd7);
+  border-radius: 9px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.pl-seg__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--adm-muted, #7a7a74);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pl-seg__btn + .pl-seg__btn {
+  border-left: 1px solid var(--adm-border, #e2dfd7);
+}
+
+.pl-seg__btn--active {
+  background: var(--adm-navy, #1b2b4b);
+  color: #fff;
+}
+
+/* ── Чекбоксы оформления ── */
+.pl-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.pl-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--adm-ink, #1a1a18);
+  cursor: pointer;
+  user-select: none;
+}
+
+.pl-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--adm-navy, #1b2b4b);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ШАГ 1 — КАТАЛОГ
+   ═══════════════════════════════════════════════════════════ */
+.pl-catalog-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.pl-search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+
+.pl-search svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--adm-muted, #7a7a74);
+  pointer-events: none;
+}
+
+.pl-search .admin-input {
+  width: 100%;
+  padding-left: 32px;
+}
+
+.pl-catalog-toolbar .admin-select {
+  width: auto;
+  min-width: 170px;
+}
+
+.pl-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--pl-soft);
+  border: 1px solid var(--pl-line);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--adm-ink, #1a1a18);
+  white-space: nowrap;
+}
+
+.pl-counter--accent {
+  background: rgba(27, 43, 75, 0.08);
+  border-color: rgba(27, 43, 75, 0.2);
+  color: var(--adm-navy, #1b2b4b);
+}
+
+.pl-catalog {
+  border: 1px solid var(--pl-line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.pl-catalog-list {
+  max-height: 340px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pl-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--pl-soft);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.pl-pick:last-child {
+  border-bottom: 0;
+}
+
+.pl-pick:hover {
+  background: #faf9f5;
+}
+
+.pl-pick.is-checked {
+  background: rgba(27, 43, 75, 0.06);
+}
+
+.pl-pick input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: var(--adm-navy, #1b2b4b);
+}
+
+.pl-pick__text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pl-pick__name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink, #1a1a18);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl-pick__sub {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--adm-muted, #7a7a74);
+  margin-top: 1px;
+}
+
+.pl-pick__meta {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 11px;
+  color: var(--adm-muted, #7a7a74);
+  white-space: nowrap;
+  line-height: 1.45;
+}
+
+.pl-pick__meta b {
+  color: var(--adm-ink, #1a1a18);
+  font-size: 12px;
+}
+
+.pl-catalog-more {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  border-top: 1px solid var(--pl-soft);
+  background: #fbfaf7;
+}
+
+.pl-empty {
+  padding: 26px 18px;
+  text-align: center;
+  color: var(--adm-muted, #7a7a74);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.pl-empty b {
+  color: var(--adm-ink, #1a1a18);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ШАГ 2 — ЦЕНЫ
+   ═══════════════════════════════════════════════════════════ */
+.pl-price-toolbar {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 12px;
+  border: 1px solid var(--pl-line);
+  border-radius: 10px;
+  background: #fbfaf7;
+  margin-bottom: 12px;
+}
+
+.pl-price-toolbar .pl-field {
+  flex: 0 1 190px;
+}
+
+.pl-price-toolbar .pl-field--grow {
+  flex: 1 1 240px;
+}
+
+.pl-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  align-items: center;
+}
+
+.pl-hint {
+  font-size: 12px;
+  color: var(--adm-muted, #7a7a74);
+  line-height: 1.5;
+}
+
+.pl-example {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px dashed var(--pl-line);
+  background: #fff;
+  font-size: 12px;
+  color: var(--adm-muted, #7a7a74);
+}
+
+.pl-example b {
+  color: var(--adm-ink, #1a1a18);
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-example__item {
+  white-space: nowrap;
+}
+
+.pl-example__item span {
+  color: var(--adm-muted, #7a7a74);
+  margin-right: 3px;
+}
+
+/* Таблица настройки столбцов объёма */
+.pl-tier-scroll {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.pl-tier-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+}
+
+.pl-tier-table th {
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--adm-muted, #7a7a74);
+  border-bottom: 1px solid var(--pl-line);
+  white-space: nowrap;
+}
+
+.pl-tier-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--pl-soft);
+  vertical-align: middle;
+  font-size: 13px;
+}
+
+.pl-tier-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.pl-tier-table .admin-input {
+  width: 92px;
+  padding: 5px 8px;
+  text-align: right;
+}
+
+.pl-tier-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--adm-ink, #1a1a18);
+  white-space: nowrap;
+}
+
+.pl-tier-name input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--adm-navy, #1b2b4b);
+}
+
+.pl-tier-table .pl-tier-markup {
+  color: var(--adm-muted, #7a7a74);
+}
+
+.pl-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.pl-badge--manual {
+  background: var(--pl-manual-bg);
+  border: 1px solid rgba(201, 138, 27, 0.4);
+  color: #8a5c05;
+}
+
+.pl-badge--missing {
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid rgba(192, 57, 43, 0.3);
+  color: var(--pl-danger);
+}
+
+.pl-badge--ok {
+  background: rgba(39, 120, 70, 0.08);
+  border: 1px solid rgba(39, 120, 70, 0.3);
+  color: #277846;
+}
+
+/* Редактор выбранных товаров */
+.pl-edit-scroll {
+  border: 1px solid var(--pl-line);
+  border-radius: 10px;
+  overflow: auto;
+  max-height: 620px;
+  background: #fff;
+}
+
+.pl-edit {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 900px;
+}
+
+.pl-edit thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--pl-soft);
+  border-bottom: 1px solid var(--pl-line);
+  padding: 7px 8px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--adm-muted, #7a7a74);
+  white-space: nowrap;
+}
+
+.pl-edit thead th.pl-right {
+  text-align: right;
+}
+
+.pl-edit thead th .pl-th-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--adm-muted, #7a7a74);
+  opacity: 0.85;
+}
+
+.pl-edit tbody td {
+  padding: 4px 7px;
+  border-bottom: 1px solid var(--pl-soft);
+  vertical-align: middle;
+  font-size: 13px;
+}
+
+.pl-edit tbody tr:hover td {
+  background: #fcfbf8;
+}
+
+.pl-edit__group td {
+  background: var(--pl-soft) !important;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--adm-ink, #1a1a18);
+  border-top: 1px solid var(--pl-line);
+}
+
+.pl-edit__num {
+  width: 38px;
+  text-align: center;
+  color: var(--adm-muted, #7a7a74);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-edit__name {
+  min-width: 220px;
+  max-width: 420px;
+}
+
+.pl-edit__name b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adm-ink, #1a1a18);
+  line-height: 1.35;
+}
+
+.pl-edit__name .pl-edit__sku {
+  display: block;
+  font-size: 11px;
+  color: var(--adm-muted, #7a7a74);
+  margin-top: 1px;
+}
+
+.pl-cell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pl-cell input.admin-input {
+  width: 88px;
+  padding: 5px 7px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-cell--base input.admin-input {
+  width: 98px;
+}
+
+.pl-cell--manual input.admin-input {
+  border-color: rgba(201, 138, 27, 0.7);
+  background: var(--pl-manual-bg);
+}
+
+.pl-cell--invalid input.admin-input {
+  border-color: var(--pl-danger);
+  background: rgba(192, 57, 43, 0.05);
+}
+
+.pl-cell__badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pl-manual);
+  box-shadow: 0 0 0 2px #fff;
+  pointer-events: none;
+}
+
+.pl-cell__reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--adm-muted, #7a7a74);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.pl-cell__reset:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--adm-ink, #1a1a18);
+  border-color: var(--pl-line);
+}
+
+.pl-row-actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+.pl-row-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--adm-muted, #7a7a74);
+  cursor: pointer;
+}
+
+.pl-row-actions button:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--adm-ink, #1a1a18);
+  border-color: var(--pl-line);
+}
+
+.pl-row-actions button.pl-remove:hover {
+  background: rgba(192, 57, 43, 0.1);
+  color: var(--pl-danger);
+  border-color: rgba(192, 57, 43, 0.25);
+}
+
+.pl-edit-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--adm-muted, #7a7a74);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ПРЕДПРОСМОТР / ПЕЧАТЬ
+   ═══════════════════════════════════════════════════════════ */
+.pl-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.pl-preview-note {
+  font-size: 12px;
+  color: var(--adm-muted, #7a7a74);
+}
+
+.pl-stage {
+  background: #e8e6e0;
+  border-radius: 12px;
+  padding: 18px;
+  overflow: auto;
+}
+
+.pl-sheet {
+  margin: 0 auto;
+  width: 210mm;
+  min-height: 297mm;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  background: #fff;
+  color: #111;
+  padding: var(--pl-mt, 12mm) var(--pl-mr, 10mm) var(--pl-mb, 12mm)
+    var(--pl-ml, 10mm);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.14);
+  font-family: var(--pl-font, Arial, sans-serif);
+  font-size: var(--pl-body, 9pt);
+  line-height: 1.28;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.pl-sheet--landscape {
+  width: 297mm;
+  min-height: 210mm;
+}
+
+.pl-sheet__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6mm;
+  padding-bottom: 2mm;
+  border-bottom: 1.4pt solid #111;
+}
+
+.pl-sheet__company {
+  font-size: var(--pl-company, 13pt);
+  font-weight: var(--pl-title-weight, 800);
+  letter-spacing: 0.02em;
+  color: #111;
+  line-height: 1.15;
+}
+
+.pl-sheet__contacts {
+  margin-top: 1mm;
+  font-size: calc(var(--pl-body, 9pt) * 0.88);
+  color: #555;
+  line-height: 1.35;
+  max-width: 120mm;
+}
+
+.pl-sheet__date {
+  flex: 0 0 auto;
+  font-size: calc(var(--pl-body, 9pt) * 0.9);
+  color: #555;
+  white-space: nowrap;
+  padding-top: 1mm;
+}
+
+.pl-sheet__titles {
+  text-align: center;
+  margin: 4mm 0 4mm;
+}
+
+.pl-sheet__title {
+  margin: 0;
+  /* В globals.css у h1 задан «фирменный» шрифт сайта — в прайсе
+     должен действовать выбранный пользователем. */
+  font-family: inherit;
+  font-size: var(--pl-title, 20pt);
+  font-weight: var(--pl-title-weight, 800);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #111;
+  line-height: 1.1;
+}
+
+.pl-sheet__subtitle {
+  margin-top: 1.4mm;
+  font-size: calc(var(--pl-body, 9pt) * 1.02);
+  color: #444;
+}
+
+.pl-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.pl-table th,
+.pl-table td {
+  border: var(--pl-line-w, 0.75pt) solid #222;
+  padding: var(--pl-pad, 1.2mm);
+  vertical-align: middle;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.pl-table th {
+  background: var(--pl-head-bg, #f1efe8);
+  font-size: var(--pl-head, 8pt);
+  font-weight: var(--pl-head-weight, 800);
+  text-align: center;
+  line-height: 1.2;
+  color: #111;
+}
+
+.pl-table th .pl-th-main {
+  display: block;
+}
+
+.pl-table th .pl-th-unit {
+  display: block;
+  margin-top: 0.4mm;
+  font-size: calc(var(--pl-head, 8pt) * 0.82);
+  font-weight: 600;
+  color: #555;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.pl-table td {
+  font-size: var(--pl-body, 9pt);
+  color: #111;
+}
+
+.pl-table td.pl-col-num {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-table td.pl-col-name {
+  text-align: left;
+  font-weight: 600;
+}
+
+.pl-table td.pl-col-sku,
+.pl-table td.pl-col-size,
+.pl-table td.pl-col-pack {
+  text-align: center;
+  font-size: calc(var(--pl-body, 9pt) * 0.92);
+}
+
+.pl-table td.pl-col-price {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--pl-price-weight, 700);
+}
+
+.pl-table td.pl-col-purchase {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: #555;
+}
+
+.pl-table td.pl-col-empty {
+  color: #9a9a9a;
+  text-align: center;
+}
+
+/* Прочерк в ценовой колонке остаётся справа — как и сами цены. */
+.pl-table td.pl-col-price.pl-col-empty,
+.pl-table td.pl-col-purchase.pl-col-empty {
+  text-align: right;
+}
+
+.pl-table tr.pl-group-row td {
+  background: #f4f2ec;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: calc(var(--pl-body, 9pt) * 0.94);
+  text-align: left;
+  border-color: #222;
+}
+
+.pl-table tr.pl-row-alt td {
+  background: var(--pl-zebra, #faf9f5);
+}
+
+.pl-table tr.pl-group-row td {
+  background: #f1efe8 !important;
+}
+
+/* Прайс без «сетки»: только горизонтальные линии */
+.pl-table--plain th,
+.pl-table--plain td {
+  border-left: 0;
+  border-right: 0;
+}
+
+.pl-table--plain th {
+  border-top: 1pt solid #222;
+  border-bottom: 1.2pt solid #222;
+  background: transparent;
+}
+
+.pl-table--plain td {
+  border-bottom: 0.5pt solid #cfcfcf;
+}
+
+.pl-table--plain tr.pl-group-row td {
+  background: transparent !important;
+  border-bottom: 1pt solid #222;
+}
+
+.pl-table--plain tr.pl-row-alt td {
+  background: transparent;
+}
+
+.pl-sheet__note {
+  margin-top: 3mm;
+  font-size: calc(var(--pl-body, 9pt) * 0.86);
+  color: #444;
+  line-height: 1.4;
+  white-space: pre-line;
+  break-inside: avoid;
+}
+
+.pl-sheet__note strong {
+  color: #111;
+}
+
+.pl-sheet-placeholder {
+  width: 210mm;
+  min-height: 297mm;
+  background: #fff;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #8a8a8a;
+  font-size: 13px;
+  padding: 20mm;
+  box-sizing: border-box;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   СТАТУСЫ И МЕЛОЧИ
+   ═══════════════════════════════════════════════════════════ */
+.pl-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pl-status--ok {
+  background: rgba(39, 120, 70, 0.08);
+  border: 1px solid rgba(39, 120, 70, 0.3);
+  color: #1f6b3d;
+}
+
+.pl-status--err {
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid rgba(192, 57, 43, 0.3);
+  color: #9c2f23;
+}
+
+.pl-status--warn {
+  background: var(--pl-manual-bg);
+  border: 1px solid rgba(201, 138, 27, 0.4);
+  color: #7a5205;
+}
+
+.pl-muted {
+  color: var(--adm-muted, #7a7a74);
+}
+
+.pl-nowrap {
+  white-space: nowrap;
+}
+
+/* Мобильная раскладка */
+@media (max-width: 700px) {
+  .pl-price-toolbar {
+    gap: 10px;
+  }
+
+  .pl-price-toolbar .pl-field {
+    flex: 1 1 140px;
+  }
+
+  .pl-toolbar-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .pl-catalog-toolbar .admin-select {
+    flex: 1 1 140px;
+    width: 100%;
+  }
+
+  .pl-sheet,
+  .pl-sheet--landscape {
+    width: 210mm;
+    min-height: 297mm;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ПЕЧАТЬ
+   Изоляция через display:none: всё, что не относится к листу,
+   физически убирается из раскладки. Предков-флексы превращаем
+   в блоки, чтобы таблица шла в потоке с начала листа и
+   разбивалась на страницы.
+   ═══════════════════════════════════════════════════════════ */
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body:has(.pl-print-area) > *:not(:has(.pl-print-area)) {
+    display: none !important;
+  }
+
+  .pl-root > *:not(.pl-print-area) {
+    display: none !important;
+  }
+
+  .admin-shell,
+  .admin-content,
+  .admin-main,
+  .admin-stack {
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .admin-sidebar,
+  .admin-sidebar-handle,
+  .admin-mobile-bar,
+  .admin-bottom-nav,
+  .admin-notify,
+  .admin-realtime-status,
+  .admin-plans-shortcut,
+  .admin-requests-shortcut {
+    display: none !important;
+  }
+
+  /* Сама карточка предпросмотра на печати — это лист А4 */
+  .pl-print-area,
+  .pl-print-area .admin-card__pad {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    width: auto !important;
+    max-width: none !important;
+    /* .admin-card по умолчанию overflow:hidden — на печати это может
+       обрезать длинную таблицу, поэтому снимаем ограничение. */
+    overflow: visible !important;
+  }
+
+  .pl-stage {
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .pl-sheet,
+  .pl-sheet--landscape {
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    overflow: visible !important;
+  }
+
+  .pl-preview-head,
+  .pl-no-print {
+    display: none !important;
+  }
+
+  /* Многостраничная таблица: шапка повторяется на каждом листе,
+     строки не должны разрываться между страницами. */
+  .pl-table thead {
+    display: table-header-group;
+  }
+
+  .pl-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .pl-table tr.pl-group-row {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .pl-sheet__note {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

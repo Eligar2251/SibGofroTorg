@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Printer,
   Plus,
@@ -11,7 +12,9 @@ import {
   AlignCenter,
   AlignRight,
   Bold,
+  FileSpreadsheet,
 } from "lucide-react";
+import { ADMIN_PATH } from "@/lib/admin-path";
 
 // ═══════════════════════════════════════════════════════════════════
 // Печать на А4 — редактор таблицы «как в Excel».
@@ -144,7 +147,14 @@ export function PrintSheetEditor() {
                 «Печатать сетку».
               </p>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Link
+                href={`/${ADMIN_PATH}/price-list`}
+                className="admin-btn admin-btn--outline"
+                prefetch={false}
+              >
+                <FileSpreadsheet size={15} /> Прайс-лист по объёмам
+              </Link>
               <button type="button" className="admin-btn admin-btn--ghost" onClick={reset}>
                 <RotateCcw size={15} /> Сбросить
               </button>

@@ -14,9 +14,10 @@
     "test:payments": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/payment-export.test.mjs",
     "test:export-api": "node --experimental-strip-types --import ./tests/api-register.mjs --test tests/api-payment-export.test.mjs",
     "test:media": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/media-url.test.mjs tests/media-route.test.mjs",
-    "test": "npm run test:variants && npm run test:payments && npm run test:export-api && npm run test:media && npm run test:pallet && npm run test:recovery && npm run test:price-calc && npm run test:prices",
+    "test": "npm run test:variants && npm run test:payments && npm run test:export-api && npm run test:media && npm run test:pallet && npm run test:recovery && npm run test:price-calc && npm run test:prices && npm run test:price-list",
     "test:recovery": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/admin-recovery.test.mjs",
     "test:price-calc": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/price-calc.test.mjs",
+    "test:price-list": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/price-list.test.mjs",
     "test:prices": "node --experimental-strip-types --import ./tests/api-prices-register.mjs --test tests/api-bulk-prices.test.mjs",
     "dev:plain": "next dev",
     "test:pallet": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pallet.test.mjs"
