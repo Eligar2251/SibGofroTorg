@@ -10,13 +10,17 @@ function loadTs(file) {
   const { outputText } = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   });
-  const module = { exports: {} };
+  // Не называем этот объект `module`: в .cjs это имя занято CommonJS-
+  // обёрткой, и правило @next/next/no-assign-module-variable (#183)
+  // справедливо ругается на присваивание. Для транспилированного кода
+  // это просто песочница с `module.exports`.
+  const sandbox = { exports: {} };
   new Function("require", "module", "exports", outputText)(
     (name) => loadTs(path.resolve(path.dirname(filename), `${name}.ts`)),
-    module,
-    module.exports
+    sandbox,
+    sandbox.exports
   );
-  return module.exports;
+  return sandbox.exports;
 }
 
 const { isReceiptArchived, buildReceiptDebtRows } = loadTs("../src/lib/warehouse-shared.ts");

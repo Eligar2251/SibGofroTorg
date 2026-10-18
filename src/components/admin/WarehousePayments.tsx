@@ -413,9 +413,14 @@ export function PaymentForm({
   }
 
   // При выборе поступления подтягиваем его ставку НДС автоматически.
+  // Зависим только от идентификатора и самой ставки, а не от объекта
+  // поступления: после фонового обновления списка приходит новый объект,
+  // и эффект перезаписал бы ставку, выставленную вручную.
+  const primaryReceiptId = primaryReceipt?.id ?? null;
+  const primaryReceiptVatRate = primaryReceipt?.vatRate ?? null;
   useEffect(() => {
-    if (!primaryReceipt) return;
-    const rate = Number(primaryReceipt.vatRate);
+    if (!primaryReceiptId) return;
+    const rate = Number(primaryReceiptVatRate);
     if (Number.isFinite(rate)) {
       if (rate <= 0) {
         setPaymentWithoutVat(true);
@@ -424,7 +429,7 @@ export function PaymentForm({
         setPaymentVatRate(rate);
       }
     }
-  }, [primaryReceipt?.id]);
+  }, [primaryReceiptId, primaryReceiptVatRate]);
 
   // Живой предпросмотр назначения платежа (правила 1С).
   const purposePreview = useMemo(() => {

@@ -180,7 +180,10 @@ export function MadeToOrderManagerClient({
                   <tr key={p.id} style={changed ? { background: "rgba(200,134,10,0.06)" } : undefined}>
                     <td>
                       <div className="admin-product-thumb" style={{ width: 44, height: 44 }}>
-                        {p.imageUrl ? <img src={toSameOriginMediaUrl(p.imageUrl)} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Package size={18} />}
+                        {p.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- 44×44 миниатюра в таблице; next/image здесь не нужен.
+                          <img src={toSameOriginMediaUrl(p.imageUrl)} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : <Package size={18} />}
                       </div>
                     </td>
                     <td>
