@@ -431,10 +431,10 @@ export function VariantsEditor({ productId, basePrice }: VariantsEditorProps) {
           margin-top: 12px;
         }
         .ve-row {
-          border: 1px solid var(--border, #e5e5e5);
+          border: 1px solid var(--adm-ui-border, #e5e5e5);
           border-radius: 10px;
           padding: 12px;
-          background: #fff;
+          background: var(--adm-ui-surface);
         }
         .ve-row--hidden {
           opacity: 0.55;
@@ -451,7 +451,7 @@ export function VariantsEditor({ productId, basePrice }: VariantsEditorProps) {
         .ve-color {
           width: 44px;
           height: 36px;
-          border: 1px solid var(--border, #e5e5e5);
+          border: 1px solid var(--adm-ui-border, #e5e5e5);
           border-radius: 8px;
           padding: 2px;
           cursor: pointer;
@@ -461,8 +461,8 @@ export function VariantsEditor({ productId, basePrice }: VariantsEditorProps) {
           gap: 4px;
         }
         .ve-icon-btn {
-          background: #f5f5f5;
-          border: 1px solid var(--border, #e5e5e5);
+          background: var(--adm-ui-neutral-bg);
+          border: 1px solid var(--adm-ui-border, #e5e5e5);
           border-radius: 6px;
           width: 32px;
           height: 32px;
@@ -472,11 +472,11 @@ export function VariantsEditor({ productId, basePrice }: VariantsEditorProps) {
           cursor: pointer;
         }
         .ve-icon-btn:hover {
-          background: #ececec;
+          background: var(--adm-ui-hover);
         }
         .ve-icon-btn--danger:hover {
-          background: #fee;
-          color: #c00;
+          background: var(--adm-ui-danger-bg);
+          color: var(--adm-ui-danger);
         }
         .ve-row__body {
           display: grid;
@@ -497,15 +497,16 @@ export function VariantsEditor({ productId, basePrice }: VariantsEditorProps) {
         .ve-input {
           height: 36px;
           padding: 0 10px;
-          border: 1px solid var(--border, #e5e5e5);
+          border: 1px solid var(--adm-ui-border, #e5e5e5);
           border-radius: 6px;
           font: inherit;
           font-size: 14px;
-          background: #fff;
+          background: var(--adm-ui-surface);
+          color: var(--adm-ink);
         }
         .ve-input:focus {
           outline: none;
-          border-color: var(--kraft, #d97706);
+          border-color: var(--adm-kraft, #d97706);
         }
         .ve-input--sm {
           height: 36px;
@@ -524,15 +525,15 @@ export function VariantsEditor({ productId, basePrice }: VariantsEditorProps) {
           gap: 12px;
         }
         .ve-saved {
-          color: #16a34a;
+          color: var(--adm-ui-success);
           font-size: 13px;
           display: inline-flex;
           align-items: center;
           gap: 4px;
         }
         .admin-empty {
-          background: var(--bg-soft, #faf6ed);
-          border: 1px dashed var(--kraft, #d97706);
+          background: var(--adm-ui-surface-2);
+          border: 1px dashed var(--adm-kraft, #d97706);
           border-radius: 8px;
           padding: 16px;
           margin-top: 12px;
@@ -541,22 +542,22 @@ export function VariantsEditor({ productId, basePrice }: VariantsEditorProps) {
           margin: 0 0 4px;
         }
         .admin-empty__hint {
-          color: var(--ink-muted, #666);
+          color: var(--adm-ink-muted, #666);
           font-size: 13px;
         }
         .admin-loading {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          color: var(--ink-muted, #666);
+          color: var(--adm-ink-muted, #666);
           font-size: 13px;
         }
         .admin-error {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          background: #fff1f2;
-          color: #b91c1c;
+          background: var(--adm-ui-danger-bg);
+          color: var(--adm-ui-danger);
           padding: 6px 10px;
           border-radius: 6px;
           margin-top: 8px;

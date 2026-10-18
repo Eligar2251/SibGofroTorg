@@ -478,7 +478,7 @@
   border: 1px solid var(--adm-pine-line);
   border-radius: 7px;
   font: inherit;
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-ink);
 }
 

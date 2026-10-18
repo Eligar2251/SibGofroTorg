@@ -93,13 +93,43 @@ interface ProductOption {
 
 /* Палитра статусов — та же, что в src/app/cabinet/page.tsx. */
 const statusStyles: Record<string, { bg: string; color: string; dot: string }> = {
-  new: { bg: "#fff7ed", color: "#c2410c", dot: "#f97316" },
-  in_progress: { bg: "#eff6ff", color: "#1d4ed8", dot: "#3b82f6" },
-  ready: { bg: "#f5f3ff", color: "#6d28d9", dot: "#8b5cf6" },
-  in_delivery: { bg: "#e8f3fb", color: "#0b5f8f", dot: "#38bdf8" },
-  issued: { bg: "#ecfeff", color: "#0e7490", dot: "#06b6d4" },
-  completed: { bg: "#f0fdf4", color: "#15803d", dot: "#22c55e" },
-  rejected: { bg: "#fef2f2", color: "#dc2626", dot: "#ef4444" },
+  /* Токены темы: в светлой палитре те же цвета, что были,
+     в тёмной — приглушённые заливки с читаемым текстом. */
+  new: {
+    bg: "var(--adm-ui-warning-bg)",
+    color: "var(--adm-ui-warning)",
+    dot: "var(--adm-ui-warning)",
+  },
+  in_progress: {
+    bg: "var(--adm-ui-accent-bg)",
+    color: "var(--adm-ui-accent)",
+    dot: "var(--adm-ui-accent)",
+  },
+  ready: {
+    bg: "var(--adm-indigo-pale)",
+    color: "var(--adm-indigo)",
+    dot: "var(--adm-indigo)",
+  },
+  in_delivery: {
+    bg: "var(--adm-teal-pale)",
+    color: "var(--adm-teal)",
+    dot: "var(--adm-teal)",
+  },
+  issued: {
+    bg: "color-mix(in srgb, var(--adm-pine-pale) 60%, var(--adm-teal-pale))",
+    color: "color-mix(in srgb, var(--adm-pine) 65%, var(--adm-teal))",
+    dot: "color-mix(in srgb, var(--adm-pine) 65%, var(--adm-teal))",
+  },
+  completed: {
+    bg: "var(--adm-ui-success-bg)",
+    color: "var(--adm-ui-success)",
+    dot: "var(--adm-ui-success)",
+  },
+  rejected: {
+    bg: "var(--adm-ui-danger-bg)",
+    color: "var(--adm-ui-danger)",
+    dot: "var(--adm-ui-danger)",
+  },
 };
 
 const commLabels: Record<string, string> = {
@@ -297,7 +327,7 @@ function CabinetOrderCard({
             <span
               className="acab-order__type"
               title="Заявка оформлена с другого аккаунта, у которого тот же телефон. У клиента она в кабинете есть — поэтому она здесь тоже."
-              style={{ background: "#fff7ed", color: "#c2410c" }}
+              style={{ background: "var(--adm-ui-warning-bg)", color: "var(--adm-ui-warning)" }}
             >
               другой аккаунт по телефону
             </span>
@@ -306,7 +336,7 @@ function CabinetOrderCard({
             <span
               className="acab-order__type"
               title="Заявка без привязки к аккаунту — найдена по номеру телефона."
-              style={{ background: "#f3f4f6", color: "#6b7280" }}
+              style={{ background: "var(--adm-ui-neutral-bg)", color: "var(--adm-ui-text-muted)" }}
             >
               гостевая
             </span>
@@ -406,11 +436,11 @@ function CabinetOrderCard({
 
           {isOrder && order.pickupCode && order.status !== "rejected" && (
             <div className="acab-order__pickup">
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--adm-ui-text-muted)" }}>
                 КОД ВЫДАЧИ ЗАКАЗА
               </div>
               <div className="acab-order__pickup-code">{order.pickupCode}</div>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>
+              <div style={{ fontSize: 12, color: "var(--adm-ui-text-muted)" }}>
                 Назовите код при получении товара на складе
               </div>
             </div>
@@ -420,9 +450,9 @@ function CabinetOrderCard({
             <div
               className="acab-order__note"
               style={{
-                background: "#e8f3fb",
-                color: "#0b5f8f",
-                border: "1px solid #bae0f7",
+                background: "var(--adm-teal-pale)",
+                color: "var(--adm-teal)",
+                border: "1px solid var(--adm-teal-line)",
               }}
             >
               <strong>Заказ передан в доставку.</strong> Клиент видит это же
@@ -434,9 +464,9 @@ function CabinetOrderCard({
             <div
               className="acab-order__note"
               style={{
-                background: "#f5f3ff",
-                color: "#5b21b6",
-                border: "1px solid #ddd6fe",
+                background: "var(--adm-indigo-pale)",
+                color: "var(--adm-indigo)",
+                border: "1px solid var(--adm-indigo-line)",
               }}
             >
               <strong>Заказ собран и готов к выдаче.</strong> Можно забирать.
@@ -447,10 +477,18 @@ function CabinetOrderCard({
             <div
               className="acab-order__note"
               style={{
-                background: order.status === "completed" ? "#f0fdf4" : "#fef2f2",
-                color: order.status === "completed" ? "#15803d" : "#dc2626",
+                background:
+                  order.status === "completed"
+                    ? "var(--adm-ui-success-bg)"
+                    : "var(--adm-ui-danger-bg)",
+                color:
+                  order.status === "completed"
+                    ? "var(--adm-ui-success)"
+                    : "var(--adm-ui-danger)",
                 border: `1px solid ${
-                  order.status === "completed" ? "#bbf7d0" : "#fecaca"
+                  order.status === "completed"
+                    ? "var(--adm-ui-success-line)"
+                    : "var(--adm-ui-danger-line)"
                 }`,
               }}
             >
@@ -799,8 +837,11 @@ export function UserCabinetViewer() {
               className="acab-empty"
               style={
                 search
-                  ? { color: "#92400e", background: "#fffbeb" }
-                  : { color: "#6b7280" }
+                  ? {
+                      color: "var(--adm-ui-warning)",
+                      background: "var(--adm-ui-warning-bg)",
+                    }
+                  : { color: "var(--adm-ui-text-muted)" }
               }
             >
               {search
@@ -858,7 +899,7 @@ export function UserCabinetViewer() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span
               className="acab-screen__hint"
-              style={syncError ? { color: "#dc2626" } : undefined}
+              style={syncError ? { color: "var(--adm-ui-danger)" } : undefined}
             >
               {syncError
                 ? `${syncError} — показаны данные из последней удачной загрузки`
@@ -898,7 +939,7 @@ export function UserCabinetViewer() {
             {truncated && (
               <div
                 className="acab-empty"
-                style={{ color: "#92400e", background: "#fffbeb" }}
+                style={{ color: "var(--adm-ui-warning)", background: "var(--adm-ui-warning-bg)" }}
               >
                 Выборка обрезана потолком базы (1000 заявок на запрос) — ниже
                 самые свежие, старые могли не поместиться.
@@ -906,7 +947,7 @@ export function UserCabinetViewer() {
             )}
 
             {!loadingOrders && orders.length === 0 && (
-              <div className="acab-empty" style={{ color: "#6b7280" }}>
+              <div className="acab-empty" style={{ color: "var(--adm-ui-text-muted)" }}>
                 Заказов пока нет. Если заявка оформлена только что — она
                 подтянется сама в течение 25 секунд (или по кнопке «Обновить»).
               </div>

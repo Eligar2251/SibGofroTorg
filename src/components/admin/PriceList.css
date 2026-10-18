@@ -9,11 +9,13 @@
    ========================================================= */
 
 .pl-root {
-  --pl-manual: #c98a1b;
-  --pl-manual-bg: #fff8e8;
-  --pl-danger: #c0392b;
-  --pl-line: #dcd9d1;
-  --pl-soft: #f4f2ec;
+  /* Локальная палитра прайс-листа. Всё — токены темы, поэтому
+     конструктор одинаково выглядит и в светлых, и в тёмных темах. */
+  --pl-manual: var(--adm-ui-warning);
+  --pl-manual-bg: var(--adm-ui-warning-bg);
+  --pl-danger: var(--adm-ui-danger);
+  --pl-line: var(--adm-ui-border);
+  --pl-soft: var(--adm-ui-surface-2);
 }
 
 /* ── Шапка раздела ── */
@@ -137,10 +139,10 @@
 /* ── Переключатели-сегменты ── */
 .pl-seg {
   display: inline-flex;
-  border: 1px solid var(--adm-border, #e2dfd7);
+  border: 1px solid var(--adm-ui-border);
   border-radius: 9px;
   overflow: hidden;
-  background: #fff;
+  background: var(--adm-ui-surface-2);
 }
 
 .pl-seg__btn {
@@ -252,7 +254,7 @@
   border: 1px solid var(--pl-line);
   border-radius: 10px;
   overflow: hidden;
-  background: #fff;
+  background: var(--adm-ui-surface);
 }
 
 .pl-catalog-list {
@@ -276,7 +278,7 @@
 }
 
 .pl-pick:hover {
-  background: #faf9f5;
+  background: var(--adm-ui-hover);
 }
 
 .pl-pick.is-checked {
@@ -333,7 +335,7 @@
   justify-content: center;
   padding: 8px;
   border-top: 1px solid var(--pl-soft);
-  background: #fbfaf7;
+  background: var(--adm-ui-surface-2);
 }
 
 .pl-empty {
@@ -359,7 +361,7 @@
   padding: 12px;
   border: 1px solid var(--pl-line);
   border-radius: 10px;
-  background: #fbfaf7;
+  background: var(--adm-ui-surface-2);
   margin-bottom: 12px;
 }
 
@@ -394,7 +396,7 @@
   padding: 9px 12px;
   border-radius: 9px;
   border: 1px dashed var(--pl-line);
-  background: #fff;
+  background: var(--adm-ui-surface);
   font-size: 12px;
   color: var(--adm-muted, #7a7a74);
 }
@@ -486,20 +488,20 @@
 
 .pl-badge--manual {
   background: var(--pl-manual-bg);
-  border: 1px solid rgba(201, 138, 27, 0.4);
-  color: #8a5c05;
+  border: 1px solid var(--adm-kraft-line);
+  color: var(--adm-kraft);
 }
 
 .pl-badge--missing {
-  background: rgba(192, 57, 43, 0.08);
-  border: 1px solid rgba(192, 57, 43, 0.3);
+  background: var(--adm-ui-danger-bg);
+  border: 1px solid var(--adm-ui-danger-line);
   color: var(--pl-danger);
 }
 
 .pl-badge--ok {
-  background: rgba(39, 120, 70, 0.08);
-  border: 1px solid rgba(39, 120, 70, 0.3);
-  color: #277846;
+  background: var(--adm-ui-success-bg);
+  border: 1px solid var(--adm-ui-success-line);
+  color: var(--adm-ui-success);
 }
 
 /* Редактор выбранных товаров */
@@ -508,7 +510,7 @@
   border-radius: 10px;
   overflow: auto;
   max-height: 620px;
-  background: #fff;
+  background: var(--adm-ui-surface);
 }
 
 .pl-edit {
@@ -557,7 +559,7 @@
 }
 
 .pl-edit tbody tr:hover td {
-  background: #fcfbf8;
+  background: var(--adm-ui-hover);
 }
 
 .pl-edit__group td {
@@ -722,7 +724,8 @@
 }
 
 .pl-stage {
-  background: #e8e6e0;
+  /* Холст вокруг листа A4: в тёмной теме — тёмный, сам лист белый. */
+  background: var(--adm-ui-canvas, #e8e6e0);
   border-radius: 12px;
   padding: 18px;
   overflow: auto;
@@ -953,7 +956,7 @@
 .pl-sheet-placeholder {
   width: 210mm;
   min-height: 297mm;
-  background: #fff;
+  background: var(--adm-sheet-bg, #fff);
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.14);
   display: flex;
   align-items: center;

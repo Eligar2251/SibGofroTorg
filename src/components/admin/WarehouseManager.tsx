@@ -279,6 +279,34 @@ const paymentTypeLabels: Record<string, string> = {
 };
 
 type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "plan" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
+
+/**
+ * Вкладки склада. Список постоянный: иконки и подписи не зависят от
+ * данных, поэтому держим его на уровне модуля. Раньше он создавался
+ * внутри компонента, и `mobileNav` ссылался на него, не указывая в
+ * зависимостях useMemo (правило react-hooks/exhaustive-deps).
+ */
+const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+  { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
+  { key: "receipts", label: "Поставки", icon: <Truck size={13} /> },
+  { key: "plans", label: "Планы поставок", icon: <Lightbulb size={13} /> },
+  { key: "purchases", label: "Закупки", icon: <Wallet size={13} /> },
+  { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
+  // Бывшие вкладки «Прогноз» и «План» объединены в одну: план на
+  // произвольный период (один и несколько месяцев) с прибылью
+  // по каждому контрагенту и товару (средний чек × заказы периода).
+  { key: "plan", label: "План", icon: <Target size={13} /> },
+  { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
+  { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
+  { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
+  { key: "reports", label: "Отчёты", icon: <BarChart3 size={13} /> },
+  {
+    key: "counterparties",
+    label: "Контрагенты",
+    icon: <UsersRound size={13} />,
+  },
+];
+
 type StockSub = "stock" | "receipts" | "archive";
 type SuppliesSub = "receipts" | "debts" | "suppliers" | "consignment";
 type ReceiptSub = "active" | "archive";
@@ -1557,27 +1585,6 @@ export function WarehouseManager({
     () => stock.filter((p) => p.stockQty <= 0).length,
     [stock]
   );
-
-  const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-    { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
-    { key: "receipts", label: "Поставки", icon: <Truck size={13} /> },
-    { key: "plans", label: "Планы поставок", icon: <Lightbulb size={13} /> },
-    { key: "purchases", label: "Закупки", icon: <Wallet size={13} /> },
-    { key: "deals", label: "Заказы", icon: <ClipboardList size={13} /> },
-    // Бывшие вкладки «Прогноз» и «План» объединены в одну: план на
-    // произвольный период (один и несколько месяцев) с прибылью
-    // по каждому контрагенту и товару (средний чек × заказы периода).
-    { key: "plan", label: "План", icon: <Target size={13} /> },
-    { key: "deliveries", label: "Доставки", icon: <Truck size={13} /> },
-    { key: "bank", label: "Банк", icon: <Wallet size={13} /> },
-    { key: "salaries", label: "Зарплаты", icon: <Banknote size={13} /> },
-    { key: "reports", label: "Отчёты", icon: <BarChart3 size={13} /> },
-    {
-      key: "counterparties",
-      label: "Контрагенты",
-      icon: <UsersRound size={13} />,
-    },
-  ];
 
   /** id закупки → название, чтобы подписать платёж в банке. */
   const purchasePlanNames = useMemo(
@@ -3372,8 +3379,8 @@ export function WarehouseManager({
                                   marginTop: 14,
                                   padding: 12,
                                   borderRadius: 6,
-                                  border: "1px solid var(--adm-sand-pale)",
-                                  background: "rgba(245, 242, 234, 0.25)"
+                                  border: "1px solid var(--adm-border)",
+                                  background: "var(--adm-paper-warm)"
                                 }}>
                                   <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "var(--adm-ink)" }}>
                                     📊 Анализ прибыльности заказа:

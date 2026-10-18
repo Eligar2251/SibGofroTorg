@@ -568,9 +568,9 @@
 }
 .dgc-custom__canvas {
   overflow: hidden;
-  border: 1px solid #cbd4da;
+  border: 1px solid var(--dgc-line);
   border-radius: 8px;
-  background: #f8fafb;
+  background: var(--dgc-bg);
 }
 .dgc-custom__canvas svg {
   display: block;

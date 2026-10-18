@@ -22,6 +22,12 @@
        подложках (контраст подбирается под каждую тему).
    ========================================================= */
 
+/* Нативные контролы (селекты, даты, скроллбары) по умолчанию светлые.
+   Тёмные темы переопределяют это на dark — см. блок внизу. */
+:root {
+  color-scheme: light;
+}
+
 /* Плавный переход для всего админского UI (только цвета) */
 [data-admin="true"],
 [data-admin="true"] .admin-card,
@@ -604,6 +610,30 @@
   border-color: rgba(217,160,91,0.24);
 }
 
+/* ── Калькулятор штанцформы ──
+   У инструмента собственная палитра (--dgc-*), рассчитанная на
+   светлый фон. В тёмных темах перекрашиваем её в поверхности темы.
+   Вариант .dgc-root.dark (внутренняя тёмная тема инструмента) не трогаем. */
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) .dgc-root:not(.dark) {
+  --dgc-green:        var(--adm-pine);
+  --dgc-green-dark:   var(--adm-pine);
+  --dgc-green-bright: var(--adm-kraft);
+  --dgc-green-light:  var(--adm-pine-pale);
+  --dgc-ink:          var(--adm-ink);
+  --dgc-muted:        var(--adm-ink-muted);
+  --dgc-line:         var(--adm-border);
+  --dgc-bg:           var(--adm-paper);
+  --dgc-card:         var(--adm-card);
+  --dgc-warn:         var(--adm-kraft);
+  --dgc-bad:          var(--adm-rust);
+}
+
 /* ── Индиго/бирюза: в тёмных темах нужны светлые версии ── */
 [data-admin-theme="dark"],
 [data-admin-theme="superdark"],
@@ -616,6 +646,76 @@
   --adm-teal:        #5eead4;
   --adm-teal-pale:   #0f2b2b;
   --adm-teal-line:   rgba(94,234,212,0.30);
+
+  /* Нативные контролы и скроллбары — тёмные (иначе выпадающий список
+     <select> и календарь остаются белыми даже в «Ночи»). */
+  color-scheme: dark;
+
+  /* ── Служебная палитра поверхностей ──
+     Светлые темы берут значения из :root (admin.css); здесь те же
+     токены указывают на поверхности текущей тёмной темы. На них
+     опираются табель дежурств, зарплаты, платежи макулатуры,
+     прайс-лист, отчёт о прибыли и редактор печати. */
+  --adm-ui-surface:        var(--adm-card);
+  --adm-ui-surface-2:      var(--adm-paper-warm);
+  --adm-ui-surface-3:      color-mix(in srgb, var(--adm-card) 78%, var(--adm-paper-warm));
+  --adm-ui-surface-4:      var(--adm-paper);
+  --adm-ui-hover:          color-mix(in srgb, var(--adm-ink) 9%, var(--adm-card));
+  --adm-ui-active:         color-mix(in srgb, var(--adm-ink) 14%, var(--adm-card));
+  --adm-ui-border:         var(--adm-border);
+  --adm-ui-border-strong:  var(--adm-border-mid);
+  --adm-ui-border-soft:    var(--adm-border-soft);
+  --adm-ui-text:           var(--adm-ink);
+  --adm-ui-text-soft:      var(--adm-ink-soft);
+  --adm-ui-text-muted:     var(--adm-ink-muted);
+  --adm-ui-text-faint:     color-mix(in srgb, var(--adm-ink-muted) 72%, var(--adm-card));
+  --adm-ui-accent:         var(--adm-steel);
+  --adm-ui-accent-strong:  var(--adm-steel);
+  --adm-ui-accent-bg:      var(--adm-steel-pale);
+  --adm-ui-accent-line:    var(--adm-steel-line);
+  --adm-ui-on-accent:      var(--adm-on-steel);
+  --adm-ui-success:        var(--adm-pine);
+  --adm-ui-success-bg:     var(--adm-pine-pale);
+  --adm-ui-success-line:   var(--adm-pine-line);
+  --adm-ui-danger:         var(--adm-rust);
+  --adm-ui-danger-bg:      var(--adm-rust-pale);
+  --adm-ui-danger-line:    var(--adm-rust-line);
+  --adm-ui-warning:        var(--adm-kraft);
+  --adm-ui-warning-bg:     var(--adm-kraft-pale);
+  --adm-ui-warning-line:   var(--adm-kraft-line);
+  --adm-ui-neutral-bg:     var(--adm-paper-warm);
+  --adm-ui-neutral-line:   var(--adm-border);
+  /* Жёлтый «маркер» смены на тёмном фоне — приглушённый янтарь,
+     иначе целые строки табеля светятся неоном. */
+  --adm-ui-highlight:      color-mix(in srgb, var(--adm-kraft) 38%, var(--adm-card));
+  --adm-ui-highlight-soft: color-mix(in srgb, var(--adm-kraft) 16%, var(--adm-card));
+  --adm-ui-canvas:         var(--adm-paper);
+  --adm-ui-solid:          var(--adm-ink-deep);
+  --adm-sky:               #7dd3fc;
+  --adm-sky-pale:          #10222e;
+  --adm-sky-line:          rgba(125, 211, 252, 0.30);
+  --adm-ozon:              #5c9dff;
+  --adm-ui-on-solid:       #ffffff;
+
+
+  /* ── Зарплатная ведомость склада ──
+     Плашки «план/оплачено» были пастельными и на тёмном фоне
+     превращались в светлые пятна. Сохраняем цветовое кодирование,
+     но приглушаем заливки под тему. */
+  --whsal-paid-cash-bg:  color-mix(in srgb, var(--adm-rust) 24%, var(--adm-card));
+  --whsal-paid-cash-line: var(--adm-rust-line);
+  --whsal-paid-rent-bg:  color-mix(in srgb, var(--adm-steel) 24%, var(--adm-card));
+  --whsal-paid-rent-line: var(--adm-steel-line);
+  --whsal-plan-cash-bg:  color-mix(in srgb, var(--adm-rust) 12%, var(--adm-card));
+  --whsal-plan-cash-line: var(--adm-rust-line);
+  --whsal-plan-cash-fg:  var(--adm-rust);
+  --whsal-plan-rent-bg:  color-mix(in srgb, var(--adm-steel) 12%, var(--adm-card));
+  --whsal-plan-rent-line: var(--adm-steel-line);
+  --whsal-plan-rent-fg:  var(--adm-steel);
+  --whsal-plan-wp-bg:    var(--adm-teal-pale);
+  --whsal-plan-wp-line:  var(--adm-teal-line);
+  --whsal-plan-wp-fg:    var(--adm-teal);
+  --adm-ui-scrim:          rgba(0, 0, 0, 0.62);
 }
 
 /* ══════════════════════════════════════
@@ -623,6 +723,8 @@
    ══════════════════════════════════════ */
 @media print {
   html[data-admin-theme] {
+    /* На бумаге нет тёмных тем: нативные контролы и «бумага» — светлые. */
+    color-scheme: light !important;
     --adm-ink: #000 !important;
     --adm-ink-soft: #111 !important;
     --adm-paper: #fff !important;

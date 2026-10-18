@@ -6,9 +6,9 @@
 
 .saz-root {
   font-family: "Segoe UI", Arial, sans-serif;
-  color: #1f2933;
+  color: var(--adm-ui-text);
   padding: 16px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   border-radius: 10px;
   border: 1px solid var(--adm-border, #dbd8d0);
 }
@@ -21,12 +21,12 @@
 }
 .saz-header__sub {
   font-size: 13px;
-  color: #555;
+  color: var(--adm-ui-text-muted);
 }
 
 .saz-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--adm-ui-surface);
+  border: 1px solid var(--adm-ui-border);
   border-radius: 10px;
   padding: 14px;
   margin-bottom: 14px;
@@ -59,7 +59,7 @@
   flex-direction: column;
   gap: 4px;
   font-size: 13px;
-  color: #374151;
+  color: var(--adm-ui-text-soft);
 }
 .saz-field--wide {
   grid-column: 1 / -1;
@@ -67,12 +67,12 @@
 .saz-field span {
   font-weight: 600;
   font-size: 12px;
-  color: #374151;
+  color: var(--adm-ui-text-soft);
 }
 .saz-field input,
 .saz-field select {
   padding: 6px 8px;
-  border: 1px solid #cbd2d9;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 6px;
   font-size: 14px;
 }
@@ -84,8 +84,8 @@
 }
 .saz-chip {
   padding: 6px 10px;
-  border: 1px solid #cbd2d9;
-  background: #fff;
+  border: 1px solid var(--adm-ui-border-strong);
+  background: var(--adm-ui-surface);
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
@@ -94,44 +94,47 @@
   text-align: center;
 }
 .saz-chip:hover {
-  background: #f0f2f5;
+  background: var(--adm-ui-hover);
 }
 .saz-chip--on {
-  background: #dbeafe;
-  border-color: #2563eb;
-  color: #1d4ed8;
+  background: var(--adm-ui-accent-bg);
+  border-color: var(--adm-ui-accent);
+  color: var(--adm-ui-accent);
 }
 .saz-chip--on.saz-chip--pay {
-  background: #fef3c7;
-  border-color: #d97706;
-  color: #92400e;
+  background: var(--adm-ui-warning-bg);
+  border-color: var(--adm-ui-warning);
+  color: var(--adm-ui-warning);
 }
 
 .saz-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid #cbd2d9;
-  background: #fff;
+  border: 1px solid var(--adm-ui-border-strong);
+  background: var(--adm-ui-surface);
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
 }
-.saz-btn:hover { background: #f0f2f5; }
+.saz-btn:hover { background: var(--adm-ui-hover); }
 .saz-btn--primary {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
+  background: var(--adm-ui-accent);
+  border-color: var(--adm-ui-accent);
+  color: var(--adm-ui-on-accent);
 }
-.saz-btn--primary:hover { background: #1d4ed8; }
+.saz-btn--primary:hover {
+  background: color-mix(in srgb, var(--adm-ui-accent) 86%, #000);
+  border-color: color-mix(in srgb, var(--adm-ui-accent) 86%, #000);
+}
 .saz-btn--ghost {
   background: transparent;
 }
 
 .saz-table-wrap {
   overflow-x: auto;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--adm-ui-border);
   border-radius: 8px;
 }
 .saz-emp-table {
@@ -141,20 +144,20 @@
 }
 .saz-emp-table th,
 .saz-emp-table td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--adm-ui-border);
   padding: 6px 8px;
   text-align: left;
   vertical-align: middle;
 }
 .saz-emp-table thead th {
-  background: #f9fafb;
+  background: var(--adm-ui-surface-4);
   font-size: 12px;
   font-weight: 700;
   text-align: center;
 }
 .saz-input {
   padding: 5px 8px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 5px;
   font-size: 13px;
   width: 100%;
@@ -169,11 +172,11 @@
 }
 .saz-cell-total {
   font-weight: 800;
-  background: #f0fdf4;
-  color: #15803d;
+  background: var(--adm-ui-success-bg);
+  color: var(--adm-ui-success);
 }
 .saz-warn {
-  color: #b91c1c;
+  color: var(--adm-ui-danger);
   font-weight: 700;
 }
 .saz-check {
@@ -192,23 +195,23 @@
   align-items: flex-start;
 }
 .saz-btn--roster {
-  background: #dc2626;
-  border-color: #dc2626;
-  color: #fff;
+  background: var(--adm-ui-danger);
+  border-color: var(--adm-ui-danger);
+  color: var(--adm-on-rust);
   font-weight: 700;
   font-size: 12px;
   padding: 5px 10px;
 }
-.saz-btn--roster:hover { background: #b91c1c; }
+.saz-btn--roster:hover { background: color-mix(in srgb, var(--adm-ui-danger) 86%, #000); }
 .saz-icon-btn {
   padding: 4px;
   border: none;
   background: transparent;
-  color: #b91c1c;
+  color: var(--adm-ui-danger);
   cursor: pointer;
   border-radius: 4px;
 }
-.saz-icon-btn:hover { background: #fee2e2; }
+.saz-icon-btn:hover { background: var(--adm-ui-danger-bg); }
 
 .saz-total-bar {
   display: flex;
@@ -217,20 +220,20 @@
   align-items: center;
   padding-top: 10px;
   margin-top: 10px;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--adm-ui-border);
   font-size: 13px;
 }
-.saz-total-bar b { color: #1d4ed8; }
-.saz-muted { color: #6b7280; font-size: 12px; }
-.saz-saved { margin-left: auto; font-size: 11px; color: #9ca3af; }
+.saz-total-bar b { color: var(--adm-ui-accent); }
+.saz-muted { color: var(--adm-ui-text-muted); font-size: 12px; }
+.saz-saved { margin-left: auto; font-size: 11px; color: var(--adm-ui-text-muted); }
 
 /* ── Расписание по дням ── */
 .saz-schedule { display: flex; flex-direction: column; gap: 12px; }
 .saz-week {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--adm-ui-border);
   border-radius: 8px;
   padding: 8px;
-  background: #fafafa;
+  background: var(--adm-ui-surface-2);
 }
 .saz-week__head {
   font-weight: 700;
@@ -239,45 +242,45 @@
   justify-content: space-between;
   font-size: 13px;
 }
-.saz-week__total { color: #1d4ed8; }
+.saz-week__total { color: var(--adm-ui-accent); }
 .saz-days {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
 }
 .saz-day {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 6px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   padding: 6px;
   min-height: 100px;
   display: flex;
   flex-direction: column;
   font-size: 11px;
 }
-.saz-day--empty { background: #f9fafb; color: #9ca3af; }
-.saz-day--remainder { border-color: #60a5fa; background: #eff6ff; }
+.saz-day--empty { background: var(--adm-ui-surface-4); color: var(--adm-ui-text-muted); }
+.saz-day--remainder { border-color: var(--adm-ui-accent-line); background: var(--adm-ui-accent-bg); }
 .saz-day__head {
   display: flex;
   align-items: baseline;
   gap: 4px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--adm-ui-border-soft);
   padding-bottom: 3px;
   margin-bottom: 4px;
 }
-.saz-day__wd { font-weight: 700; font-size: 11px; color: #374151; }
-.saz-day__num { font-size: 16px; font-weight: 800; color: #111; }
-.saz-day__mon { font-size: 10px; color: #888; margin-left: auto; }
+.saz-day__wd { font-weight: 700; font-size: 11px; color: var(--adm-ui-text-soft); }
+.saz-day__num { font-size: 16px; font-weight: 800; color: var(--adm-ui-text); }
+.saz-day__mon { font-size: 10px; color: var(--adm-ui-text-muted); margin-left: auto; }
 .saz-day__body { flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .saz-day__line {
-  background: #fff8e1;
-  border: 1px solid #fde68a;
+  background: var(--adm-ui-warning-bg);
+  border: 1px solid var(--adm-ui-warning-line);
   border-radius: 4px;
   padding: 3px 4px;
 }
 .saz-day--remainder .saz-day__line {
-  background: #eff6ff;
-  border-color: #93c5fd;
+  background: var(--adm-ui-accent-bg);
+  border-color: var(--adm-ui-accent-line);
 }
 .saz-day__name {
   display: block;
@@ -291,19 +294,19 @@
   display: block;
   font-weight: 800;
   font-size: 14px;
-  color: #1d4ed8;
+  color: var(--adm-ui-accent);
 }
 .saz-day__hint {
   display: block;
   font-size: 9px;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
 }
 .saz-day__empty {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #d1d5db;
+  color: var(--adm-ui-text-faint);
   font-size: 18px;
 }
 .saz-day__foot {
@@ -311,12 +314,12 @@
   text-align: right;
   font-weight: 800;
   font-size: 12px;
-  color: #374151;
+  color: var(--adm-ui-text-soft);
 }
 
 .saz-card--print {
-  background: #f0fdf4;
-  border-color: #86efac;
+  background: var(--adm-ui-success-bg);
+  border-color: var(--adm-ui-success-line);
 }
 .saz-print-grid {
   display: grid;
@@ -325,25 +328,25 @@
   margin-top: 6px;
 }
 .saz-print-block {
-  background: #fff;
-  border: 1px solid #bbf7d0;
+  background: var(--adm-ui-surface);
+  border: 1px solid var(--adm-ui-success-line);
   border-radius: 10px;
   padding: 14px;
 }
 .saz-print-block--roster {
-  background: #fef2f2;
-  border-color: #fecaca;
+  background: var(--adm-ui-danger-bg);
+  border-color: var(--adm-ui-danger-line);
 }
 .saz-print-block__title {
   font-size: 16px;
   font-weight: 800;
   margin-bottom: 6px;
-  color: #065f46;
+  color: var(--adm-ui-success);
 }
-.saz-print-block--roster .saz-print-block__title { color: #991b1b; }
+.saz-print-block--roster .saz-print-block__title { color: var(--adm-ui-danger); }
 .saz-print-block__sub {
   font-size: 13px;
-  color: #374151;
+  color: var(--adm-ui-text-soft);
   line-height: 1.45;
   margin-bottom: 12px;
 }
@@ -354,7 +357,7 @@
   gap: 4px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed #fecaca;
+  border-top: 1px dashed var(--adm-ui-danger-line);
 }
 .saz-roster-item {
   display: flex;
@@ -365,7 +368,7 @@
   padding: 3px 6px;
   border-radius: 4px;
 }
-.saz-roster-item:hover { background: #fee2e2; }
+.saz-roster-item:hover { background: var(--adm-ui-danger-bg); }
 .saz-roster-item input { cursor: pointer; }
 
 @media print {
@@ -385,7 +388,8 @@
   position: fixed;
   inset: 0;
   z-index: 99999;
-  background: #f5f3ee;
+  /* Холст предпросмотра — по теме; сам лист ниже всегда бумажный. */
+  background: var(--adm-ui-surface-3);
   overflow: auto;
   padding: 24px;
 }
@@ -575,7 +579,7 @@
 /* ── Личный табель охраны ── */
 .saz-roster .saz-r-hint {
   font-size: 10px;
-  color: #555;
+  color: var(--adm-ui-text-muted);
   margin-bottom: 4mm;
 }
 .saz-r-grid {

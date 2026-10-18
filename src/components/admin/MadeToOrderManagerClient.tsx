@@ -153,7 +153,7 @@ export function MadeToOrderManagerClient({
       </div>
 
       {message && (
-        <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, background: "rgba(22,163,74,0.08)", border: "1px solid rgba(22,163,74,0.2)", color: "#166534" }}>
+        <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, background: "var(--adm-ui-success-bg)", border: "1px solid var(--adm-ui-success-line)", color: "var(--adm-ui-success)" }}>
           {message}
         </div>
       )}
@@ -180,7 +180,10 @@ export function MadeToOrderManagerClient({
                   <tr key={p.id} style={changed ? { background: "rgba(200,134,10,0.06)" } : undefined}>
                     <td>
                       <div className="admin-product-thumb" style={{ width: 44, height: 44 }}>
-                        {p.imageUrl ? <img src={toSameOriginMediaUrl(p.imageUrl)} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Package size={18} />}
+                        {p.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- 44×44 миниатюра в таблице; next/image здесь не нужен.
+                          <img src={toSameOriginMediaUrl(p.imageUrl)} alt="" loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : <Package size={18} />}
                       </div>
                     </td>
                     <td>
@@ -210,7 +213,7 @@ export function MadeToOrderManagerClient({
                         />
                         <span style={{ fontSize: 12 }}>шт.</span>
                       </div>
-                      {changed && <div style={{ fontSize: 10, color: "#a16207", marginTop: 4 }}>изменено (было {original || "—"})</div>}
+                      {changed && <div style={{ fontSize: 10, color: "var(--adm-kraft)", marginTop: 4 }}>изменено (было {original || "—"})</div>}
                     </td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
@@ -245,7 +248,7 @@ export function MadeToOrderManagerClient({
         </div>
       </div>
 
-      <div className="admin-card" style={{ padding: 14, background: "rgba(245,242,234,0.5)" }}>
+      <div className="admin-card" style={{ padding: 14, background: "var(--adm-paper-warm)" }}>
         <div style={{ fontSize: 12, lineHeight: 1.5, color: "var(--adm-ink-soft)" }}>
           <b>Как это работает:</b> Если у товара стоит галочка «Под заказ», вы можете указать от какого количества изготавливаем.
           <br />

@@ -113,6 +113,78 @@
   --adm-warm-white: var(--adm-paper);
   --adm-charcoal:   var(--adm-ink-soft);
   --adm-border-strong: var(--adm-border-mid);
+
+  /* ── Служебная палитра интерфейсных поверхностей ──
+     Многие разделы админки (табель дежурств, зарплаты, платежи
+     макулатуры, прайс-лист, отчёт о прибыли) исторически рисовали
+     «белые» карточки, таблицы и поля вручную, без токенов темы — на
+     тёмных темах они оставались светлыми пятнами. Эти переменные
+     СВЕТЛЫХ тем в точности повторяют прежние цвета (внешний вид не
+     меняется), а тёмные темы переопределяют их на поверхности темы
+     (см. admin-themes.css). Новый код должен брать цвета отсюда,
+     а не писать #fff / #f8fafc руками. */
+  --adm-ui-surface:        #ffffff;  /* карточки, поля, кнопки, модалки */
+  --adm-ui-surface-2:      #f8fafc;  /* шапки таблиц, вложенные панели */
+  --adm-ui-surface-3:      #f5f7fa;  /* тулбары, полосы, холсты */
+  --adm-ui-surface-4:      #f9fafb;  /* самый тихий фон (списки, пустые) */
+  --adm-ui-hover:          #f0f2f5;  /* наведение на нейтральные элементы */
+  --adm-ui-active:         #f1f5f9;  /* выбранный/нажатый нейтральный */
+  --adm-ui-border:         #e2e8f0;  /* обычные рамки и разделители */
+  --adm-ui-border-strong:  #cbd5e1;  /* рамки полей и таблиц */
+  --adm-ui-border-soft:    #f1f5f9;  /* почти незаметные линии */
+  --adm-ui-text:           #0f172a;  /* основной текст */
+  --adm-ui-text-soft:      #334155;  /* вторичный текст */
+  --adm-ui-text-muted:     #64748b;  /* подписи, подсказки */
+  --adm-ui-text-faint:     #94a3b8;  /* совсем тихий текст, плейсхолдеры */
+  --adm-ui-accent:         #2563eb;  /* ссылки, активные элементы */
+  --adm-ui-accent-strong:  #1d4ed8;  /* активные заливки */
+  --adm-ui-accent-bg:      #eff6ff;  /* светло-синяя подложка */
+  --adm-ui-accent-line:    #93c5fd;  /* рамка акцентной подложки */
+  --adm-ui-on-accent:      #ffffff;  /* текст на акцентной заливке */
+  --adm-ui-success:        #15803d;
+  --adm-ui-success-bg:     #ecfdf5;
+  --adm-ui-success-line:   #a7f3d0;
+  --adm-ui-danger:         #b91c1c;
+  --adm-ui-danger-bg:      #fef2f2;
+  --adm-ui-danger-line:    #fecaca;
+  --adm-ui-warning:        #b45309;
+  --adm-ui-warning-bg:     #fffbeb;
+  --adm-ui-warning-line:   #fcd34d;
+  --adm-ui-neutral-bg:     #f3f4f6;
+  --adm-ui-neutral-line:   #e5e7eb;
+  /* «Маркер»: яркая жёлтая заливка рабочих смен в табеле. */
+  --adm-ui-highlight:      #ffe135;
+  --adm-ui-highlight-soft: #fff9db;
+  /* Холст вокруг листов A4/этикеток в предпросмотрах. */
+  --adm-ui-canvas:         #e8e6e0;
+  /* Плашка, которая ВСЕГДА тёмная (белый текст поверх неё). */
+  --adm-ui-solid:          #1d4e89;
+  /* Фирменный синий Ozon: на тёмном фоне исходный #005bff нечитаем. */
+  --adm-ozon:              #005bff;
+  --adm-ui-on-solid:       #ffffff;
+  --adm-ui-on-dark:        #ffffff;  /* текст на тёмной/цветной подложке */
+  --adm-ui-scrim:          rgba(15, 23, 42, 0.45);
+  /* «Бумага»: предпросмотр печатных листов (A4, этикетки) остаётся
+     светлым в любой теме — он показывает то, что уйдёт на принтер. */
+  --adm-sheet-bg:          #ffffff;
+  --adm-sheet-ink:         #111111;
+  --adm-sheet-line:        #222222;
+
+  /* Алиасы старых имён: часть разделов (макулатура, отчёт о
+     прибыли) обращается к ним с фолбэком, из-за чего фолбэк
+     срабатывал всегда и тёмная тема игнорировалась. */
+  --adm-bg:            var(--adm-paper);
+  --adm-soft:          var(--adm-paper-warm);
+  --adm-fg:            var(--adm-ink);
+  --adm-line:          var(--adm-border);
+  --adm-kraft-soft:    var(--adm-paper);
+  --adm-navy-soft:     var(--adm-steel-pale);
+  --adm-surface-soft:  var(--adm-card);
+  --admin-surface:     var(--adm-ui-surface);
+  --admin-text:        var(--adm-ink);
+  --admin-muted:       var(--adm-ink-muted);
+  --admin-accent:      var(--adm-ui-accent);
+  --admin-border:      var(--adm-ui-border);
 }
 
 /* ══════════════════════════════════════
@@ -7954,7 +8026,7 @@ body.is-col-resizing * {
    суммы прячем — карточки ниже, порядок обозревать удобнее. */
 .featured-sort__card-mask .pcc__img {
   aspect-ratio: 4 / 3;
-  background: #fff;
+  background: var(--adm-ui-surface-3);
 }
 
 .featured-sort__card-mask .pcc__img img {
@@ -11374,7 +11446,7 @@ body.is-col-resizing * {
   padding: 5px 8px;
   border: 1px solid var(--adm-border-mid);
   border-radius: var(--adm-r-sm);
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-ink);
   font: inherit;
   font-size: 13px;
@@ -11458,8 +11530,9 @@ body.is-col-resizing * {
   max-height: 84vh;
   margin-top: 16px;
   padding: 12px;
-  background: #f5f3ee;
-  border: 1px dashed #ccc9c0;
+  /* Холст предпросмотра этикеток: по теме; сами листы ниже — белые. */
+  background: var(--adm-ui-surface-3);
+  border: 1px dashed var(--adm-border-mid);
   border-radius: 8px;
   overflow: auto;
 }
@@ -12688,7 +12761,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   border-radius: 9px;
 }
 .sp-nav.is-on .sp-nav__icon {
-  color: #fff;
+  color: var(--adm-ui-on-accent);
   background: var(--adm-kraft);
   border-color: var(--adm-kraft);
 }
@@ -13165,13 +13238,13 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: var(--adm-ui-surface);
   border: none;
   color: var(--adm-muted);
   cursor: pointer;
 }
 .ps-seg__btn + .ps-seg__btn { border-left: 1px solid var(--adm-border); }
-.ps-seg__btn--active { background: var(--adm-navy); color: #fff; }
+.ps-seg__btn--active { background: var(--adm-navy); color: var(--adm-ui-on-accent); }
 
 .ps-stepper {
   display: flex;
@@ -13187,7 +13260,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: var(--adm-ui-surface-2);
   border: none;
   cursor: pointer;
   color: var(--adm-muted);
@@ -13216,7 +13289,12 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 .ps-table { border-collapse: collapse; }
 
 /* Экранный предпросмотр: лёгкая серая сетка, чтобы видеть ячейки */
-.ps-table--screen td { border: 1px solid #d7dce0; background: #fff; vertical-align: top; }
+.ps-table--screen td {
+  border: 1px solid var(--adm-sheet-line, #d7dce0);
+  background: var(--adm-sheet-bg, #fff);
+  color: var(--adm-sheet-ink, #111);
+  vertical-align: top;
+}
 .ps-table--screen textarea {
   width: 100%;
   min-height: 34px;
@@ -13224,7 +13302,8 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   outline: none;
   resize: vertical;
   background: transparent;
-  color: var(--adm-navy);
+  /* Лист белый в любой теме — текст на нём только «бумажный». */
+  color: var(--adm-sheet-ink, #111);
   line-height: 1.3;
   padding: 0;
   font-family: inherit;
@@ -13691,7 +13770,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 }
 .bf-dim--ok .bf-dim__diff {
   background: rgba(22, 163, 74, 0.12);
-  color: #15803d;
+  color: var(--adm-pine);
 }
 .bf-dim--bad {
   background: var(--adm-rust-pale);
@@ -13843,7 +13922,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--adm-border);
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-muted);
   font-size: 13px;
   font-weight: 600;
@@ -13858,7 +13937,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
 .settings-tab--active {
   background: var(--adm-navy);
   border-color: var(--adm-navy);
-  color: #fff;
+  color: var(--adm-ui-on-accent);
 }
 .settings-tab svg { flex-shrink: 0; }
 
@@ -14107,14 +14186,14 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   width: 72px;
   height: 72px;
   object-fit: cover;
-  background: #fff;
+  background: var(--adm-ui-surface-2);
   border-radius: 8px;
   flex-shrink: 0;
 }
 .purchase-create__ozon-placeholder {
   display: grid;
   place-items: center;
-  color: #005bff;
+  color: var(--adm-ozon);
   font-size: 11px;
   font-weight: 900;
 }
@@ -14132,7 +14211,7 @@ button.cashc-ledger__row:hover { background: var(--adm-paper-warm); }
   white-space: nowrap;
 }
 .purchase-create__ozon-preview b {
-  color: #005bff;
+  color: var(--adm-ozon);
   font-size: 15px;
 }
 .purchase-create__ozon-preview small {
@@ -15247,7 +15326,7 @@ a.client-card__contact:hover {
   font-size: 11px;
 }
 
-.trip-type-picker__btn--delivery.trip-type-picker__btn--on { background: var(--adm-pine); border-color: var(--adm-pine); color: #fff; }
+.trip-type-picker__btn--delivery.trip-type-picker__btn--on { background: var(--adm-pine); border-color: var(--adm-pine); color: var(--adm-on-pine); }
 .trip-type-picker__btn--pickup.trip-type-picker__btn--on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
 .trip-type-picker__btn--handover.trip-type-picker__btn--on { background: #6d28d9; border-color: #6d28d9; color: #fff; }
 
@@ -15501,7 +15580,7 @@ a.client-card__contact:hover {
   padding: 5px 8px;
   border: 1px solid var(--adm-border-mid);
   border-radius: var(--adm-r-sm);
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-ink);
   font: inherit;
 }
@@ -16223,7 +16302,7 @@ button.admin-nav-group__toggle .admin-nav-ico,
   padding: 0 10px;
   border: 1px solid var(--adm-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-ink);
   font: inherit;
   font-size: 13px;
@@ -16270,7 +16349,7 @@ button.admin-nav-group__toggle .admin-nav-ico,
   padding: 0 6px;
   border: 1px solid var(--adm-border);
   border-radius: 7px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-ink);
   font: inherit;
   font-size: 11px;
@@ -16311,7 +16390,7 @@ button.admin-nav-group__toggle .admin-nav-ico,
   margin-bottom: 8px;
   border: 1px solid var(--adm-border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-sand);
 }
 
@@ -16335,7 +16414,7 @@ button.admin-nav-group__toggle .admin-nav-ico,
 
 .navcfg-chip {
   border: 1px solid var(--adm-border);
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-ink-muted);
   border-radius: 999px;
   padding: 3px 8px;
@@ -16368,7 +16447,7 @@ button.admin-nav-group__toggle .admin-nav-ico,
   padding: 8px 4px;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   color: var(--adm-ink);
   font: inherit;
   font-size: 10px;

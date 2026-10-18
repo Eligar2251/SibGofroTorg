@@ -364,9 +364,9 @@ export function ProductListClient({
             borderRadius: 10,
             fontSize: 13,
             lineHeight: 1.45,
-            background: "rgba(22,163,74,0.08)",
-            border: "1px solid rgba(22,163,74,0.25)",
-            color: "var(--green-dark, #166534)",
+            background: "var(--adm-ui-success-bg)",
+            border: "1px solid var(--adm-ui-success-line)",
+            color: "var(--adm-ui-success)",
           }}
         >
           {barcodeMessage}
@@ -456,7 +456,7 @@ export function ProductListClient({
                     <td>
                       <div className="admin-price">
                         {product.madeToOrder ? (
-                          <span style={{ color: "var(--green-dark)", fontWeight: 700 }}>
+                          <span style={{ color: "var(--adm-ui-success)", fontWeight: 700 }}>
                             Под заказ{product.madeToOrderMinQty ? ` от ${product.madeToOrderMinQty} шт.` : ""}
                           </span>
                         ) : product.price != null ? (
@@ -502,9 +502,18 @@ export function ProductListClient({
                           padding: "2px 8px",
                           borderRadius: 999,
                           fontSize: 12,
-                          background: (product.viewCount ?? 0) > 0 ? "#ffffff" : "#1a1a18",
-                          color: (product.viewCount ?? 0) > 0 ? "#111111" : "#ffffff",
-                          border: (product.viewCount ?? 0) > 0 ? "1px solid #dbd8d0" : "1px solid #1a1a18",
+                          background:
+                            (product.viewCount ?? 0) > 0
+                              ? "var(--adm-ui-surface-2)"
+                              : "var(--adm-ink-deep)",
+                          color:
+                            (product.viewCount ?? 0) > 0
+                              ? "var(--adm-ui-text)"
+                              : "#ffffff",
+                          border:
+                            (product.viewCount ?? 0) > 0
+                              ? "1px solid var(--adm-ui-border)"
+                              : "1px solid var(--adm-ink-deep)",
                         }}
                         title="Уникальные посетители страницы товара"
                       >

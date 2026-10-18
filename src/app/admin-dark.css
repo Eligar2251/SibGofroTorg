@@ -1,0 +1,289 @@
+/* =========================================================
+   FILE: src/app/admin-dark.css
+   Финальный слой тёмных тем админки.
+
+   Зачем отдельный файл:
+   • admin.css задаёт светлые значения служебной палитры --adm-ui-*;
+   • admin-themes.css перекрашивает их для пяти тёмных тем;
+   • здесь — то, что нельзя выразить токенами: фон документа,
+     нативные контролы (выпадающие списки <select>, календарь,
+     автозаполнение Chrome, скроллбары), «бумажные» листы и печать.
+
+   Подключается ПОСЛЕДНИМ в src/app/[adminPath]/layout.tsx, чтобы
+   более поздние разделы (макулатура, доставки, дашборд) не
+   перекрывали эти правила.
+
+   Тёмные темы — только те, что действительно тёмные. Светлые
+   («Крафт», «Бумага», «Тайга», «Байкал», «Лаванда», «Закат»,
+   «Мята») этот файл не затрагивает.
+   ========================================================= */
+
+/* ══════════════════════════════════════
+   ДОКУМЕНТ
+   ══════════════════════════════════════ */
+
+:is(
+  html[data-admin-theme="dark"],
+  html[data-admin-theme="superdark"],
+  html[data-admin-theme="graphite"],
+  html[data-admin-theme="ruby"],
+  html[data-admin-theme="coffee"]
+) {
+  background: var(--adm-paper);
+}
+
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) body {
+  /* globals.css красит body в белый — в тёмной теме он просвечивал
+     за краем .admin-shell (overscroll «пружинка», короткие страницы). */
+  background: var(--adm-paper);
+  color: var(--adm-ink);
+}
+
+/* Выделение текста: фирменный акцент темы вместо системного синего. */
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) ::selection {
+  background: var(--adm-kraft);
+  color: var(--adm-on-accent);
+}
+
+/* ══════════════════════════════════════
+   НАТИВНЫЕ ЭЛЕМЕНТЫ
+   ══════════════════════════════════════ */
+
+/* Список <select> и его группы: на Windows/Linux браузер рисует их
+   системным светлым цветом, игнорируя background самого селекта. */
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(select, datalist) option,
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(select, datalist) optgroup {
+  background-color: var(--adm-card);
+  color: var(--adm-ink);
+}
+
+/* Чекбоксы, радио и ползунки — в акценте темы (на светлых темах
+   оставляем системный вид, чтобы ничего не менять). */
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(input[type="checkbox"], input[type="radio"], input[type="range"]) {
+  accent-color: var(--adm-kraft);
+}
+
+/* Автозаполнение Chrome/Edge: жёлтая заливка + чёрный текст
+   несовместимы с тёмной темой. Перекрываем внутренней тенью. */
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(input, textarea, select):-webkit-autofill,
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(input, textarea, select):-webkit-autofill:hover,
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(input, textarea, select):-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--adm-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--adm-card) inset;
+  caret-color: var(--adm-ink);
+}
+
+/* ══════════════════════════════════════
+   СКРОЛЛБАРЫ
+   ══════════════════════════════════════ */
+
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) * {
+  scrollbar-color: var(--adm-border-mid) transparent;
+}
+
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) ::-webkit-scrollbar-thumb {
+  background: var(--adm-border-mid);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) ::-webkit-scrollbar-thumb:hover {
+  background: var(--adm-ink-muted);
+  background-clip: padding-box;
+}
+
+/* ══════════════════════════════════════
+   «БУМАГА»: ЛИСТЫ A4 И ЭТИКЕТКИ
+   Предпросмотр печати остаётся светлым в любой теме — он показывает
+   ровно то, что уйдёт на принтер. Но текст на листе обязан быть
+   «бумажным» (тёмным), иначе светлый --adm-ink тёмной темы сделал бы
+   его невидимым. Тень отделяет лист от тёмного холста.
+   ══════════════════════════════════════ */
+
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(
+  .pl-sheet,
+  .pl-sheet--landscape,
+  .box-report-a4-sheet,
+  .ps-table--screen,
+  .ds-print-sheet,
+  .saz-print-sheet,
+  .door-sign__sheet,
+  .boxlabel-sheet,
+  .boxlabel,
+  .qrprint__label,
+  .qrprint__tape-label,
+  .qrprint__single-label,
+  .qrprint__brand-label,
+  .tls
+) {
+  color-scheme: light;
+}
+
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(
+  .pl-sheet,
+  .pl-sheet--landscape,
+  .box-report-a4-sheet,
+  .ds-print-sheet,
+  .saz-print-sheet
+) {
+  box-shadow: 0 14px 46px rgba(0, 0, 0, 0.55);
+}
+
+/* ══════════════════════════════════════
+   СТРАХОВКА ДЛЯ КОМПОНЕНТОВ, КОТОРЫЕ ЕЩЁ НЕ ПЕРЕВЕДЕНЫ НА ТОКЕНЫ
+   Точечные правила: если у какого-то раздела остался «белый» фон,
+   добавляйте сюда селектор, а лучше — переводите на --adm-ui-*.
+   ══════════════════════════════════════ */
+
+/* Кнопки-иконки в модалках и панелях без собственного фона. */
+:is(
+  [data-admin-theme="dark"],
+  [data-admin-theme="superdark"],
+  [data-admin-theme="graphite"],
+  [data-admin-theme="ruby"],
+  [data-admin-theme="coffee"]
+) :is(.admin-modal__close, .admin-notify__iconbtn):hover {
+  background: var(--adm-ui-hover);
+}
+
+/* ══════════════════════════════════════
+   ПЕЧАТЬ
+   На бумаге всегда светлая тема, независимо от выбранной.
+   ══════════════════════════════════════ */
+
+@media print {
+  :is(
+    [data-admin-theme="dark"],
+    [data-admin-theme="superdark"],
+    [data-admin-theme="graphite"],
+    [data-admin-theme="ruby"],
+    [data-admin-theme="coffee"]
+  ),
+  :is(
+    [data-admin-theme="dark"],
+    [data-admin-theme="superdark"],
+    [data-admin-theme="graphite"],
+    [data-admin-theme="ruby"],
+    [data-admin-theme="coffee"]
+  ) body {
+    background: #fff !important;
+    color: #000 !important;
+    color-scheme: light !important;
+  }
+
+  :is(
+    [data-admin-theme="dark"],
+    [data-admin-theme="superdark"],
+    [data-admin-theme="graphite"],
+    [data-admin-theme="ruby"],
+    [data-admin-theme="coffee"]
+  ) :is(
+    .pl-sheet,
+    .pl-sheet--landscape,
+    .box-report-a4-sheet,
+    .ds-print-sheet,
+    .saz-print-sheet
+  ) {
+    box-shadow: none !important;
+  }
+}

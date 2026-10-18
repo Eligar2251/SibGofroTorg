@@ -99,7 +99,7 @@
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
-  color: #fff;
+  color: var(--adm-ui-on-accent);
   background: var(--adm-kraft, #c8860a);
   border-radius: 999px;
   font-size: 10.5px;
@@ -125,7 +125,7 @@
   align-items: center;
   min-height: 38px;
   padding: 8px 14px;
-  color: #fff;
+  color: var(--adm-on-pine);
   background: var(--adm-pine, #1e4a2d);
   border-radius: 11px;
   font: inherit;
@@ -309,12 +309,12 @@
 }
 
 .badgeAmber {
-  color: #92600a;
-  background: #fdf3dc;
+  color: var(--adm-kraft);
+  background: var(--adm-kraft-pale);
 }
 
 .badgeBlue {
-  color: #1e3a5a;
+  color: var(--adm-steel);
   background: var(--adm-steel-pale, #e8eef6);
 }
 
@@ -476,7 +476,7 @@
 }
 
 .filterOptionActive {
-  color: #fff;
+  color: var(--adm-paper, #fdfbf7);
   background: var(--adm-ink, #1a1a18);
   border-color: var(--adm-ink, #1a1a18);
 }
@@ -487,7 +487,7 @@
 
 .sheetApply {
   min-height: 48px;
-  color: #fff;
+  color: var(--adm-on-pine);
   background: var(--adm-pine, #1e4a2d);
   border: 0;
   border-radius: 13px;
