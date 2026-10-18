@@ -5,9 +5,9 @@
 
 .ds-root {
   font-family: "Segoe UI", Arial, sans-serif;
-  color: #1f2933;
+  color: var(--adm-ui-text);
   padding: 16px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   border-radius: 10px;
   border: 1px solid var(--adm-border, #dbd8d0);
 }
@@ -31,7 +31,7 @@
   align-items: center;
   justify-content: center;
   gap: 9px;
-  color: #4b5563;
+  color: var(--adm-ui-text-muted);
   font-size: 14px;
 }
 
@@ -41,10 +41,10 @@
   gap: 5px;
   max-width: min(520px, 100%);
   padding: 4px 8px;
-  border: 1px solid #dbe3ea;
+  border: 1px solid var(--adm-ui-border);
   border-radius: 999px;
-  background: #f8fafc;
-  color: #64748b;
+  background: var(--adm-ui-surface-2);
+  color: var(--adm-ui-text-muted);
   font-size: 11px;
   line-height: 1.25;
 }
@@ -82,7 +82,7 @@
   gap: 12px;
   margin-bottom: 12px;
   padding: 10px;
-  background: #f5f7fa;
+  background: var(--adm-ui-surface-3);
   border-radius: 8px;
 }
 .ds-toolbar-group {
@@ -93,12 +93,12 @@
 }
 .ds-toolbar-group label {
   font-size: 13px;
-  color: #374151;
+  color: var(--adm-ui-text-soft);
 }
 
 .ds-btn {
-  border: 1px solid #cbd2d9;
-  background: #fff;
+  border: 1px solid var(--adm-ui-border-strong);
+  background: var(--adm-ui-surface);
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
@@ -108,35 +108,35 @@
   gap: 5px;
 }
 .ds-btn:hover {
-  background: #f0f2f5;
+  background: var(--adm-ui-hover);
 }
 .ds-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 .ds-btn--primary {
-  background: #2563eb;
-  color: #fff;
-  border-color: #2563eb;
+  background: var(--adm-ui-accent);
+  color: var(--adm-ui-on-accent);
+  border-color: var(--adm-ui-accent);
 }
 .ds-btn--primary:hover {
-  background: #1d4ed8;
+  background: color-mix(in srgb, var(--adm-ui-accent) 86%, #000);
 }
 .ds-btn--success {
-  background: #16a34a;
-  color: #fff;
-  border-color: #16a34a;
+  background: var(--adm-ui-success);
+  color: var(--adm-on-pine);
+  border-color: var(--adm-ui-success);
 }
 .ds-btn--success:hover {
-  background: #15803d;
+  background: color-mix(in srgb, var(--adm-ui-success) 86%, #000);
 }
 .ds-btn--danger {
-  background: #ef4444;
-  color: #fff;
-  border-color: #ef4444;
+  background: var(--adm-ui-danger);
+  color: var(--adm-on-rust);
+  border-color: var(--adm-ui-danger);
 }
 .ds-btn--danger:hover {
-  background: #dc2626;
+  background: color-mix(in srgb, var(--adm-ui-danger) 86%, #000);
 }
 .ds-btn--sm {
   padding: 4px 8px;
@@ -157,20 +157,20 @@
 .ds-link-btn {
   background: none;
   border: none;
-  color: #2563eb;
+  color: var(--adm-ui-accent);
   text-decoration: underline;
   cursor: pointer;
   font-size: 13px;
   padding: 0;
 }
 .ds-link-btn:hover {
-  color: #1d4ed8;
+  color: color-mix(in srgb, var(--adm-ui-accent) 80%, #000);
 }
 
 .ds-message {
-  background: #ecfdf5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
+  background: var(--adm-ui-success-bg);
+  color: var(--adm-ui-success);
+  border: 1px solid var(--adm-ui-success-line);
   padding: 8px 12px;
   border-radius: 6px;
   margin-bottom: 12px;
@@ -180,7 +180,7 @@
 
 .ds-table-wrapper {
   overflow-x: auto;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 8px;
 }
 .ds-table {
@@ -190,33 +190,33 @@
 }
 .ds-table th,
 .ds-table td {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--adm-ui-border-strong);
   text-align: center;
   padding: 6px 8px;
   font-size: 13px;
   min-width: 40px;
 }
 .ds-table thead th {
-  background: #fafbfc;
+  background: var(--adm-ui-surface-2);
   font-weight: 700;
   position: sticky;
   top: 0;
   z-index: 2;
 }
 .ds-weekend-header {
-  background: #fff3b0 !important;
-  color: #c0392b;
+  background: var(--adm-ui-warning-bg) !important;
+  color: var(--adm-ui-danger);
 }
 .ds-weekday-label {
   font-size: 10px;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
   font-weight: 400;
 }
 
 .ds-sticky-col {
   position: sticky;
   left: 0;
-  background: #fff;
+  background: var(--adm-ui-surface);
   z-index: 1;
   text-align: left;
   min-width: 160px;
@@ -224,7 +224,7 @@
 .ds-sticky-col-right {
   position: sticky;
   right: 0;
-  background: #fafbfc;
+  background: var(--adm-ui-surface);
   font-weight: 600;
 }
 
@@ -233,7 +233,7 @@
 }
 .ds-employee-cell .ds-employee-phone {
   font-size: 11px;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
 }
 
 .ds-cell {
@@ -241,28 +241,29 @@
   font-weight: 700;
 }
 .ds-cell:hover {
-  background: #eef2ff;
+  background: var(--adm-ui-accent-bg);
 }
 .ds-cell--weekend {
-  background: #fff9db;
+  background: var(--adm-ui-highlight-soft);
 }
 .ds-cell--missed {
-  background: #1d4e89 !important;
-  color: #fff;
+  /* «Пропуск» — всегда тёмная плашка с белым текстом в любой теме. */
+  background: var(--adm-ui-solid) !important;
+  color: var(--adm-ui-on-solid);
 }
 .ds-cell--temporary {
-  color: #8b0000;
-  background: #ffe4e1;
+  color: var(--adm-ui-danger);
+  background: var(--adm-ui-danger-bg);
 }
 .ds-cell--conflict {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--adm-ui-warning);
   outline-offset: -2px;
 }
 /* Ячейка с рабочей сменой — выделена жёлтым */
 .ds-cell--work {
-  background: #ffe135;
-  color: #1a1a1a;
-  text-shadow: 0 0 1px rgba(255, 255, 255, 0.6);
+  background: var(--adm-ui-highlight);
+  color: var(--adm-ui-text);
+  text-shadow: none;
 }
 
 .ds-total-cell {
@@ -275,7 +276,7 @@
 .ds-grand-total {
   font-weight: 800;
   font-size: 15px;
-  color: #1d4ed8;
+  color: var(--adm-ui-accent);
 }
 
 .ds-legend {
@@ -298,19 +299,19 @@
   border-radius: 3px;
 }
 .ds-swatch--work {
-  background: #ffe135;
-  border: 1px solid #d4b400;
+  background: var(--adm-ui-highlight);
+  border: 1px solid var(--adm-ui-warning-line);
 }
 .ds-swatch--missed {
-  background: #1d4e89;
+  background: var(--adm-ui-solid);
 }
 .ds-swatch--temporary {
-  background: #ffe4e1;
-  border: 1px solid #8b0000;
+  background: var(--adm-ui-danger-bg);
+  border: 1px solid var(--adm-ui-danger);
 }
 .ds-swatch--conflict {
-  background: #fff;
-  outline: 2px solid #f59e0b;
+  background: var(--adm-ui-surface);
+  outline: 2px solid var(--adm-ui-warning);
 }
 .ds-legend-rate {
   margin-left: auto;
@@ -324,8 +325,8 @@
 .ds-payroll {
   margin-top: 20px;
   padding: 16px;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
+  background: var(--adm-ui-surface-2);
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 10px;
 }
 
@@ -337,13 +338,13 @@
   gap: 12px;
   margin-bottom: 14px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--adm-ui-border);
 }
 
 .ds-payroll-title {
   font-size: 16px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--adm-ui-text);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -355,22 +356,22 @@
   gap: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: #334155;
+  color: var(--adm-ui-text-soft);
   flex-wrap: wrap;
 }
 .ds-payroll-period select {
   padding: 5px 8px;
-  border: 1px solid #cbd2d9;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 6px;
   font-size: 13px;
-  background: #fff;
+  background: var(--adm-ui-surface);
 }
 /* Подпись о базовом месяце расчёта: «зп за октябрь считается по
    сменам за сентябрь» */
 .ds-payroll-basis-note {
   font-size: 12px;
   font-weight: 600;
-  color: #b45309;
+  color: var(--adm-ui-warning);
 }
 
 .ds-payroll-status {
@@ -383,21 +384,21 @@
   border-radius: 6px;
 }
 .ds-payroll-status--done {
-  color: #15803d;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
+  color: var(--adm-ui-success);
+  background: var(--adm-ui-success-bg);
+  border: 1px solid var(--adm-ui-success-line);
 }
 .ds-payroll-status--pending {
-  color: #64748b;
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
+  color: var(--adm-ui-text-muted);
+  background: var(--adm-ui-border-soft);
+  border: 1px solid var(--adm-ui-border-strong);
 }
 
 /* ── Сводка по сотрудникам ── */
 .ds-payroll-section-title {
   font-size: 12px;
   font-weight: 700;
-  color: #475569;
+  color: var(--adm-ui-text-soft);
   margin: 10px 0 8px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -414,11 +415,11 @@
 }
 .ds-payout-title-editor input {
   width: min(360px, 100%);
-  border: 1px solid #94a3b8;
+  border: 1px solid var(--adm-ui-text-faint);
   border-radius: 6px;
   padding: 6px 9px;
-  background: #fff;
-  color: #1e293b;
+  background: var(--adm-ui-surface);
+  color: var(--adm-ui-text);
   font: inherit;
   font-size: 13px;
   font-weight: 700;
@@ -426,11 +427,11 @@
   letter-spacing: normal;
 }
 .ds-payout-title-editor input:focus {
-  border-color: #2563eb;
+  border-color: var(--adm-ui-accent);
   outline: 2px solid rgba(37, 99, 235, 0.14);
 }
 .ds-payout-title-help {
-  color: #64748b;
+  color: var(--adm-ui-text-muted);
   font-size: 11px;
   font-weight: 400;
   text-transform: none;
@@ -457,8 +458,8 @@
 /* ── Таблица выплат ── */
 .ds-payouts-table-wrap {
   overflow-x: auto;
-  background: #fff;
-  border: 1px solid #cbd5e1;
+  background: var(--adm-ui-surface);
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 8px;
   margin-bottom: 12px;
 }
@@ -470,52 +471,52 @@
 }
 .ds-payouts-table th,
 .ds-payouts-table td {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--adm-ui-border);
   padding: 6px 8px;
   text-align: left;
   vertical-align: middle;
 }
 .ds-payouts-table thead th {
-  background: #f8fafc;
+  background: var(--adm-ui-surface-2);
   font-weight: 700;
-  color: #475569;
+  color: var(--adm-ui-text-soft);
   font-size: 12px;
 }
 .ds-payouts-table tfoot td {
-  background: #f8fafc;
+  background: var(--adm-ui-surface-2);
   font-weight: 700;
-  border-top: 2px solid #cbd5e1;
+  border-top: 2px solid var(--adm-ui-border-strong);
 }
 
 .ds-payout-num {
   text-align: center;
-  color: #64748b;
+  color: var(--adm-ui-text-muted);
   font-weight: 600;
   font-size: 12px;
 }
 
 .ds-payout-select {
   width: 100%;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 5px;
   padding: 5px 8px;
   font-size: 13px;
   font-weight: 600;
-  background: #fff;
+  background: var(--adm-ui-surface);
 }
 .ds-payout-select:focus {
-  border-color: #2563eb;
+  border-color: var(--adm-ui-accent);
   outline: none;
 }
 
 .ds-payout-custom-input {
   width: 100%;
   margin-top: 4px;
-  border: 1px solid #93c5fd;
+  border: 1px solid var(--adm-ui-accent-line);
   border-radius: 5px;
   padding: 4px 6px;
   font-size: 12px;
-  background: #f0f9ff;
+  background: var(--adm-ui-accent-bg);
 }
 
 .ds-payout-date-row {
@@ -525,17 +526,17 @@
   flex-wrap: wrap;
 }
 .ds-payroll-date {
-  border: 1px solid #cbd2d9;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 5px;
   padding: 4px 6px;
   font-size: 13px;
-  background: #fff;
+  background: var(--adm-ui-surface);
 }
 .ds-payout-weekday-chip {
   font-size: 11px;
   font-weight: 600;
-  color: #475569;
-  background: #f1f5f9;
+  color: var(--adm-ui-text-soft);
+  background: var(--adm-ui-border-soft);
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;
@@ -554,34 +555,34 @@
   font-weight: 700;
   font-size: 13px;
   text-align: right;
-  border: 1px solid #cbd2d9;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 5px;
   padding: 4px 6px;
-  background: #fff;
+  background: var(--adm-ui-surface);
 }
 .ds-payout-amount-input:focus {
-  border-color: #2563eb;
+  border-color: var(--adm-ui-accent);
   outline: none;
 }
 .ds-payout-currency {
   position: absolute;
   right: 6px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--adm-ui-text-muted);
   font-weight: 600;
   pointer-events: none;
 }
 
 .ds-payout-comment-input {
   width: 100%;
-  border: 1px solid #cbd2d9;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 5px;
   padding: 4px 6px;
   font-size: 12px;
-  background: #fff;
+  background: var(--adm-ui-surface);
 }
 .ds-payout-comment-input:focus {
-  border-color: #2563eb;
+  border-color: var(--adm-ui-accent);
   outline: none;
 }
 
@@ -593,9 +594,9 @@
 }
 
 .ds-payout-btn {
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #475569;
+  border: 1px solid var(--adm-ui-border-strong);
+  background: var(--adm-ui-surface);
+  color: var(--adm-ui-text-soft);
   padding: 4px 6px;
   border-radius: 4px;
   cursor: pointer;
@@ -604,28 +605,28 @@
   justify-content: center;
 }
 .ds-payout-btn:hover {
-  background: #f1f5f9;
-  color: #1e293b;
+  background: var(--adm-ui-border-soft);
+  color: var(--adm-ui-text);
 }
 .ds-payout-btn--danger:hover {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #dc2626;
+  background: var(--adm-ui-danger-bg);
+  border-color: var(--adm-ui-danger-line);
+  color: var(--adm-ui-danger);
 }
 
 .ds-payouts-empty {
   text-align: center;
-  color: #64748b;
+  color: var(--adm-ui-text-muted);
   padding: 18px !important;
 }
 
 .ds-payouts-total-label {
   text-align: right;
   font-weight: 700;
-  color: #334155;
+  color: var(--adm-ui-text-soft);
 }
 .ds-payouts-total-sum {
-  color: #16a34a;
+  color: var(--adm-ui-success);
   font-size: 15px;
   font-weight: 800;
   text-align: right;
@@ -634,7 +635,7 @@
 
 .ds-payroll-hint {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
   margin: 8px 0 12px;
   max-width: 760px;
   line-height: 1.4;
@@ -650,19 +651,19 @@
   gap: 8px;
   flex-wrap: wrap;
   margin-bottom: 10px;
-  color: #334155;
+  color: var(--adm-ui-text-soft);
 }
 .ds-add-person-row label {
   font-size: 13px;
   font-weight: 600;
-  color: #334155;
+  color: var(--adm-ui-text-soft);
 }
 .ds-add-person-row select {
   padding: 5px 8px;
-  border: 1px solid #cbd2d9;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 6px;
   font-size: 13px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   max-width: 300px;
 }
 
@@ -672,7 +673,7 @@
 }
 .ds-accrual-name {
   font-weight: 700;
-  color: #1e293b;
+  color: var(--adm-ui-text);
 }
 .ds-accrual-amount-wrap {
   max-width: 150px;
@@ -696,10 +697,10 @@
   margin-top: 3px;
 }
 .ds-accrual-diff--rest {
-  color: #d97706;
+  color: var(--adm-ui-warning);
 }
 .ds-accrual-diff--over {
-  color: #2563eb;
+  color: var(--adm-ui-accent);
 }
 .ds-accrual-actions {
   display: flex;
@@ -720,7 +721,7 @@
   z-index: 1000;
 }
 .ds-modal {
-  background: #fff;
+  background: var(--adm-ui-surface);
   border-radius: 10px;
   padding: 20px;
   width: 360px;
@@ -755,14 +756,14 @@
 }
 .ds-emp-table th,
 .ds-emp-table td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--adm-ui-border);
   padding: 6px;
   font-size: 13px;
 }
 .ds-emp-table input,
 .ds-emp-table select {
   width: 100%;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 4px;
   padding: 4px;
 }
@@ -776,14 +777,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 4px;
   padding: 2px 4px;
   font-size: 11px;
 }
 .ds-weekday-chip.active {
-  background: #dbeafe;
-  border-color: #2563eb;
+  background: var(--adm-ui-accent-bg);
+  border-color: var(--adm-ui-accent);
 }
 .ds-weekday-chip span {
   cursor: pointer;
@@ -805,21 +806,21 @@
 }
 .ds-add-employee-row input,
 .ds-add-employee-row select {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 4px;
   padding: 5px 8px;
   font-size: 13px;
 }
 .ds-muted {
-  color: #9ca3af;
+  color: var(--adm-ui-text-muted);
   font-size: 12px;
 }
 
 /* ── Модалка переноса в зарплату ── */
 .ds-transfer-warning {
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
-  color: #92400e;
+  background: var(--adm-ui-warning-bg);
+  border: 1px solid var(--adm-ui-warning-line);
+  color: var(--adm-ui-warning);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
@@ -831,7 +832,7 @@
 .ds-transfer-scroll {
   max-height: 280px;
   overflow-y: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--adm-ui-border);
   border-radius: 6px;
   margin-bottom: 10px;
 }
@@ -841,13 +842,13 @@
 }
 .ds-transfer-table th,
 .ds-transfer-table td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--adm-ui-border);
   padding: 6px 8px;
   font-size: 13px;
   text-align: left;
 }
 .ds-transfer-table th {
-  background: #fafbfc;
+  background: var(--adm-ui-surface-2);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -855,32 +856,32 @@
 .ds-transfer-table tfoot td {
   font-weight: 700;
   text-align: right;
-  background: #f8fafc;
+  background: var(--adm-ui-surface-2);
   position: sticky;
   bottom: 0;
 }
 .ds-transfer-emp-name {
   font-weight: 600;
-  color: #0f172a;
+  color: var(--adm-ui-text);
 }
 .ds-transfer-sum {
   font-weight: 700;
-  color: #16a34a;
+  color: var(--adm-ui-success);
 }
 .ds-transfer-total {
-  color: #16a34a;
+  color: var(--adm-ui-success);
   font-size: 15px;
   font-weight: 800;
 }
 .ds-transfer-hint {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
   margin: 0 0 8px;
 }
 .ds-transfer-error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #b91c1c;
+  background: var(--adm-ui-danger-bg);
+  border: 1px solid var(--adm-ui-danger-line);
+  color: var(--adm-ui-danger);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
@@ -897,7 +898,9 @@
   position: fixed;
   inset: 0;
   z-index: 99999;
-  background: #f5f3ee;
+  /* Холст предпросмотра подчиняется теме, а сам лист A4 ниже — нет:
+     он всегда «бумажный», как и результат печати. */
+  background: var(--adm-ui-surface-3);
   overflow: auto;
   padding: 24px;
 }
@@ -1021,7 +1024,7 @@
 .ds-grid-wd {
   display: block;
   font-size: 8px;
-  color: #555;
+  color: var(--adm-ui-text-soft);
   font-weight: 400;
   line-height: 1.1;
 }
@@ -1198,7 +1201,7 @@
   position: relative;
 }
 .ds-cell--editing {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--adm-ui-accent);
   outline-offset: -2px;
   z-index: 30;
 }
@@ -1213,8 +1216,8 @@
   align-items: flex-end;
   gap: 8px;
   padding: 8px;
-  background: #fff;
-  border: 1px solid #94a3b8;
+  background: var(--adm-ui-surface);
+  border: 1px solid var(--adm-ui-text-faint);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
   white-space: nowrap;
@@ -1230,17 +1233,17 @@
 .ds-ce-field span {
   font-size: 10px;
   font-weight: 700;
-  color: #64748b;
+  color: var(--adm-ui-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 .ds-ce-field input,
 .ds-ce-field select {
-  border: 1px solid #cbd2d9;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 5px;
   padding: 4px 6px;
   font-size: 13px;
-  background: #fff;
+  background: var(--adm-ui-surface);
 }
 .ds-ce-field input {
   width: 64px;
@@ -1256,7 +1259,7 @@
 .ds-inline-edit {
   width: 100%;
   min-width: 130px;
-  border: 1px solid #2563eb;
+  border: 1px solid var(--adm-ui-accent);
   border-radius: 4px;
   padding: 3px 5px;
   font-size: 13px;
@@ -1267,7 +1270,7 @@
   cursor: text;
 }
 .ds-amount-cell:hover .ds-amount-value {
-  outline: 1px dashed #2563eb;
+  outline: 1px dashed var(--adm-ui-accent);
   outline-offset: 2px;
 }
 .ds-amount-value {
@@ -1276,26 +1279,26 @@
   gap: 4px;
 }
 .ds-amount-cell--override {
-  color: #1d4ed8;
+  color: var(--adm-ui-accent);
 }
 .ds-amount-reset {
   width: 18px;
   height: 18px;
   padding: 0;
-  border: 1px solid #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border: 1px solid var(--adm-ui-accent-line);
+  background: var(--adm-ui-accent-bg);
+  color: var(--adm-ui-accent);
   border-radius: 4px;
   cursor: pointer;
   font-size: 11px;
   line-height: 1;
 }
 .ds-amount-reset:hover {
-  background: #dbeafe;
+  background: var(--adm-ui-accent-bg);
 }
 
 .ds-legend-edit {
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
   font-size: 12px;
 }
 
@@ -1314,8 +1317,8 @@
   margin-left: 4px;
   padding: 0 4px;
   border-radius: 999px;
-  background: #e0e7ff;
-  color: #3730a3;
+  background: var(--adm-ui-accent-bg);
+  color: var(--adm-ui-accent);
   font-size: 11px;
   font-weight: 700;
 }
@@ -1326,10 +1329,10 @@
   gap: 8px;
   margin: 8px 0;
   padding: 8px 10px;
-  border: 1px solid #fcd34d;
+  border: 1px solid var(--adm-ui-warning-line);
   border-radius: 8px;
-  background: #fffbeb;
-  color: #92400e;
+  background: var(--adm-ui-warning-bg);
+  color: var(--adm-ui-warning);
   font-size: 13px;
 }
 .ds-history-hint span {
@@ -1351,10 +1354,10 @@
   gap: 12px;
   margin: 10px 0;
   padding: 10px 12px;
-  border: 1px solid #f59e0b;
+  border: 1px solid var(--adm-ui-warning);
   border-radius: 10px;
-  background: #fff7ed;
-  color: #7c2d12;
+  background: var(--adm-ui-warning-bg);
+  color: var(--adm-ui-warning);
 }
 .ds-recover-text {
   display: flex;
@@ -1386,7 +1389,7 @@
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--adm-ui-border);
 }
 .ds-history-head h3 {
   display: flex;
@@ -1397,7 +1400,7 @@
 }
 .ds-history-sub {
   flex: 1;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
   font-size: 12px;
 }
 .ds-history-close {
@@ -1406,14 +1409,14 @@
   justify-content: center;
   width: 30px;
   height: 30px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--adm-ui-border);
   border-radius: 8px;
-  background: #fff;
-  color: #374151;
+  background: var(--adm-ui-surface);
+  color: var(--adm-ui-text-soft);
   cursor: pointer;
 }
 .ds-history-close:hover {
-  background: #f3f4f6;
+  background: var(--adm-ui-neutral-bg);
 }
 .ds-history-body {
   display: flex;
@@ -1426,8 +1429,8 @@
   flex-direction: column;
   width: 330px;
   min-width: 270px;
-  border-right: 1px solid #e5e7eb;
-  background: #f9fafb;
+  border-right: 1px solid var(--adm-ui-border);
+  background: var(--adm-ui-surface-4);
 }
 .ds-history-list-head {
   display: flex;
@@ -1435,10 +1438,10 @@
   justify-content: space-between;
   gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--adm-ui-border);
   font-size: 12px;
   font-weight: 700;
-  color: #374151;
+  color: var(--adm-ui-text-soft);
 }
 .ds-history-items {
   flex: 1;
@@ -1454,19 +1457,19 @@
   width: 100%;
   margin-bottom: 6px;
   padding: 8px 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--adm-ui-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   text-align: left;
   cursor: pointer;
   font: inherit;
 }
 .ds-history-item:hover {
-  border-color: #93c5fd;
+  border-color: var(--adm-ui-accent-line);
 }
 .ds-history-item--active {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 1px #2563eb inset;
+  border-color: var(--adm-ui-accent);
+  box-shadow: 0 0 0 1px var(--adm-ui-accent) inset;
 }
 .ds-history-item-top {
   display: flex;
@@ -1474,7 +1477,7 @@
   gap: 5px;
   font-size: 13px;
   font-weight: 700;
-  color: #111827;
+  color: var(--adm-ui-text);
 }
 .ds-history-current {
   display: inline-flex;
@@ -1482,26 +1485,26 @@
   gap: 3px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: #dcfce7;
-  color: #166534;
+  background: var(--adm-ui-success-bg);
+  color: var(--adm-ui-success);
   font-size: 10px;
   font-style: normal;
   font-weight: 700;
 }
 .ds-history-item-note {
   font-size: 11px;
-  color: #1d4ed8;
+  color: var(--adm-ui-accent);
 }
 .ds-history-item-meta {
   display: flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
 }
 .ds-history-item-money {
   font-size: 11px;
-  color: #374151;
+  color: var(--adm-ui-text-soft);
 }
 
 .ds-history-preview {
@@ -1517,7 +1520,7 @@
   gap: 12px;
   margin-bottom: 10px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--adm-ui-border);
 }
 .ds-history-preview-head strong {
   display: block;
@@ -1525,7 +1528,7 @@
 }
 .ds-history-preview-sub {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
 }
 .ds-history-preview-actions {
   display: flex;
@@ -1537,13 +1540,13 @@
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #374151;
+  color: var(--adm-ui-text-soft);
 }
 .ds-history-preview-actions select {
   padding: 5px 8px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--adm-ui-border-strong);
   border-radius: 8px;
-  background: #fff;
+  background: var(--adm-ui-surface);
   font: inherit;
   font-size: 13px;
 }
@@ -1551,11 +1554,11 @@
   margin: 14px 0 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #111827;
+  color: var(--adm-ui-text);
 }
 .ds-history-empty {
   padding: 12px;
-  color: #6b7280;
+  color: var(--adm-ui-text-muted);
   font-size: 13px;
 }
 .ds-history-empty--big {
@@ -1571,16 +1574,16 @@
   gap: 6px;
   margin: 8px;
   padding: 8px 10px;
-  border: 1px solid #fcd34d;
+  border: 1px solid var(--adm-ui-warning-line);
   border-radius: 8px;
-  background: #fffbeb;
-  color: #92400e;
+  background: var(--adm-ui-warning-bg);
+  color: var(--adm-ui-warning);
   font-size: 12px;
 }
 .ds-history-warning--error {
-  border-color: #fca5a5;
-  background: #fef2f2;
-  color: #991b1b;
+  border-color: var(--adm-ui-danger-line);
+  background: var(--adm-ui-danger-bg);
+  color: var(--adm-ui-danger);
 }
 .ds-history-done {
   display: flex;
@@ -1588,10 +1591,10 @@
   gap: 6px;
   margin-bottom: 8px;
   padding: 8px 10px;
-  border: 1px solid #86efac;
+  border: 1px solid var(--adm-ui-success-line);
   border-radius: 8px;
-  background: #f0fdf4;
-  color: #166534;
+  background: var(--adm-ui-success-bg);
+  color: var(--adm-ui-success);
   font-size: 12px;
 }
 

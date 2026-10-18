@@ -3372,8 +3372,8 @@ export function WarehouseManager({
                                   marginTop: 14,
                                   padding: 12,
                                   borderRadius: 6,
-                                  border: "1px solid var(--adm-sand-pale)",
-                                  background: "rgba(245, 242, 234, 0.25)"
+                                  border: "1px solid var(--adm-border)",
+                                  background: "var(--adm-paper-warm)"
                                 }}>
                                   <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "var(--adm-ink)" }}>
                                     📊 Анализ прибыльности заказа:

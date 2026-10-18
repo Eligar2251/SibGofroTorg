@@ -34,6 +34,10 @@ import "../admin-warehouse-mobile.css";
 import "../admin-owner.css";
 // Новый единый дашборд и адаптивный редактор меню (токены активной темы).
 import "../admin-dashboard.css";
+// Финальный слой тёмных тем: фон документа, нативные контролы,
+// скроллбары, «бумажные» листы предпросмотра и печать. Должен идти
+// последним — иначе более поздние разделы перекрывают его правила.
+import "../admin-dark.css";
 import { AdminThemeProvider } from "@/components/admin/AdminTheme";
 import { AdminNavProvider } from "@/components/admin/AdminNavProvider";
 

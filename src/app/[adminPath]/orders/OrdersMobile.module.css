@@ -122,7 +122,7 @@
 }
 
 .chipActive {
-  color: #fff;
+  color: var(--adm-paper, #fdfbf7);
   background: var(--adm-ink, #1a1a18);
   border-color: var(--adm-ink, #1a1a18);
 }
@@ -258,7 +258,7 @@
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  color: #fff;
+  color: var(--adm-on-pine);
   background: var(--adm-pine, #1e4a2d);
   border-radius: 999px;
   transition: transform 0.12s ease-out;
@@ -472,38 +472,38 @@
 }
 
 .toneAmber {
-  color: #92600a;
-  background: #fdf3dc;
+  color: var(--adm-kraft, #92600a);
+  background: var(--adm-kraft-pale, #fdf3dc);
 }
 
 .toneBlue {
-  color: #1e3a5a;
-  background: #e8eef6;
+  color: var(--adm-steel, #1e3a5a);
+  background: var(--adm-steel-pale, #e8eef6);
 }
 
 .toneIndigo {
-  color: #40368f;
-  background: #eceafb;
+  color: var(--adm-indigo, #40368f);
+  background: var(--adm-indigo-pale, #eceafb);
 }
 
 .toneSky {
-  color: #0b5f8f;
-  background: #e8f3fb;
+  color: var(--adm-sky, #0b5f8f);
+  background: var(--adm-sky-pale, #e8f3fb);
 }
 
 .toneTeal {
-  color: #0f5d57;
-  background: #dff5f2;
+  color: var(--adm-teal, #0f5d57);
+  background: var(--adm-teal-pale, #dff5f2);
 }
 
 .toneGreen {
-  color: #1e4a2d;
-  background: #ebf4ee;
+  color: var(--adm-pine, #1e4a2d);
+  background: var(--adm-pine-pale, #ebf4ee);
 }
 
 .toneRed {
-  color: #b83a1e;
-  background: #fdf0ed;
+  color: var(--adm-rust, #b83a1e);
+  background: var(--adm-rust-pale, #fdf0ed);
 }
 
 .toneMuted {

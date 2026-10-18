@@ -505,7 +505,7 @@
 }
 .rd-kpi__card--danger {
   border-color: var(--adm-rust-line);
-  background: linear-gradient(180deg, #fff, var(--adm-rust-pale));
+  background: linear-gradient(180deg, var(--adm-card), var(--adm-rust-pale));
 }
 .rd-kpi__icon {
   display: grid;
@@ -1412,7 +1412,7 @@
   border-radius: 12px;
   background: var(--adm-kraft-pale);
   border: 1px solid var(--adm-kraft-line);
-  color: #7a5306;
+  color: var(--adm-kraft);
   font-size: 12.5px;
   line-height: 1.45;
 }
@@ -1739,11 +1739,11 @@
   height: 26px;
   border-radius: 8px;
   border: 1.5px solid var(--adm-border);
-  background: #fff;
-  color: var(--adm-sand);
+  background: var(--adm-card);
+  color: var(--adm-ink-muted);
   cursor: pointer;
 }
-.rfp__swatch--on { box-shadow: 0 0 0 2px var(--adm-ink-deep); }
+.rfp__swatch--on { box-shadow: 0 0 0 2px var(--adm-ui-accent); }
 .rfp__swatch:disabled { opacity: 0.6; cursor: not-allowed; }
 .rfp__tenant {
   display: flex;

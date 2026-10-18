@@ -705,7 +705,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
           padding: 8px 10px;
           border: 1px solid var(--adm-border);
           border-radius: 8px;
-          background: #fff;
+          background: var(--adm-ui-surface);
           cursor: pointer;
           font-size: 13px;
         }
@@ -721,7 +721,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
         }
         .box-report-layout-toggle button {
           border: 0;
-          background: #fff;
+          background: var(--adm-ui-surface);
           padding: 8px 14px;
           font: inherit;
           font-size: 13px;
@@ -740,7 +740,7 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
           color: #fff;
         }
         .box-report-a4-stage {
-          background: #e8e6e0;
+          background: var(--adm-ui-canvas, #e8e6e0);
           border-radius: 12px;
           padding: 20px;
           display: flex;
@@ -748,8 +748,8 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
           overflow: auto;
         }
         .box-report-a4-sheet {
-          background: #fff;
-          color: #111;
+          background: var(--adm-sheet-bg, #fff);
+          color: var(--adm-sheet-ink, #111);
           box-shadow: 0 8px 32px rgba(0,0,0,0.12);
           width: min(100%, ${previewWidth}mm);
           min-height: ${Math.round(previewHeight * 0.55)}mm;

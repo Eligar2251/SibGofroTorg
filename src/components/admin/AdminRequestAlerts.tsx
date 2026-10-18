@@ -405,7 +405,7 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
             background: "var(--adm-card, #fff)",
             color: "var(--adm-ink, #111)",
             border: "1px solid var(--adm-border, #e5e7eb)",
-            borderLeft: "4px solid #16a34a",
+            borderLeft: "4px solid var(--adm-pine)",
             borderRadius: 12,
             boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
             padding: 14,
@@ -415,7 +415,7 @@ export function AdminRequestAlerts({ adminPath }: { adminPath: string }) {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <BellRing size={16} style={{ color: "#16a34a", flexShrink: 0 }} />
+            <BellRing size={16} style={{ color: "var(--adm-pine)", flexShrink: 0 }} />
             <strong style={{ fontSize: 14 }}>
               {toast.items.length > 1
                 ? `Новые заявки: ${toast.items.length}`
