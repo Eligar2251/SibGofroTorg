@@ -24,6 +24,9 @@ export type PriceListSheetRow = {
   purchase: number | null;
   /** Обычная цена (+30% или ручная). */
   base: number | null;
+  /** Чистая прибыль с единицы после НДС и налога
+   *  на прибыль (печатается только при showNetProfit). */
+  netProfit: number | null;
   /** Цены включённых столбцов по id столбца. */
   tierPrices: Record<string, number | null>;
 };
@@ -44,6 +47,7 @@ export type PriceListSheetSettings = {
   showPack: boolean;
   showPurchase: boolean;
   showRegular: boolean;
+  showNetProfit: boolean;
   groupByCategory: boolean;
   fontFamily: string;
   titleSize: number;
@@ -103,6 +107,7 @@ function columnWidths(settings: PriceListSheetSettings, tierCount: number) {
     pack: 13,
     purchase: 17,
     regular: 20,
+    net: 17,
     tier: 20,
   };
 
@@ -113,6 +118,7 @@ function columnWidths(settings: PriceListSheetSettings, tierCount: number) {
     (settings.showPack ? widths.pack : 0) +
     (settings.showPurchase ? widths.purchase : 0) +
     (settings.showRegular ? widths.regular : 0) +
+    (settings.showNetProfit ? widths.net : 0) +
     tierCount * widths.tier;
 
   // Если включены все колонки, «жёсткие» миллиметры могут не поместиться
@@ -130,6 +136,7 @@ function columnWidths(settings: PriceListSheetSettings, tierCount: number) {
     pack: fit(widths.pack),
     purchase: fit(widths.purchase),
     regular: fit(widths.regular),
+    net: fit(widths.net),
     tier: fit(widths.tier),
     name: fit(Math.max(MIN_NAME, rawName)),
   };
@@ -156,6 +163,7 @@ export function PriceListSheet({
     (settings.showPack ? 1 : 0) +
     (settings.showPurchase ? 1 : 0) +
     (settings.showRegular ? 1 : 0) +
+    (settings.showNetProfit ? 1 : 0) +
     activeTiers.length;
 
   const style = {
@@ -229,6 +237,9 @@ export function PriceListSheet({
             {settings.showRegular && (
               <col style={{ width: `${widths.regular}mm` }} />
             )}
+            {settings.showNetProfit && (
+              <col style={{ width: `${widths.net}mm` }} />
+            )}
             {activeTiers.map((tier) => (
               <col key={tier.id} style={{ width: `${widths.tier}mm` }} />
             ))}
@@ -256,6 +267,12 @@ export function PriceListSheet({
                 <th>
                   <span className="pl-th-main">Обычная</span>
                   <span className="pl-th-unit">цена, ₽</span>
+                </th>
+              )}
+              {settings.showNetProfit && (
+                <th>
+                  <span className="pl-th-main">На руки</span>
+                  <span className="pl-th-unit">₽*</span>
                 </th>
               )}
               {activeTiers.map((tier) => {
@@ -313,6 +330,16 @@ export function PriceListSheet({
                       {formatMoney(row.base)}
                     </td>
                   )}
+                  {settings.showNetProfit && (
+                    <td
+                      className={`pl-col-price${
+                        row.netProfit === null ? " pl-col-empty" : ""
+                      }`}
+                      title="Чистая прибыль с единицы после НДС и налога на прибыль"
+                    >
+                      {formatMoney(row.netProfit)}
+                    </td>
+                  )}
                   {activeTiers.map((tier) => {
                     const price = row.tierPrices[tier.id] ?? null;
                     return (
@@ -335,6 +362,13 @@ export function PriceListSheet({
 
       {settings.note.trim() !== "" && (
         <div className="pl-sheet__note">{settings.note}</div>
+      )}
+      {settings.showNetProfit && (
+        <div className="pl-sheet__note pl-sheet__note--small">
+          * «На руки» — чистая прибыль с единицы после НДС и
+          налога на прибыль (внутренний прайс, для клиентов не
+          печатайте эту колонку).
+        </div>
       )}
     </div>
   );

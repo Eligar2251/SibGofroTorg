@@ -40,19 +40,30 @@ import { ROUNDING_MODES, type RoundingMode } from "@/lib/price-calc";
 import {
   DEFAULT_BASE_MARKUP,
   DEFAULT_PRICE_TIERS,
+  DEFAULT_CATEGORY_MARGINS,
   computePriceListRow,
   discountForMarkup,
   formatMoney,
   markupForDiscount,
   moneyInputValue,
   normalizeMarkup,
+  resolveCategoryPricing,
+  sanitizeCategoryMargins,
   sanitizePriceTiers,
   tierFrom,
   tierLabel,
   toPrice,
+  type CategoryMargins,
   type PriceListRowResult,
   type PriceTierConfig,
 } from "@/lib/price-list";
+import {
+  DEFAULT_TAX_RATES,
+  computeUnitTaxes,
+  normalizeTaxRate,
+  summarizeTaxes,
+  type TaxSummary,
+} from "@/lib/tax-calc";
 import {
   PriceListSheet,
   type PriceListSheetRow,
@@ -96,6 +107,8 @@ type PriceListSettings = {
   note: string;
   baseMarkup: number;
   tiers: PriceTierConfig[];
+  /** Наценка/скидки, переопределённые для отдельных категорий. */
+  categoryMargins: CategoryMargins;
   rounding: RoundingMode;
   orientation: PriceListOrientation;
   fontFamily: string;
@@ -120,6 +133,17 @@ type PriceListSettings = {
   showRegular: boolean;
   groupByCategory: boolean;
   margins: Margins;
+  // ── Налоги и прибыль (ООО, ОСНО) ──
+  /** Ставка НДС, % (с 2026 года — 22). */
+  vatRate: number;
+  /** Ставка налога на прибыль, % (ООО, ОСНО — 25). */
+  profitTaxRate: number;
+  /** Цены прайса уже содержат НДС (стандарт для РФ). */
+  pricesIncludeVat: boolean;
+  /** План продаж — штук на каждую позицию (для сводки прибыли). */
+  planQty: number;
+  /** Колонка «На руки» (чистая прибыль) на листе печати. */
+  showNetProfit: boolean;
 };
 
 type ProductEdits = {
@@ -170,6 +194,7 @@ function defaultSettings(company: PriceListCompany): PriceListSettings {
     note: DEFAULT_NOTE,
     baseMarkup: DEFAULT_BASE_MARKUP,
     tiers: DEFAULT_PRICE_TIERS.map((tier) => ({ ...tier })),
+    categoryMargins: { ...DEFAULT_CATEGORY_MARGINS },
     rounding: "ruble",
     orientation: "portrait",
     fontFamily: FONTS[0].value,
@@ -194,6 +219,11 @@ function defaultSettings(company: PriceListCompany): PriceListSettings {
     showRegular: true,
     groupByCategory: true,
     margins: { top: 12, right: 10, bottom: 12, left: 10 },
+    vatRate: DEFAULT_TAX_RATES.vatRate,
+    profitTaxRate: DEFAULT_TAX_RATES.profitTaxRate,
+    pricesIncludeVat: DEFAULT_TAX_RATES.pricesIncludeVat,
+    planQty: 1,
+    showNetProfit: false,
   };
 }
 
@@ -218,7 +248,11 @@ function readNumber(
   return clamp(n, min, max);
 }
 
-function sanitizeSettings(raw: unknown, company: PriceListCompany): PriceListSettings {
+function sanitizeSettings(
+  raw: unknown,
+  company: PriceListCompany,
+  categoryIds: Set<string>
+): PriceListSettings {
   const defaults = defaultSettings(company);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return defaults;
   const source = raw as Record<string, unknown>;
@@ -251,6 +285,11 @@ function sanitizeSettings(raw: unknown, company: PriceListCompany): PriceListSet
     note: readText(source.note, defaults.note, 1200),
     baseMarkup: normalizeMarkup(source.baseMarkup ?? defaults.baseMarkup),
     tiers: sanitizePriceTiers(source.tiers),
+    categoryMargins: sanitizeCategoryMargins(
+      source.categoryMargins,
+      categoryIds,
+      new Set(defaults.tiers.map((tier) => tier.id))
+    ),
     rounding,
     orientation,
     fontFamily,
@@ -283,6 +322,17 @@ function sanitizeSettings(raw: unknown, company: PriceListCompany): PriceListSet
       bottom: readNumber(rawMargins.bottom, defaults.margins.bottom, 0, 50),
       left: readNumber(rawMargins.left, defaults.margins.left, 0, 50),
     },
+    vatRate: normalizeTaxRate(source.vatRate, defaults.vatRate),
+    profitTaxRate: normalizeTaxRate(
+      source.profitTaxRate,
+      defaults.profitTaxRate
+    ),
+    pricesIncludeVat: readBool(
+      source.pricesIncludeVat,
+      defaults.pricesIncludeVat
+    ),
+    planQty: readNumber(source.planQty, defaults.planQty, 1, 1_000_000),
+    showNetProfit: readBool(source.showNetProfit, defaults.showNetProfit),
   };
 }
 
@@ -321,7 +371,8 @@ function sanitizeEdits(
 
 function loadStored(
   company: PriceListCompany,
-  products: readonly PriceListProduct[]
+  products: readonly PriceListProduct[],
+  categoryIds: Set<string>
 ): StoredState | null {
   if (typeof window === "undefined") return null;
   let parsed: unknown;
@@ -335,7 +386,7 @@ function loadStored(
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const source = parsed as Record<string, unknown>;
 
-  const settings = sanitizeSettings(source.settings, company);
+  const settings = sanitizeSettings(source.settings, company, categoryIds);
   const productIds = new Set(products.map((product) => product.id));
   const selectedIds = Array.isArray(source.selectedIds)
     ? Array.from(
@@ -423,6 +474,79 @@ function NumberField({
           const next = Number.isFinite(n) ? clamp(n, min, max) : value;
           onChange(next);
           setDraft(String(next));
+        }}
+      />
+      {suffix && <span className="pl-suffix">{suffix}</span>}
+    </span>
+  );
+}
+
+/**
+ * То же числовое поле, но значение может быть «не задано»
+ * (null) — пустая строка. Для наценок по категориям:
+ * пусто = работает общая настройка.
+ */
+function NullableNumberField({
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  className = "",
+  ariaLabel,
+  suffix,
+  placeholder = "общая",
+}: {
+  value: number | null;
+  onChange: (value: number | null) => void;
+  min: number;
+  max: number;
+  step?: number;
+  className?: string;
+  ariaLabel: string;
+  suffix?: string;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState(() =>
+    value === null ? "" : String(value)
+  );
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDraft(value === null ? "" : String(value));
+  }, [value, focused]);
+
+  return (
+    <span className="pl-inline">
+      <input
+        type="text"
+        inputMode="decimal"
+        className={`admin-input ${className}`.trim()}
+        value={draft}
+        step={step}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        onFocus={() => setFocused(true)}
+        onChange={(event) => {
+          const raw = event.target.value;
+          setDraft(raw);
+          const normalized = raw.replace(",", ".").trim();
+          if (normalized === "") return;
+          const n = Number(normalized);
+          if (Number.isFinite(n)) onChange(clamp(n, min, max));
+        }}
+        onBlur={() => {
+          setFocused(false);
+          const normalized = draft.replace(",", ".").trim();
+          if (normalized === "") {
+            onChange(null);
+            setDraft("");
+            return;
+          }
+          const n = Number(normalized);
+          const next = Number.isFinite(n) ? clamp(n, min, max) : null;
+          onChange(next);
+          setDraft(next === null ? "" : String(next));
         }}
       />
       {suffix && <span className="pl-suffix">{suffix}</span>}
@@ -526,7 +650,11 @@ export function PriceListClient({
   useEffect(() => {
     if (didLoad.current) return;
     didLoad.current = true;
-    const stored = loadStored(company, products);
+    const stored = loadStored(
+      company,
+      products,
+      new Set(categories.map((category) => category.id))
+    );
     if (stored) {
       setSettings(stored.settings);
       setSelectedIds(stored.selectedIds);
@@ -640,20 +768,76 @@ export function PriceListClient({
           tierOverrides[tierId] = toPrice(raw);
         }
       }
+      // Сначала настройки категории товара (если для неё
+      // задана своя наценка/скидки), потом — расчёт строки.
+      const pricing = resolveCategoryPricing(
+        product.categoryId,
+        settings.categoryMargins,
+        settings.baseMarkup,
+        settings.tiers
+      );
       map.set(
         product.id,
         computePriceListRow({
           purchase: purchaseFor(product),
           baseOverride: entry?.base !== undefined ? toPrice(entry.base) : null,
           tierOverrides,
-          baseMarkup: settings.baseMarkup,
+          baseMarkup: pricing.baseMarkup,
           rounding: settings.rounding,
-          tiers: settings.tiers,
+          tiers: pricing.tiers,
         })
       );
     }
     return map;
   }, [selectedProducts, edits, purchaseFor, settings]);
+
+  // ── Налоги и прибыль (ООО, ОСНО) ──────────────────
+
+  const taxRates = useMemo(
+    () => ({
+      vatRate: settings.vatRate,
+      profitTaxRate: settings.profitTaxRate,
+      pricesIncludeVat: settings.pricesIncludeVat,
+    }),
+    [settings.vatRate, settings.profitTaxRate, settings.pricesIncludeVat]
+  );
+
+  /** Налоги с единицы каждой выбранной позиции (обычная цена). */
+  const taxesById = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof computeUnitTaxes>>();
+    for (const product of selectedProducts) {
+      const price = priceById.get(product.id);
+      map.set(
+        product.id,
+        computeUnitTaxes(
+          price?.base ?? null,
+          purchaseFor(product),
+          taxRates
+        )
+      );
+    }
+    return map;
+  }, [selectedProducts, priceById, purchaseFor, taxRates]);
+
+  /** Сводка: сколько получим после НДС и налога на прибыль. */
+  const taxSummary: TaxSummary = useMemo(
+    () =>
+      summarizeTaxes(
+        selectedProducts.map((product) => ({
+          price: priceById.get(product.id)?.base ?? null,
+          purchase: purchaseFor(product),
+          qty: settings.planQty,
+        })),
+        taxRates
+      ),
+    [selectedProducts, priceById, purchaseFor, settings.planQty, taxRates]
+  );
+
+  /** Наценки/скидки категорий, которые переопределены. */
+  const categoryMarginCount = useMemo(
+    () => Object.keys(settings.categoryMargins).length,
+    [settings.categoryMargins]
+  );
 
   /** Строки для листа печати. */
   const printRows = useMemo<PriceListSheetRow[]>(() => {
@@ -672,10 +856,11 @@ export function PriceListClient({
         categoryName: product.categoryName,
         purchase: purchaseFor(product),
         base: price?.base ?? null,
+        netProfit: taxesById.get(product.id)?.netProfit ?? null,
         tierPrices,
       };
     });
-  }, [selectedProducts, priceById, activeTiers, purchaseFor]);
+  }, [selectedProducts, priceById, activeTiers, purchaseFor, taxesById]);
 
   /** Строки редактора: те же группы категорий, что и на печати. */
   const editorEntries = useMemo<EditorEntry[]>(() => {
@@ -998,6 +1183,61 @@ export function PriceListClient({
     }));
   }
 
+  // ── Наценки/скидки по категориям ─────────────────
+
+  /**
+   * Меняет одну настройку категории. Пустое значение
+   * (null) убирает переопределение — снова работает
+   * общая наценка/скидка столбца.
+   */
+  function patchCategoryMargin(
+    categoryId: string,
+    patch: { markup?: number | null; tierDiscounts?: Record<string, number | null> }
+  ) {
+    setSettings((current) => {
+      const previous = current.categoryMargins[categoryId];
+      const markup =
+        patch.markup !== undefined
+          ? patch.markup
+          : previous?.markup ?? null;
+      const tierDiscounts: Record<string, number | null> = {
+        ...(previous?.tierDiscounts ?? {}),
+      };
+      if (patch.tierDiscounts) {
+        for (const [tierId, value] of Object.entries(
+          patch.tierDiscounts
+        )) {
+          if (value === null) delete tierDiscounts[tierId];
+          else tierDiscounts[tierId] = value;
+        }
+      }
+
+      const next = { ...current.categoryMargins };
+      if (markup === null && Object.keys(tierDiscounts).length === 0) {
+        delete next[categoryId];
+      } else {
+        next[categoryId] = { markup, tierDiscounts };
+      }
+      return { ...current, categoryMargins: next };
+    });
+  }
+
+  function resetCategoryMargin(categoryId: string) {
+    setSettings((current) => {
+      if (!current.categoryMargins[categoryId]) return current;
+      const next = { ...current.categoryMargins };
+      delete next[categoryId];
+      return { ...current, categoryMargins: next };
+    });
+  }
+
+  function resetAllCategoryMargins() {
+    setSettings((current) => ({
+      ...current,
+      categoryMargins: { ...DEFAULT_CATEGORY_MARGINS },
+    }));
+  }
+
   /**
    * Границы объёмов хранятся как верхние границы столбцов. Держим их
    * строго возрастающими: иначе получилось бы «от 500 до 100».
@@ -1122,8 +1362,10 @@ export function PriceListClient({
           <p className="admin-sub">
             Выберите товары и проверьте закупочные цены — обычная цена (+
             {percentText(settings.baseMarkup)}%) и цены по объёмам (до 100 ·
-            100–500 · 500–1000 · от 1000 шт) посчитаются сами. Любую цену можно
-            поправить вручную, а шрифт, размеры и поля — настроить перед печатью.
+            100–500 · 500–1000 · от 1000 шт) посчитаются сами. Для категорий
+            можно задать свою наценку и скидки, любую цену поправить вручную,
+            а в шаге «Прибыль и налоги» увидеть, сколько получим после НДС и
+            налога на прибыль.
           </p>
         </div>
         <div className="pl-actions">
@@ -1541,6 +1783,128 @@ export function PriceListClient({
           </table>
           </div>
 
+          {/* Наценки и скидки по категориям */}
+          <div style={{ marginTop: 16 }}>
+            <div className="pl-cat-head">
+              <span className="pl-label">
+                Наценка и скидки по категориям
+                {categoryMarginCount > 0 && (
+                  <span className="pl-badge pl-badge--manual">
+                    переопределено: {categoryMarginCount}
+                  </span>
+                )}
+              </span>
+              {categoryMarginCount > 0 && (
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost admin-btn--sm"
+                  onClick={resetAllCategoryMargins}
+                >
+                  <RotateCcw size={13} /> Сбросить наценки категорий
+                </button>
+              )}
+            </div>
+            <p className="pl-hint" style={{ marginBottom: 8 }}>
+              Общая наценка выше применяется ко всем товарам. Для
+              отдельной категории можно задать свою наценку и свои
+              скидки столбцов — пустые поля значат «как общие».
+              Ручные цены товара (янтарные) переопределением
+              категории не трогаются.
+            </p>
+            <div className="pl-tier-scroll">
+              <table className="pl-tier-table pl-cat-table">
+                <thead>
+                  <tr>
+                    <th>Категория</th>
+                    <th>Наценка, %</th>
+                    {settings.tiers.map((tier, index) => (
+                      <th key={tier.id}>
+                        {tierLabel(settings.tiers, index)}, скидка %
+                      </th>
+                    ))}
+                    <th aria-label="Действия" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {categories.map((category) => {
+                    const margin =
+                      settings.categoryMargins[category.id];
+                    const marginCount =
+                      (margin?.markup !== null &&
+                      margin?.markup !== undefined
+                        ? 1
+                        : 0) +
+                      Object.keys(margin?.tierDiscounts ?? {}).length;
+                    return (
+                      <tr key={category.id}>
+                        <td>
+                          <span className="pl-tier-name">
+                            {category.name}
+                          </span>
+                        </td>
+                        <td>
+                          <NullableNumberField
+                            value={margin?.markup ?? null}
+                            onChange={(value) =>
+                              patchCategoryMargin(category.id, {
+                                markup: value,
+                              })
+                            }
+                            min={-90}
+                            max={1000}
+                            suffix="%"
+                            ariaLabel={`Наценка категории ${category.name}`}
+                          />
+                        </td>
+                        {settings.tiers.map((tier, index) => (
+                          <td key={tier.id}>
+                            <NullableNumberField
+                              value={
+                                margin?.tierDiscounts[tier.id] ?? null
+                              }
+                              onChange={(value) =>
+                                patchCategoryMargin(category.id, {
+                                  tierDiscounts: {
+                                    [tier.id]: value,
+                                  },
+                                })
+                              }
+                              min={-500}
+                              max={100}
+                              suffix="%"
+                              placeholder={percentText(
+                                tier.discount
+                              )}
+                              ariaLabel={`Скидка ${tierLabel(
+                                settings.tiers,
+                                index
+                              )} для категории ${category.name}`}
+                            />
+                          </td>
+                        ))}
+                        <td>
+                          {marginCount > 0 && (
+                            <button
+                              type="button"
+                              className="pl-remove"
+                              onClick={() =>
+                                resetCategoryMargin(category.id)
+                              }
+                              title="Вернуть общие наценку и скидки для категории"
+                              aria-label={`Сбросить наценки категории ${category.name}`}
+                            >
+                              <RotateCcw size={13} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {missingBaseCount > 0 && (
             <div className="pl-status pl-status--warn" style={{ marginTop: 12 }}>
               <AlertTriangle size={15} />
@@ -1571,7 +1935,14 @@ export function PriceListClient({
                       <th className="pl-right">
                         Обычная цена, ₽
                         <span className="pl-th-sub">
-                          +{percentText(settings.baseMarkup)}% к закупке
+                          наценка общая или категория
+                        </span>
+                      </th>
+                      <th className="pl-right">
+                        На руки, ₽
+                        <span className="pl-th-sub">
+                          после НДС {percentText(settings.vatRate)}% и
+                          налога на прибыль
                         </span>
                       </th>
                       {activeTiers.map((tier) => {
@@ -1601,7 +1972,7 @@ export function PriceListClient({
                             key={`group-${entry.label}-${entryIndex}`}
                             className="pl-edit__group"
                           >
-                            <td colSpan={5 + activeTiers.length}>{entry.label}</td>
+                            <td colSpan={6 + activeTiers.length}>{entry.label}</td>
                           </tr>
                         );
                       }
@@ -1666,6 +2037,28 @@ export function PriceListClient({
                               }
                               onReset={() => resetField(product.id, "base")}
                             />
+                            <div className="pl-row-sub">
+                              {price?.markupPercent != null
+                                ? `+${percentText(price.markupPercent)}% к закупке`
+                                : "наценка —"}
+                              {price?.marginPercent != null
+                                ? ` · маржа ${percentText(price.marginPercent)}%`
+                                : ""}
+                            </div>
+                          </td>
+                          <td className="pl-right">
+                            {(() => {
+                              const taxes = taxesById.get(product.id);
+                              if (!taxes) return "—";
+                              return (
+                                <>
+                                  <b>{formatMoney(taxes.netProfit)}</b>
+                                  <div className="pl-row-sub">
+                                    чистая маржа {percentText(taxes.netMarginPercent)}%
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </td>
                           {activeTiers.map((tier) => {
                             const manualValue = entryEdits?.tiers?.[tier.id];
@@ -1747,13 +2140,238 @@ export function PriceListClient({
         </div>
       </section>
 
-      {/* ── ШАГ 3. ОФОРМЛЕНИЕ ─────────────────────────────── */}
+      {/* ── ШАГ 3. ПРИБЫЛЬ И НАЛОГИ ─────────────────────── */}
       <section className="admin-card">
         <div className="admin-card__pad">
           <div className="pl-section-head">
             <div>
               <h2 className="pl-section-title">
-                <span className="pl-step">3</span> Оформление листа
+                <span className="pl-step">3</span> Прибыль и налоги — ООО, ОСНО
+              </h2>
+              <p className="pl-section-sub">
+                Расчёт по законам РФ на октябрь 2026 года: НДС 22% и
+                налог на прибыль 25%. Ставки — для справки, их можно
+                поменять (например, регион снизил часть налога на
+                прибыль). Система сама считает и пишет, сколько
+                получим после всех вычетов.
+              </p>
+            </div>
+          </div>
+
+          <div className="pl-tax-grid">
+            <div className="pl-tax-controls">
+              <label className="pl-field">
+                <span className="pl-label">НДС, %</span>
+                <NumberField
+                  value={settings.vatRate}
+                  onChange={(value) =>
+                    updateSettings({
+                      vatRate: normalizeTaxRate(
+                        value,
+                        DEFAULT_TAX_RATES.vatRate
+                      ),
+                    })
+                  }
+                  min={0}
+                  max={50}
+                  step={1}
+                  suffix="%"
+                  ariaLabel="Ставка НДС, процентов"
+                />
+              </label>
+
+              <label className="pl-field">
+                <span className="pl-label">Налог на прибыль, %</span>
+                <NumberField
+                  value={settings.profitTaxRate}
+                  onChange={(value) =>
+                    updateSettings({
+                      profitTaxRate: normalizeTaxRate(
+                        value,
+                        DEFAULT_TAX_RATES.profitTaxRate
+                      ),
+                    })
+                  }
+                  min={0}
+                  max={50}
+                  step={1}
+                  suffix="%"
+                  ariaLabel="Ставка налога на прибыль, процентов"
+                />
+              </label>
+
+              <label className="pl-field">
+                <span className="pl-label">
+                  План продаж, шт. на позицию
+                </span>
+                <NumberField
+                  value={settings.planQty}
+                  onChange={(value) =>
+                    updateSettings({
+                      planQty: Math.max(
+                        1,
+                        Math.round(value) || 1
+                      ),
+                    })
+                  }
+                  min={1}
+                  max={1_000_000}
+                  step={1}
+                  suffix="шт"
+                  ariaLabel="План продаж, штук на каждую позицию"
+                />
+              </label>
+
+              <div className="pl-field">
+                <span className="pl-label">Цены в прайсе</span>
+                <div className="pl-seg">
+                  <button
+                    type="button"
+                    className={`pl-seg__btn${
+                      settings.pricesIncludeVat
+                        ? " pl-seg__btn--active"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      updateSettings({ pricesIncludeVat: true })
+                    }
+                  >
+                    С НДС
+                  </button>
+                  <button
+                    type="button"
+                    className={`pl-seg__btn${
+                      !settings.pricesIncludeVat
+                        ? " pl-seg__btn--active"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      updateSettings({ pricesIncludeVat: false })
+                    }
+                  >
+                    Без НДС
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="pl-tax-summary">
+              <div className="pl-tax-row">
+                <span>Позиций с ценой</span>
+                <b>{taxSummary.pricedCount}</b>
+              </div>
+              <div className="pl-tax-row">
+                <span>Из них с известной закупкой</span>
+                <b>{taxSummary.costedCount}</b>
+              </div>
+              <div className="pl-tax-row">
+                <span>Выручка (с НДС)</span>
+                <b>{formatMoney(taxSummary.revenueGross)} ₽</b>
+              </div>
+              <div className="pl-tax-row">
+                <span>Выручка без НДС</span>
+                <b>{formatMoney(taxSummary.revenueNet)} ₽</b>
+              </div>
+              <div className="pl-tax-row">
+                <span>НДС в выручке</span>
+                <b>{formatMoney(taxSummary.vatInRevenue)} ₽</b>
+              </div>
+              <div className="pl-tax-row">
+                <span>Себестоимость закупок (с НДС)</span>
+                <b>{formatMoney(taxSummary.costGross)} ₽</b>
+              </div>
+              <div className="pl-tax-row">
+                <span>Входной НДС (вычёт из закупок)</span>
+                <b>{formatMoney(taxSummary.vatDeduction)} ₽</b>
+              </div>
+              <div className="pl-tax-row pl-tax-row--accent">
+                <span>НДС к уплате в бюджет</span>
+                <b>{formatMoney(taxSummary.vatPayable)} ₽</b>
+              </div>
+              <div className="pl-tax-row">
+                <span>Прибыль до налога</span>
+                <b>
+                  {taxSummary.profitBeforeTax != null
+                    ? `${formatMoney(taxSummary.profitBeforeTax)} ₽`
+                    : "—"}
+                </b>
+              </div>
+              <div className="pl-tax-row">
+                <span>
+                  Налог на прибыль ({percentText(settings.profitTaxRate)}%)
+                </span>
+                <b>
+                  {taxSummary.profitTax != null
+                    ? `${formatMoney(taxSummary.profitTax)} ₽`
+                    : "—"}
+                </b>
+              </div>
+              <div className="pl-tax-row">
+                <span>Чистая маржа</span>
+                <b>
+                  {taxSummary.netMarginPercent != null
+                    ? `${percentText(taxSummary.netMarginPercent)}%`
+                    : "—"}
+                </b>
+              </div>
+            </div>
+          </div>
+
+          <div className="pl-tax-total">
+            <div>
+              <span className="pl-tax-total__label">
+                Сколько получим после вычетов (НДС + налог на прибыль):
+              </span>
+              <span className="pl-tax-total__value">
+                {taxSummary.netProfit != null
+                  ? `${formatMoney(taxSummary.netProfit)} ₽`
+                  : "—"}
+              </span>
+              <span className="pl-tax-total__sub">
+                {taxSummary.netProfit != null
+                  ? `чистая прибыль с ${taxSummary.costedCount} ${
+                      taxSummary.costedCount === 1
+                        ? "позиции"
+                        : "позиций"
+                    } по ${settings.planQty} шт. — цена «обычная»`
+                  : "укажите закупочные цены — без них прибыль не посчитать"}
+              </span>
+            </div>
+          </div>
+
+          <ul className="pl-tax-notes">
+            <li>
+              НДС к уплате = НДС с продаж − входной НДС закупок
+              (вычет). Если поставщик на УСН и НДС в закупке нет —
+              вычет не положен, тогда НДС платим с полной суммы.
+            </li>
+            <li>
+              Налог на прибыль ({percentText(
+                settings.profitTaxRate
+              )}%) считается с прибыли: выручка без НДС
+              минус себестоимость без НДС. Убыточные позиции
+              налогом не облагаются.
+            </li>
+            <li>
+              В расчёте — только товарная прибыль. Аренда, зарплаты,
+              логистика и прочие расходы здесь не учтены.
+            </li>
+            <li>
+              Если цены прайса указаны без НДС — переключите
+              «Цены в прайсе» на «Без НДС»: налог тогда
+              начисляется сверху цены.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      {/* ── ШАГ 4. ОФОРМЛЕНИЕ ─────────────────────────────── */}
+      <section className="admin-card">
+        <div className="admin-card__pad">
+          <div className="pl-section-head">
+            <div>
+              <h2 className="pl-section-title">
+                <span className="pl-step">4</span> Оформление листа
               </h2>
               <p className="pl-section-sub">
                 Шрифт, размеры, поля и колонки. Всё сразу видно в предпросмотре
@@ -2030,6 +2648,16 @@ export function PriceListClient({
               <label className="pl-check">
                 <input
                   type="checkbox"
+                  checked={settings.showNetProfit}
+                  onChange={(event) =>
+                    updateSettings({ showNetProfit: event.target.checked })
+                  }
+                />
+                Чистая прибыль, ₽ (после налогов — внутренний прайс)
+              </label>
+              <label className="pl-check">
+                <input
+                  type="checkbox"
                   checked={settings.showSize}
                   onChange={(event) =>
                     updateSettings({ showSize: event.target.checked })
@@ -2178,13 +2806,13 @@ export function PriceListClient({
         </div>
       </section>
 
-      {/* ── ШАГ 4. ПРЕДПРОСМОТР И ПЕЧАТЬ ──────────────────── */}
+      {/* ── ШАГ 5. ПРЕДПРОСМОТР И ПЕЧАТЬ ──────────────────── */}
       <section className="admin-card pl-print-area">
         <div className="admin-card__pad">
           <div className="pl-preview-head pl-no-print">
             <div>
               <h2 className="pl-section-title">
-                <span className="pl-step">4</span> Предпросмотр и печать
+                <span className="pl-step">5</span> Предпросмотр и печать
               </h2>
               <p className="pl-section-sub" style={{ marginBottom: 0 }}>
                 Лист А4 — ровно то, что уйдёт на печать. В окне печати выберите

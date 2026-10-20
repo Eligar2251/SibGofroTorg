@@ -22,7 +22,7 @@ export type RoundingMode =
   | "psych9";
 
 export const ROUNDING_MODES: readonly { value: RoundingMode; label: string }[] = [
-  { value: "none", label: "До копейки (как посчиталось)" },
+  { value: "none", label: "Выключено — без округления (до копейки)" },
   { value: "ruble", label: "До рубля" },
   { value: "ruble_up", label: "До рубля вверх" },
   { value: "ten_up", label: "До 10 ₽ вверх" },

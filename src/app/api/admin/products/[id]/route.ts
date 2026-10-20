@@ -71,6 +71,66 @@ export async function PUT(
   }
 }
 
+/**
+ * Точечное обновление товара: быстрая смена видимости
+ * (и прочих флагов) прямо из списка — без захода в
+ * полную форму редактирования и без перезагрузки страницы.
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdminApi();
+  if (auth instanceof NextResponse) return auth;
+
+  try {
+    const { id } = await params;
+    const body = await request.json();
+
+    // Белый список полей: из списка можно менять только
+    // их, остальное — через полную форму редактирования.
+    const allowed = new Set([
+      "isVisible",
+      "inStock",
+      "isFeatured",
+      "isSale",
+      "isPromo",
+      "stockQty",
+      "price",
+      "priceWholesale",
+      "purchasePrice",
+      "sku",
+      "name",
+    ]);
+    const payload: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (body[key] !== undefined) payload[key] = body[key];
+    }
+    if (Object.keys(payload).length === 0) {
+      return NextResponse.json(
+        { error: "Нет разрешённых полей для обновления" },
+        { status: 400 }
+      );
+    }
+
+    await updateProduct(id, payload);
+    revalidateTag("products", { expire: 0 });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Patch product error:", error);
+    const detail =
+      (error as any)?.message && String((error as any).message).slice(0, 300);
+    return NextResponse.json(
+      {
+        error: detail
+          ? `Не удалось обновить товар: ${detail}`
+          : "Ошибка сервера при обновлении товара",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
