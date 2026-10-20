@@ -50,6 +50,24 @@ export const DEFAULT_PRICE_TIERS: readonly PriceTierConfig[] = [
 /** Наценка на закупку для «обычной» цены. */
 export const DEFAULT_BASE_MARKUP = 30;
 
+/**
+ * Наценка и скидки отдельной категории. Пустое значение
+ * (null) — «берём общую настройку».
+ */
+export type CategoryMarginConfig = {
+  /** Наценка категории на обычную цену, % (null — общая). */
+  markup: number | null;
+  /** Скидки столбцов объёма: id столбца → скидка, %.
+   *  Ключ без значения (null) — общая скидка столбца. */
+  tierDiscounts: Record<string, number | null>;
+};
+
+/** Наценки/скидки по категориям: id категории → настройка. */
+export type CategoryMargins = Record<string, CategoryMarginConfig>;
+
+/** Пустая карта — всё считается по общим настройкам. */
+export const DEFAULT_CATEGORY_MARGINS: CategoryMargins = {};
+
 /** Допустимые пределы процентов, чтобы localStorage не сломал расчёт. */
 const MIN_DISCOUNT = -500;
 const MAX_DISCOUNT = 100;
@@ -132,6 +150,86 @@ export function sanitizePriceTiers(raw: unknown): PriceTierConfig[] {
     previous = upTo;
   }
   return result;
+}
+
+/**
+ * Проверка и нормализация наценок/скидок по категориям
+ * (например, из localStorage). Незнакомые id категорий
+ * и столбцов выкидываем — настроек для удалённых сущностей
+ * быть не должно.
+ */
+export function sanitizeCategoryMargins(
+  raw: unknown,
+  categoryIds: Set<string>,
+  tierIds: Set<string>
+): CategoryMargins {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return DEFAULT_CATEGORY_MARGINS;
+  }
+  const result: CategoryMargins = {};
+  for (const [categoryId, value] of Object.entries(
+    raw as Record<string, unknown>
+  )) {
+    if (!categoryIds.has(categoryId)) continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const source = value as Record<string, unknown>;
+
+    let markup: number | null = null;
+    if (source.markup !== undefined && source.markup !== null) {
+      const n = Number(source.markup);
+      if (Number.isFinite(n)) markup = clamp(round2(n), MIN_MARKUP, MAX_MARKUP);
+    }
+
+    const tierDiscounts: Record<string, number | null> = {};
+    if (source.tierDiscounts && typeof source.tierDiscounts === "object") {
+      const rawDiscounts = source.tierDiscounts as Record<string, unknown>;
+      for (const tierId of tierIds) {
+        const raw = rawDiscounts[tierId];
+        if (raw === undefined || raw === null) continue;
+        const n = Number(raw);
+        if (Number.isFinite(n)) {
+          tierDiscounts[tierId] = clamp(round2(n), MIN_DISCOUNT, MAX_DISCOUNT);
+        }
+      }
+    }
+
+    if (markup === null && Object.keys(tierDiscounts).length === 0) continue;
+    result[categoryId] = { markup, tierDiscounts };
+  }
+  return result;
+}
+
+/**
+ * Настройки цен для конкретной категории: общие наценка и
+ * столбцы, переписанные настройками категории (где они есть).
+ * Возвращает новые объекты — исходные не меняем.
+ */
+export function resolveCategoryPricing(
+  categoryId: string | null | undefined,
+  categoryMargins: CategoryMargins | null | undefined,
+  baseMarkup: number,
+  tiers: readonly PriceTierConfig[]
+): { baseMarkup: number; tiers: PriceTierConfig[] } {
+  const override =
+    categoryId && categoryMargins
+      ? categoryMargins[categoryId]
+      : undefined;
+  if (!override) {
+    return { baseMarkup, tiers: tiers.map((tier) => ({ ...tier })) };
+  }
+
+  const markup =
+    override.markup !== null && override.markup !== undefined
+      ? normalizeMarkup(override.markup)
+      : baseMarkup;
+
+  const resolvedTiers = tiers.map((tier) => {
+    const discount = override.tierDiscounts[tier.id];
+    if (discount === null || discount === undefined) return { ...tier };
+    return { ...tier, discount: normalizeDiscount(discount) };
+  });
+
+  return { baseMarkup: markup, tiers: resolvedTiers };
 }
 
 /** Нижняя граница столбца: 0 у первого, иначе верхняя граница предыдущего. */

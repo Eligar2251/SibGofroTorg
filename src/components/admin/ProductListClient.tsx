@@ -1,7 +1,7 @@
 // src/components/admin/ProductListClient.tsx
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -69,6 +69,18 @@ export function ProductListClient({
   const [deleting, setDeleting] = useState(false);
   const [fixingBarcodes, setFixingBarcodes] = useState(false);
   const [barcodeMessage, setBarcodeMessage] = useState<string | null>(null);
+  // Локальная копия списка: быстрая кнопка «скрыть/показать»
+  // меняет видимость без перезагрузки и без потери фильтров.
+  const [items, setItems] = useState(products);
+  const [visibilityBusy, setVisibilityBusy] = useState<Set<string>>(
+    new Set()
+  );
+
+  // Серверные данные (например, после router.refresh())
+  // перезаписывают локальные правки.
+  useEffect(() => {
+    setItems(products);
+  }, [products]);
 
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
 
@@ -91,7 +103,7 @@ export function ProductListClient({
   const filtered = useMemo(() => {
     const query = deferredSearch.toLowerCase();
     const digits = query.replace(/\s+/g, "");
-    return products.filter((p) => {
+    return items.filter((p) => {
       if (selectedCategory !== "all" && p.categoryId !== selectedCategory) return false;
       if (selectedStock === "in" && p.stockQty <= 0) return false;
       if (selectedStock === "out" && p.stockQty > 0) return false;
@@ -104,7 +116,7 @@ export function ProductListClient({
         (p.barcode && p.barcode.includes(digits))
       );
     });
-  }, [products, deferredSearch, selectedCategory, selectedStock, selectedVisibility]);
+  }, [items, deferredSearch, selectedCategory, selectedStock, selectedVisibility]);
 
   // Длинный каталог рендерим кусками (use-windowed-list): на слабых
   // машинах DOM из сотен строк с фото — главная причина рывков при
@@ -156,6 +168,51 @@ export function ProductListClient({
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(filtered.map((p) => p.id)));
+    }
+  }
+
+  // «Скрыть с сайта» / «Показать на сайте» прямо из списка:
+  // optimistic-обновление, страница не перезагружается,
+  // фильтры и поиск остаются как были.
+  async function toggleVisibility(
+    product: Pick<ProductItem, "id" | "name" | "isVisible">
+  ) {
+    if (visibilityBusy.has(product.id)) return;
+    const nextVisible = !product.isVisible;
+    setItems((prev) =>
+      prev.map((p) =>
+        p.id === product.id ? { ...p, isVisible: nextVisible } : p
+      )
+    );
+    setVisibilityBusy((prev) => new Set(prev).add(product.id));
+    try {
+      const res = await fetch(`/api/admin/products/${product.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isVisible: nextVisible }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Ошибка ${res.status}`);
+      }
+    } catch (e) {
+      // Откатываем, чтобы список совпадал с базой.
+      setItems((prev) =>
+        prev.map((p) =>
+          p.id === product.id ? { ...p, isVisible: product.isVisible } : p
+        )
+      );
+      alert(
+        `Не удалось изменить видимость товара «${product.name}»: ${
+          e instanceof Error ? e.message : "ошибка сети"
+        }`
+      );
+    } finally {
+      setVisibilityBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(product.id);
+        return next;
+      });
     }
   }
 
@@ -221,6 +278,8 @@ export function ProductListClient({
         onStock={setSelectedStock}
         visibility={selectedVisibility}
         onVisibility={setSelectedVisibility}
+        onToggleVisibility={toggleVisibility}
+        visibilityBusy={visibilityBusy}
       />
     );
   }
@@ -554,10 +613,39 @@ export function ProductListClient({
                             Распродажа
                           </span>
                         )}
+                        {!product.isVisible && (
+                          <span className="admin-badge admin-badge--muted">
+                            Скрыт
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td>
                       <div className="admin-actions">
+                        <button
+                          type="button"
+                          onClick={() => toggleVisibility(product)}
+                          disabled={visibilityBusy.has(product.id)}
+                          className="admin-btn admin-btn--icon"
+                          title={
+                            product.isVisible
+                              ? "Скрыть с сайта"
+                              : "Показать на сайте"
+                          }
+                          aria-label={
+                            product.isVisible
+                              ? `Скрыть товар ${product.name}`
+                              : `Показать товар ${product.name}`
+                          }
+                        >
+                          {visibilityBusy.has(product.id) ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : product.isVisible ? (
+                            <EyeOff size={15} />
+                          ) : (
+                            <Eye size={15} />
+                          )}
+                        </button>
                         <Link
                           href={`/${adminPath}/products/${product.id}`}
                           prefetch={false}

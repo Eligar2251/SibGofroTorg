@@ -23,6 +23,7 @@ import {
   Edit2,
   Eye,
   EyeOff,
+  Loader2,
   QrCode,
   Search,
   SlidersHorizontal,
@@ -75,6 +76,8 @@ export function ProductsMobile({
   onStock,
   visibility,
   onVisibility,
+  onToggleVisibility,
+  visibilityBusy,
 }: {
   products: ProductsMobileItem[];
   categories: { id: string; name: string }[];
@@ -87,6 +90,9 @@ export function ProductsMobile({
   onStock: (value: StockFilter) => void;
   visibility: VisibilityFilter;
   onVisibility: (value: VisibilityFilter) => void;
+  /** Быстрая смена видимости товара (без перезагрузки). */
+  onToggleVisibility: (product: ProductsMobileItem) => void;
+  visibilityBusy: Set<string>;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   useBodyLock(filtersOpen);
@@ -169,7 +175,13 @@ export function ProductsMobile({
       ) : (
         <div className={styles.list}>
           {win.visible.map((product) => (
-            <ProductCard key={product.id} product={product} adminPath={adminPath} />
+            <ProductCard
+              key={product.id}
+              product={product}
+              adminPath={adminPath}
+              onToggleVisibility={onToggleVisibility}
+              visibilityBusy={visibilityBusy}
+            />
           ))}
           {win.hasMore && (
             <button
@@ -222,9 +234,14 @@ function formatCutStock(rolls: number, mpr: number | null | undefined) {
 function ProductCard({
   product,
   adminPath,
+  onToggleVisibility,
+  visibilityBusy,
 }: {
   product: ProductsMobileItem;
   adminPath: string;
+  /** Быстрая смена видимости товара (без перезагрузки). */
+  onToggleVisibility: (product: ProductsMobileItem) => void;
+  visibilityBusy: Set<string>;
 }) {
   const cuttable = Boolean(product.isCuttable && Number(product.cutMetersPerRoll) > 0);
   const inStock = product.stockQty > 0;
@@ -312,6 +329,27 @@ function ProductCard({
       </div>
 
       <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.action}
+          onClick={() => onToggleVisibility(product)}
+          disabled={visibilityBusy.has(product.id)}
+          title={product.isVisible ? "Скрыть с сайта" : "Показать на сайте"}
+          aria-label={
+            product.isVisible
+              ? `Скрыть товар ${product.name}`
+              : `Показать товар ${product.name}`
+          }
+        >
+          {visibilityBusy.has(product.id) ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : product.isVisible ? (
+            <EyeOff size={16} />
+          ) : (
+            <Eye size={16} />
+          )}
+          <span>{product.isVisible ? "Скрыть" : "Показать"}</span>
+        </button>
         <Link
           href={`/${adminPath}/products/${product.id}`}
           prefetch={false}

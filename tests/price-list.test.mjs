@@ -21,6 +21,8 @@ import {
   moneyInputValue,
   normalizeDiscount,
   normalizeMarkup,
+  resolveCategoryPricing,
+  sanitizeCategoryMargins,
   sanitizePriceTiers,
   tierFrom,
   tierLabel,
@@ -256,4 +258,110 @@ test("деньги печатаются с пробелами и запятой"
   assert.equal(formatMoney(undefined), "—");
   assert.equal(moneyInputValue(1234.5), "1234.5");
   assert.equal(moneyInputValue(null), "");
+});
+
+// ── Наценки и скидки по категориям ───────────────
+
+test("без настроек категории — общие наценка и скидки", () => {
+  const resolved = resolveCategoryPricing("cat-1", {}, 30, tiers);
+  assert.equal(resolved.baseMarkup, 30);
+  assert.deepEqual(
+    resolved.tiers.map((t) => t.discount),
+    [0, 5, 10, 15]
+  );
+  // Незнакомая категория и null — тоже общие настройки.
+  assert.equal(
+    resolveCategoryPricing("nope", { "cat-1": { markup: 50, tierDiscounts: {} } }, 30, tiers).baseMarkup,
+    30
+  );
+  assert.equal(
+    resolveCategoryPricing(null, {}, 30, tiers).baseMarkup,
+    30
+  );
+});
+
+test("категория переопределяет наценку и скидки столбцов", () => {
+  const resolved = resolveCategoryPricing(
+    "cat-1",
+    {
+      "cat-1": {
+        markup: 50,
+        tierDiscounts: { t2: 2, t4: null },
+      },
+    },
+    30,
+    tiers
+  );
+  assert.equal(resolved.baseMarkup, 50);
+  // t2 переопределён, t4 явно null — общая скидка,
+  // t1 и t3 — общие.
+  assert.deepEqual(
+    resolved.tiers.map((t) => t.discount),
+    [0, 2, 10, 15]
+  );
+  // Исходные столбцы не меняются.
+  assert.deepEqual(
+    tiers.map((t) => t.discount),
+    [0, 5, 10, 15]
+  );
+});
+
+test("переопределённая категория меняет цену товара", () => {
+  const row = computePriceListRow({
+    purchase: 100,
+    baseMarkup: 30,
+    rounding: "none",
+    tiers,
+    ...resolveCategoryPricing(
+      "cat-1",
+      { "cat-1": { markup: 100, tierDiscounts: { t4: 50 } } },
+      30,
+      tiers
+    ),
+    // resolveCategoryPricing возвращает { baseMarkup, tiers } —
+    // они перезаписывают общие выше по spread.
+  });
+  // Закупка 100 × (1 + 100%) = 200; столбец «от 1000»:
+  // 200 × (1 − 50%) = 100.
+  assert.equal(row.base, 200);
+  assert.equal(row.tiers.t1, 200);
+  assert.equal(row.tiers.t4, 100);
+});
+
+test("испорченные наценки категорий из localStorage", () => {
+  const categoryIds = new Set(["c1", "c2"]);
+  const tierIds = new Set(["t1", "t2", "t3", "t4"]);
+
+  // Незнакомые категории и столбцы выкидываются.
+  assert.deepEqual(
+    sanitizeCategoryMargins(
+      {
+        c1: { markup: 40, tierDiscounts: { t1: 3, "tX": 99 } },
+        "ghost": { markup: 99 },
+        c2: "мусор",
+      },
+      categoryIds,
+      tierIds
+    ),
+    { c1: { markup: 40, tierDiscounts: { t1: 3 } } }
+  );
+
+  // Пустые настройки исчезают — категория «как общие».
+  assert.deepEqual(
+    sanitizeCategoryMargins(
+      { c1: { markup: null, tierDiscounts: {} } },
+      categoryIds,
+      tierIds
+    ),
+    {}
+  );
+
+  // Проценты обрезаются в пределы.
+  const cleaned = sanitizeCategoryMargins(
+    { c1: { markup: 10000, tierDiscounts: { t1: -900 } } },
+    categoryIds,
+    tierIds
+  );
+  assert.equal(cleaned.c1.markup, 1000);
+  assert.equal(cleaned.c1.tierDiscounts.t1, -500);
 });

@@ -44,6 +44,9 @@ export function CategoryManager({
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [visibilityBusy, setVisibilityBusy] = useState<
+    string | null
+  >(null);
   const [error, setError] = useState("");
   const [newCat, setNewCat] = useState({
     name: "",
@@ -90,6 +93,41 @@ export function CategoryManager({
 
   const defaultProfile = dimensionProfiles.find((p) => p.isDefault);
   const [savingProfileId, setSavingProfileId] = useState<string | null>(null);
+
+  // «Скрыть категорию» / «Показать» прямо из списка:
+  // optimistic-обновление, страница не перезагружается.
+  async function toggleVisibility(cat: Category) {
+    if (visibilityBusy) return;
+    const nextVisible = cat.isVisible !== false;
+    const previous = categories;
+    setCategories((prev) =>
+      prev.map((c) =>
+        c.id === cat.id ? { ...c, isVisible: nextVisible } : c
+      )
+    );
+    setVisibilityBusy(cat.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/categories/${cat.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isVisible: nextVisible }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Ошибка ${res.status}`);
+      }
+    } catch (err) {
+      setCategories(previous);
+      setError(
+        `Не удалось изменить видимость категории «${cat.name}»: ${
+          err instanceof Error ? err.message : "ошибка сети"
+        }`
+      );
+    } finally {
+      setVisibilityBusy(null);
+    }
+  }
 
   async function changeProfile(cat: Category, profileId: string) {
     setSavingProfileId(cat.id);
@@ -307,15 +345,34 @@ export function CategoryManager({
                     </td>
                   )}
                   <td>
-                    {cat.isVisible !== false ? (
-                      <span className="admin-badge admin-badge--green">
-                        <Eye size={10} /> Видна
-                      </span>
-                    ) : (
-                      <span className="admin-badge admin-badge--red">
-                        <EyeOff size={10} /> Скрыта
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => toggleVisibility(cat)}
+                      disabled={visibilityBusy === cat.id}
+                      className="admin-btn admin-btn--icon"
+                      title={
+                        cat.isVisible !== false
+                          ? "Скрыть категорию с сайта"
+                          : "Показать категорию на сайте"
+                      }
+                      aria-label={
+                        cat.isVisible !== false
+                          ? `Скрыть категорию ${cat.name}`
+                          : `Показать категорию ${cat.name}`
+                      }
+                    >
+                      {visibilityBusy === cat.id ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : cat.isVisible !== false ? (
+                        <span className="admin-badge admin-badge--green">
+                          <Eye size={10} /> Видна
+                        </span>
+                      ) : (
+                        <span className="admin-badge admin-badge--red">
+                          <EyeOff size={10} /> Скрыта
+                        </span>
+                      )}
+                    </button>
                   </td>
                   <td className="admin-muted">
                     {cat.createdAt

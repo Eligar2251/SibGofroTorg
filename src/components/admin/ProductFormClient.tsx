@@ -447,8 +447,11 @@ export function ProductFormClient({
         }
       }
 
+      // router.push сам подтянет свежие данные списка
+      // (страница принудительно динамическая) — лишний
+      // router.refresh() здесь только перезагружал
+      // страницу после выхода из редактирования.
       router.push(`/${CLIENT_ADMIN_PATH}/products`);
-      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Произошла ошибка");
       setSaving(false);
@@ -463,7 +466,6 @@ export function ProductFormClient({
     try {
       await fetch(`/api/admin/products/${product.id}`, { method: "DELETE" });
       router.push(`/${CLIENT_ADMIN_PATH}/products`);
-      router.refresh();
     } catch {
       setError("Ошибка удаления");
       setDeleting(false);
