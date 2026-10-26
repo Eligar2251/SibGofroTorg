@@ -413,7 +413,14 @@ function mapPaymentRow(row: any): BankPayment {
     date: row.date,
     direction: row.direction,
     type: row.type || "regular",
-    cashDestination: row.cash_destination === "card" || row.cash_destination === "cash" ? row.cash_destination : null,
+    // migration_vm_card.sql разрешает третье направление — «карта В.М.».
+    // Раньше маппер его терял, и такой платёж выглядел как обычная наличка.
+    cashDestination:
+      row.cash_destination === "card" ||
+      row.cash_destination === "cash" ||
+      row.cash_destination === "vm_card"
+        ? row.cash_destination
+        : null,
     counterparty: row.counterparty,
     counterpartyId: row.counterparty_id || null,
     dealIds: Array.isArray(row.deal_ids) ? row.deal_ids : [],
@@ -3146,7 +3153,11 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     // Наличка остаётся в кассе, а безнал на карту физлица сдаётся
     // инкассацией. Оба вида входят в кассовый регистр, но с разной меткой.
     cash_destination: data.direction === "incoming" && (data.type === "cash" || data.type === "transfer")
-      ? (data.type === "transfer" ? "card" : "cash")
+      ? (data.type === "transfer"
+          ? "card"
+          : data.cashDestination === "card" || data.cashDestination === "vm_card"
+            ? data.cashDestination
+            : "cash")
       : null,
     paid_at: data.isPaid ? new Date().toISOString().slice(0, 10) : null,
     exclude_from_balance: data.excludeFromBalance ?? false,
@@ -3200,9 +3211,26 @@ export async function updatePayment(id: string, data: any): Promise<void> {
     // Тип платежа — источник истины: наличка по умолчанию остаётся в кассе,
     // безнал на карту всегда сдаётся инкассацией, расчётный счёт не кассовый.
     if (data.direction === "incoming" || data.cashDestination !== undefined) {
-      payload.cash_destination = data.type === "transfer" ? "card" : data.type === "cash" ? (data.cashDestination === "card" ? "card" : "cash") : null;
+      // Третье направление (карта В.М.) не должно превращаться в наличку
+      // при редактировании платежа — иначе заказ потеряет счёт в архиве.
+      const destination =
+        data.cashDestination === "card" || data.cashDestination === "vm_card"
+          ? data.cashDestination
+          : "cash";
+      payload.cash_destination = data.type === "transfer"
+        ? "card"
+        : data.type === "cash"
+          ? destination
+          : null;
     }
-  } else if (data.cashDestination !== undefined) payload.cash_destination = data.cashDestination === "card" || data.cashDestination === "cash" ? data.cashDestination : null;
+  } else if (data.cashDestination !== undefined) {
+    payload.cash_destination =
+      data.cashDestination === "card" ||
+      data.cashDestination === "cash" ||
+      data.cashDestination === "vm_card"
+        ? data.cashDestination
+        : null;
+  }
   if (data.amount !== undefined) payload.amount = Number(data.amount);
   if (data.comment !== undefined) payload.comment = cleanText(data.comment, 500);
   if (data.date !== undefined && payload.date === undefined) {

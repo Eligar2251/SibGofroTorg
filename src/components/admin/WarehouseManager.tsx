@@ -40,6 +40,7 @@ import {
   Upload,
   Target,
   User,
+  Clock,
 } from "lucide-react";
 import {
   type BankPayment,
@@ -112,6 +113,21 @@ import type { WpTransportQueueDoc } from "@/lib/wastepaper-account-shared";
 import type { ReceiptTransportQueueDoc } from "@/lib/warehouse-shared";
 import type { SupplyPlan } from "@/lib/supply-plans-shared";
 import type { PurchasePlan } from "@/lib/purchase-plans-shared";
+import {
+  DEAL_ACCOUNT_FILTERS,
+  DEAL_ACCOUNT_LABELS,
+  DEAL_ACCOUNT_SHORT_LABELS,
+  buildDealAccountsMap,
+  dealMatchesAccount,
+  formatDealCreatedAt,
+  getDealAccounts,
+  paymentDealAccount,
+  sortDeals,
+  type DealAccountEntry,
+  type DealAccountFilter,
+  type DealAccountId,
+  type DealSortKey,
+} from "@/lib/deal-archive";
 import { useEscapeClose } from "@/hooks/use-escape-close";
 
 // ── Тяжёлые вкладки грузим по требованию ──────────────────
@@ -178,6 +194,39 @@ const CashCollectModal = dynamic(
 
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+
+/** Подсказки кнопок фильтра архива по счёту. */
+const dealAccountFilterTitles: Record<DealAccountFilter, string> = {
+  all: "Показать заказы с любых счетов",
+  cash: "Только наличные: касса (в т.ч. заказы контрагентов «за наличку» без платежей)",
+  vm_card: "Только платежи, ушедшие на карту В.М.",
+  ym_card: "Только платежи, ушедшие на карту ЮМ",
+  bank: "Только платежи на расчётный счёт",
+  unknown: "Архивные заказы без привязанных платежей и без метки контрагента",
+};
+
+/** Цвет бейджа счёта в шапке заказа. */
+const dealAccountBadgeClass: Record<DealAccountId, string> = {
+  cash: "admin-badge--green",
+  vm_card: "admin-badge--indigo",
+  ym_card: "admin-badge--blue",
+  bank: "admin-badge--sky",
+};
+
+/** Расшифровка бейджа: сумма, номера ПЛ и статус проведения. */
+function dealAccountTitle(entry: DealAccountEntry): string {
+  const parts = [DEAL_ACCOUNT_LABELS[entry.account]];
+  if (entry.inferred) {
+    parts.push("галочка контрагента «за наличку», платежи не привязаны");
+  } else {
+    if (entry.amount > 0) parts.push(`${fmt(entry.amount)} ₽`);
+    if (entry.paymentNumbers.length > 0) {
+      parts.push(`ПЛ-${entry.paymentNumbers.join(", ПЛ-")}`);
+    }
+    if (entry.hasPending) parts.push("есть ожидающие платежи");
+  }
+  return parts.join(" · ");
+}
 
 /** Ключ контрагента в «Должны нам / Мы должны» (тип + нормализованное имя). */
 function partyKey(type: "customer" | "supplier", name: string): string {
@@ -464,12 +513,15 @@ export function WarehouseManager({
   const [suppliesSub, setSuppliesSub] = useState<SuppliesSub>("receipts");
   const [receiptSub, setReceiptSub] = useState<ReceiptSub>("active");
   const [dealsSub, setDealsSub] = useState<DealsSub>("new");
-  // ── Архив заказов: период, «только касса», направление сортировки ──
+  // ── Архив заказов: период, счёт оплаты, ключ и направление сортировки ──
   // Действуют только во вкладке «Архив» (released), активные заказы идут
-  // как раньше. Сортировка в архиве всегда видимая, по умолчанию — новее сверху.
+  // как раньше. По умолчанию — сортировка по времени добавления с секундами,
+  // новее сверху. Фильтр по счёту позволяет вывести отдельно кассу,
+  // карту В.М. и карту ЮМ.
   const [dealDateFrom, setDealDateFrom] = useState("");
   const [dealDateTo, setDealDateTo] = useState("");
-  const [dealsCashOnly, setDealsCashOnly] = useState(false);
+  const [dealAccountFilter, setDealAccountFilter] = useState<DealAccountFilter>("all");
+  const [dealSortKey, setDealSortKey] = useState<DealSortKey>("created");
   const [dealSortDir, setDealSortDir] = useState<"desc" | "asc">("desc");
   const [expandedDealId, setExpandedDealId] = useState<string | null>(focusDealId ?? null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -867,19 +919,23 @@ export function WarehouseManager({
   // Calculations
   const dealPaidMap = useMemo(() => getDealPaidMap(payments), [payments]);
   const receiptPaidMap = useMemo(() => getReceiptPaidMap(payments), [payments]);
-  // Способ оплаты заказа берём из входящего ПЛ: наличка, карта ЮМ или счёт.
+  // Способ оплаты для формы заказа берём из входящего ПЛ. Правила
+  // определения счёта вынесены в deal-archive.ts, чтобы форма и архив
+  // не расходились в трактовке переводов и карт.
   const dealPaymentMethod = useMemo(() => {
     const map = new Map<string, "cash" | "ym_card" | "vm_card" | "regular">();
     for (const payment of payments) {
-      if (payment.direction !== "incoming") continue;
-      const method = payment.type === "cash"
-        ? "cash"
-        : payment.type === "vm_card"
-          ? "vm_card"
-          : payment.type === "ym_card" || payment.cashDestination === "card"
-            ? "ym_card"
-            : "regular";
-      for (const dealId of payment.dealIds || []) map.set(dealId, method);
+      const account = paymentDealAccount(payment);
+      if (!account) continue;
+      const method =
+        account === "cash"
+          ? "cash"
+          : account === "vm_card"
+            ? "vm_card"
+            : account === "ym_card"
+              ? "ym_card"
+              : "regular";
+      for (const dealId of payment.dealIds || []) map.set(String(dealId), method);
     }
     return map;
   }, [payments]);
@@ -898,17 +954,29 @@ export function WarehouseManager({
     return keys;
   }, [counterpartyRows]);
 
-  /**
-   * Заказ «через кассу»: у контрагента стоит галочка «за наличку» ИЛИ заказ
-   * оплачен наличным платежом. Второе условие нужно для старых заказов —
-   * галочек тогда ещё не было, но такие заказы тоже шли через кассу.
-   */
-  function isCashDeal(deal: CustomerDeal): boolean {
-    if (deal.counterpartyId && cashCounterpartyKeys.has(deal.counterpartyId)) return true;
-    const nameKey = normalizeName(deal.customerName || "");
-    if (nameKey && cashCounterpartyKeys.has(nameKey)) return true;
-    return dealPaymentMethod.get(deal.id) === "cash";
-  }
+  // Заказы «за наличку» по метке контрагента. Используются как fallback
+  // для архивных заказов, у которых нет привязанных платежей.
+  const cashDealIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const deal of deals) {
+      const nameKey = normalizeName(deal.customerName || "");
+      if (
+        (deal.counterpartyId && cashCounterpartyKeys.has(deal.counterpartyId)) ||
+        (nameKey && cashCounterpartyKeys.has(nameKey))
+      ) {
+        ids.add(String(deal.id));
+      }
+    }
+    return ids;
+  }, [deals, cashCounterpartyKeys]);
+
+  // Счета оплаты каждого заказа: касса, карта В.М., карта ЮМ, р/с.
+  // Суммы по частичным платежам на одном счёте складываются, а разные
+  // счета остаются отдельными записями (заказ может оплачиваться частями).
+  const dealAccounts = useMemo(
+    () => buildDealAccountsMap(payments, cashDealIds),
+    [payments, cashDealIds]
+  );
   const bankSummary = useMemo(
     // Заказы нужны, чтобы ожидаемый приход по заказу автоматически
     // уменьшался на уже пришедшие частичные оплаты другими платежами.
@@ -1319,40 +1387,36 @@ export function WarehouseManager({
     });
   }, [deals, dealsSub, deferredQ, dealPaidMap]);
 
-  // Архив: поверх вкладки и поиска действуют период, «только касса» и
-  // сортировка по дате (по умолчанию — новее сверху). Активные заказы идут
-  // как раньше, в порядке сервера. Проверку «через кассу» дублируем из
-  // isCashDeal инлайном, чтобы не тащить функцию в зависимости memo.
+  // Архив: поверх вкладки и поиска действуют период документа, фильтр
+  // по счёту оплаты (касса / В.М. / ЮМ / р/с / без счёта) и сортировка.
+  // Порядок по умолчанию — время ДОБАВЛЕНИЯ заказа (createdAt) с минутами
+  // и секундами, а не только день из поля `date`. Активные заказы идут
+  // как раньше, в порядке сервера.
   const visibleDeals = useMemo(() => {
     if (dealsSub !== "released") return filteredDeals;
     const rows = filteredDeals.filter((d) => {
       const day = String(d.date || "").slice(0, 10);
       if (dealDateFrom && day < dealDateFrom) return false;
       if (dealDateTo && day > dealDateTo) return false;
-      if (dealsCashOnly) {
-        const nameKey = normalizeName(d.customerName || "");
-        const marked =
-          (d.counterpartyId && cashCounterpartyKeys.has(d.counterpartyId)) ||
-          (nameKey && cashCounterpartyKeys.has(nameKey));
-        if (!marked && dealPaymentMethod.get(d.id) !== "cash") return false;
-      }
-      return true;
+      return dealMatchesAccount(
+        dealAccountFilter,
+        getDealAccounts(d.id, dealAccounts)
+      );
     });
-    rows.sort((a, b) => {
-      const byDate = String(a.date || "").localeCompare(String(b.date || ""));
-      if (byDate !== 0) return dealSortDir === "desc" ? -byDate : byDate;
-      return dealSortDir === "desc" ? b.number - a.number : a.number - b.number;
+    return sortDeals(rows, {
+      key: dealSortKey,
+      direction: dealSortDir,
+      accounts: dealAccounts,
     });
-    return rows;
   }, [
     filteredDeals,
     dealsSub,
     dealDateFrom,
     dealDateTo,
-    dealsCashOnly,
+    dealAccountFilter,
+    dealSortKey,
     dealSortDir,
-    cashCounterpartyKeys,
-    dealPaymentMethod,
+    dealAccounts,
   ]);
 
   // Счётчики под тулбаром архива: сколько показано из скольки и на сумму.
@@ -3011,20 +3075,55 @@ export function WarehouseManager({
                     onChange={(e) => setDealDateTo(e.target.value)}
                   />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setDealsCashOnly((v) => !v)}
-                  className={`admin-btn ${dealsCashOnly ? "admin-btn--primary" : "admin-btn--ghost"}`}
-                  title="Показать только заказы за наличку (у контрагента галочка «за наличку» или заказ оплачен наличными)"
-                  aria-pressed={dealsCashOnly}
+                <label className="bank-toolbar__date">
+                  <span>Сортировка</span>
+                  <select
+                    className="admin-select"
+                    value={dealSortKey}
+                    onChange={(e) => setDealSortKey(e.target.value as DealSortKey)}
+                    title="По времени добавления (с минутами и секундами) или сгруппировать по счёту оплаты"
+                  >
+                    <option value="created">По добавлению (чч:мм:сс)</option>
+                    <option value="account">По счёту оплаты</option>
+                  </select>
+                </label>
+                <div
+                  className="deal-account-filters"
+                  role="group"
+                  aria-label="Фильтр архива по счёту оплаты"
                 >
-                  <Banknote size={14} /> Касса
-                </button>
+                  <span className="deal-account-filters__label">Счёт</span>
+                  {DEAL_ACCOUNT_FILTERS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setDealAccountFilter(option.value)}
+                      className={`admin-btn admin-btn--sm ${
+                        dealAccountFilter === option.value
+                          ? "admin-btn--primary"
+                          : "admin-btn--ghost"
+                      }`}
+                      title={dealAccountFilterTitles[option.value]}
+                      aria-pressed={dealAccountFilter === option.value}
+                    >
+                      {option.value === "cash" ? (
+                        <Banknote size={12} />
+                      ) : option.value === "vm_card" || option.value === "ym_card" ? (
+                        <CreditCard size={12} />
+                      ) : null}
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
                   onClick={() => setDealSortDir((v) => (v === "desc" ? "asc" : "desc"))}
                   className="admin-btn admin-btn--ghost"
-                  title={dealSortDir === "desc" ? "Сначала новые (нажмите — сначала старые)" : "Сначала старые (нажмите — сначала новые)"}
+                  title={
+                    dealSortDir === "desc"
+                      ? "Сначала добавленные позже (нажмите — сначала старые)"
+                      : "Сначала добавленные раньше (нажмите — сначала новые)"
+                  }
                 >
                   {dealSortDir === "desc" ? (
                     <ArrowDownWideNarrow size={14} />
@@ -3032,21 +3131,32 @@ export function WarehouseManager({
                     <ArrowUpNarrowWide size={14} />
                   )}
                 </button>
-                {(dealDateFrom || dealDateTo || dealsCashOnly || dealSortDir !== "desc") && (
+                {(dealDateFrom ||
+                  dealDateTo ||
+                  dealAccountFilter !== "all" ||
+                  dealSortKey !== "created" ||
+                  dealSortDir !== "desc") && (
                   <button
                     type="button"
                     onClick={() => {
                       setDealDateFrom("");
                       setDealDateTo("");
-                      setDealsCashOnly(false);
+                      setDealAccountFilter("all");
+                      setDealSortKey("created");
                       setDealSortDir("desc");
                     }}
                     className="admin-btn admin-btn--ghost"
-                    title="Сбросить фильтры архива"
+                    title="Сбросить фильтры и сортировку архива"
                   >
                     <X size={14} />
                   </button>
                 )}
+              </div>
+
+              <div className="deal-archive-hint">
+                Счёт определяется по привязанным к заказу платежам; для старых
+                архивных заказов без платежей — по метке контрагента «за наличку».
+                Сортировка по добавлению учитывает минуты и секунды (время Новосибирска).
               </div>
 
               <div className="bank-period-presets">
@@ -3153,6 +3263,14 @@ export function WarehouseManager({
                 const isInSupply = d.status === "new" && linkedActiveSupplies.length > 0;
                 const supplyNumbers = linkedActiveSupplies.map((receipt) => `ПО-${receipt.number}`).join(", ");
                 const expanded = expandedDealId === d.id;
+                // Счета, на которые ушли деньги по заказу, и точное время
+                // добавления — главное отличие архивной карточки.
+                const accountEntries = getDealAccounts(d.id, dealAccounts);
+                const hasExactCreatedAt = Boolean(d.createdAt);
+                const createdAtLabel = formatDealCreatedAt(d.createdAt || d.date);
+                const createdAtTitle = d.createdAt
+                  ? `Добавлен ${createdAtLabel} (Новосибирск) · сортировка идёт по этому времени`
+                  : "Точное время добавления не сохранено — используется дата заказа";
                 return (
                   <div key={d.id} id={`deal-${d.id}`} className="admin-order">
                     <button
@@ -3187,14 +3305,31 @@ export function WarehouseManager({
                       {!d.isArchive && !d.isInternal && !isFullyPaid && paid > 0 && (
                         <span className="admin-badge admin-badge--blue">Оплачено {fmt(paid)} из {fmt(d.total)} ₽</span>
                       )}
-                      {isCashDeal(d) && (
+                      {accountEntries.length > 0 ? (
+                        accountEntries.map((entry) => (
+                          <span
+                            key={entry.account}
+                            className={`admin-badge ${dealAccountBadgeClass[entry.account]}`}
+                            title={dealAccountTitle(entry)}
+                          >
+                            {entry.account === "cash" ? (
+                              <Banknote size={10} />
+                            ) : entry.account === "bank" ? (
+                              <Wallet size={10} />
+                            ) : (
+                              <CreditCard size={10} />
+                            )}
+                            {DEAL_ACCOUNT_SHORT_LABELS[entry.account]}
+                          </span>
+                        ))
+                      ) : dealsSub === "released" ? (
                         <span
-                          className="admin-badge admin-badge--green"
-                          title="Заказ за наличку: у контрагента галочка «за наличку» или заказ оплачен наличным платежом"
+                          className="admin-badge admin-badge--gray"
+                          title="К заказу не привязан ни один входящий платёж — счёт определить нельзя"
                         >
-                          <Banknote size={10} /> Наличные
+                          Счёт не указан
                         </span>
-                      )}
+                      ) : null}
                       {d.isReserved ? (
                         <span
                           className="admin-badge admin-badge--indigo"
@@ -3265,8 +3400,21 @@ export function WarehouseManager({
                             : "Бесплатная доставка"}
                         </span>
                       )}
+                      {dealsSub === "released" && (
+                        <span
+                          className="admin-badge admin-badge--gray deal-created-badge"
+                          title={createdAtTitle}
+                        >
+                          <Clock size={10} /> {createdAtLabel}
+                        </span>
+                      )}
                       <span className="receipt-head__supplier">{d.customerName}</span>
-                      <span className="receipt-head__date">{fmtDate(d.date)}</span>
+                      <span
+                        className="receipt-head__date"
+                        title={dealsSub === "released" ? `Дата заказа: ${fmtDate(d.date)}` : undefined}
+                      >
+                        {fmtDate(d.date)}
+                      </span>
                       <span className="receipt-head__total">{fmt(d.total)} ₽</span>
                       <span className="receipt-head__chevron">{expanded ? "▲" : "▼"}</span>
                     </button>
@@ -3278,6 +3426,50 @@ export function WarehouseManager({
                             <div className="admin-order__meta">
                               <span className="admin-order__meta-label wh-meta-label">Покупатель:</span>
                               <span className="admin-order__meta-val">{d.customerName}</span>
+                            </div>
+                          </div>
+
+                          {/* Куда ушли деньги и когда заказ реально добавили. */}
+                          <div className="deal-account-details">
+                            <div className="deal-account-details__row">
+                              <span className="deal-account-details__label">Добавлен:</span>
+                              <span className="deal-account-details__value">
+                                {createdAtLabel}
+                                <small>
+                                  {hasExactCreatedAt
+                                    ? " · время Новосибирска"
+                                    : " · точное время не сохранено"}
+                                </small>
+                              </span>
+                            </div>
+                            <div className="deal-account-details__row">
+                              <span className="deal-account-details__label">Счета оплаты:</span>
+                              {accountEntries.length === 0 ? (
+                                <span className="deal-account-details__value admin-muted">
+                                  не указан — нет привязанных платежей
+                                </span>
+                              ) : (
+                                <span className="deal-account-details__list">
+                                  {accountEntries.map((entry) => (
+                                    <span
+                                      key={entry.account}
+                                      className="deal-account-details__item"
+                                      title={dealAccountTitle(entry)}
+                                    >
+                                      <b>{DEAL_ACCOUNT_LABELS[entry.account]}</b>
+                                      {entry.inferred
+                                        ? " · по метке контрагента"
+                                        : ` — ${fmt(entry.amount)} ₽`}
+                                      {entry.paymentNumbers.length > 0 && (
+                                        <small>
+                                          {" "}· ПЛ-{entry.paymentNumbers.join(", ПЛ-")}
+                                        </small>
+                                      )}
+                                      {entry.hasPending && <small> · ожидает проведения</small>}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -3501,7 +3693,8 @@ export function WarehouseManager({
             ) : (
               <div className="admin-empty">
                 <p>
-                  {dealsSub === "released" && (dealDateFrom || dealDateTo || dealsCashOnly)
+                  {dealsSub === "released" &&
+                  (dealDateFrom || dealDateTo || dealAccountFilter !== "all" || dealSortKey !== "created")
                     ? "По заданным фильтрам в архиве ничего не найдено"
                     : "В этом списке пока пусто"}
                 </p>

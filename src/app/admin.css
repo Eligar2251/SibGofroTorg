@@ -3997,6 +3997,128 @@ body:has(.admin-modal-overlay) {
 .bank-period-presets button { padding: 3px 8px; color: var(--adm-steel); background: var(--adm-steel-pale); border: 1px solid var(--adm-steel-line); border-radius: 999px; cursor: pointer; font: inherit; font-size: 9px; font-weight: 700; }
 .bank-period-presets button:hover { color: var(--adm-on-steel); background: var(--adm-steel); }
 
+/* ── Архив заказов: фильтр по счёту оплаты ───────────────────
+   Касса / Карта В.М. / Карта ЮМ / р/с выбираются одной группой
+   кнопок, чтобы рядом с «Кассой» можно было отдельно вывести
+   платежи по каждой карте. Селект сортировки живёт в той же
+   панели и повторяет оформление соседних полей дат.            */
+.bank-toolbar__date .admin-select {
+  width: 100%;
+  padding: 9px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.deal-account-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.deal-account-filters__label {
+  margin-right: 2px;
+  color: var(--adm-sand);
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.deal-account-filters .admin-btn {
+  white-space: nowrap;
+}
+
+.deal-archive-hint {
+  margin: 7px 4px 0;
+  color: var(--adm-ink-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* Бейдж с точным временем добавления: цифры не «прыгают» при
+   перерисовке списка. */
+.deal-created-badge {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Расшифровка счетов в раскрытой карточке заказа. */
+.deal-account-details {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 10px 0 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-r-sm);
+  background: var(--adm-paper-warm);
+  font-size: 12px;
+}
+
+.deal-account-details__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+}
+
+.deal-account-details__label {
+  flex-shrink: 0;
+  color: var(--adm-sand);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.deal-account-details__value {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--adm-ink);
+}
+
+.deal-account-details__value small,
+.deal-account-details__item small {
+  color: var(--adm-ink-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.deal-account-details__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.deal-account-details__item {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--adm-border-mid);
+  border-radius: 999px;
+  background: var(--adm-card);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .deal-account-filters {
+    flex: 1 1 100%;
+  }
+
+  .wh-mobile .deal-created-badge {
+    white-space: normal !important;
+    font-size: 10px !important;
+  }
+
+  .wh-mobile .deal-account-details {
+    font-size: 11px;
+  }
+}
+
 @media (max-width: 640px) {
   .bank-toolbar__search {
     flex: 1 1 100%;

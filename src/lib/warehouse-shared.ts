@@ -1534,7 +1534,10 @@ export function isImmediateYmPayment(p: BankPayment | null | undefined): boolean
 
 /** Платёж, который уже учтён на карте В.М. самим ПЛ, минуя наличную кассу. */
 export function isImmediateVmPayment(p: BankPayment | null | undefined): boolean {
-  return Boolean(p) && p?.type === "vm_card";
+  // migration_vm_card.sql разрешает cash_destination='vm_card' для старых
+  // наличных документов, размеченных как вторая карта. Такой платёж тоже
+  // не должен попадать в наличную кассу (и в архиве показывается как В.М.).
+  return Boolean(p) && (p?.type === "vm_card" || p?.cashDestination === "vm_card");
 }
 
 /** Платеж, который считается наличкой в кассе (только регулярная наличка). */
@@ -1542,7 +1545,12 @@ function isRegularCashForCashDesk(p: BankPayment): boolean {
   if (!p.isPaid || p.excludeFromBalance) return false;
   if (p.type !== "cash") return false;
   if (p.amount <= 0) return false;
-  if (p.direction === "incoming" && p.cashDestination === "card") return false;
+  if (
+    p.direction === "incoming" &&
+    (p.cashDestination === "card" || p.cashDestination === "vm_card")
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -1595,9 +1603,14 @@ export function getCashCarryoverSummary(
   const events: CashEvent[] = [];
   for (const payment of payments) {
     if (!payment.isPaid || payment.excludeFromBalance) continue;
-    // В кассу попадает только регулярная наличка, без переводов на ЮМ
+    // В кассу попадает только регулярная наличка, без переводов на ЮМ/В.М.
     if (payment.type !== "cash") continue;
-    if (payment.direction === "incoming" && payment.cashDestination === "card") continue;
+    if (
+      payment.direction === "incoming" &&
+      (payment.cashDestination === "card" || payment.cashDestination === "vm_card")
+    ) {
+      continue;
+    }
     const amount = Math.max(0, Number(payment.amount) || 0);
     if (amount <= 0) continue;
     // Именно дата платежа определяет, в какой дневной баланс он входит.
@@ -1917,11 +1930,11 @@ export function getBankSummary(
       if (isImmediateYm || isYm) {
         if (p.direction === "incoming") ymExpectedIn += p.amount;
         else ymExpectedOut += p.amount;
-      } else if (p.type === "cash") {
-        // наличка ожидаемая не влияет на р/с прогноз (по новому ТЗ)
-      } else if (isVm) {
+      } else if (isImmediateVm || isVm) {
         if (p.direction === "incoming") vmExpectedIn += p.amount;
         else vmExpectedOut += p.amount;
+      } else if (p.type === "cash") {
+        // наличка ожидаемая не влияет на р/с прогноз (по новому ТЗ)
       } else {
         if (p.direction === "incoming") {
           expectedIn += offsetIncomingByDealPayments(p, debtPool);

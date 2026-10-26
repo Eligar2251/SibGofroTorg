@@ -678,7 +678,7 @@ CREATE TABLE IF NOT EXISTS bank_payments (
   direction TEXT NOT NULL CHECK (direction IN ('incoming', 'outgoing')),
   type TEXT DEFAULT 'regular',
   -- Для наличного входящего: куда предвыбрать деньги при сдаче кассы.
-  cash_destination TEXT CHECK (cash_destination IN ('cash', 'card')),
+  cash_destination TEXT CHECK (cash_destination IN ('cash', 'card', 'vm_card')),
   counterparty TEXT NOT NULL DEFAULT '',
   counterparty_id TEXT,
   deal_ids JSONB DEFAULT '[]'::jsonb,
