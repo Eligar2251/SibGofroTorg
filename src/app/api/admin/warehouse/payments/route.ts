@@ -12,6 +12,8 @@ export async function POST(request: NextRequest) {
       date: String(body.date || ""),
       direction: body.direction === "outgoing" ? "outgoing" : "incoming",
       type: body.type,
+      // Для наличного входящего ПЛ можно сразу указать карту ЮМ/В.М.
+      cashDestination: body.cashDestination ?? null,
       counterparty: String(body.counterparty || ""),
       dealIds: Array.isArray(body.dealIds) ? body.dealIds : [],
       receiptIds: Array.isArray(body.receiptIds) ? body.receiptIds : [],

@@ -954,8 +954,12 @@ export function PaymentControls({
   const [editType, setEditType] = useState<BankPaymentType>(
     edit.type || "regular"
   );
-  const [editCashDestination, setEditCashDestination] = useState<"cash" | "card">(
-    edit.cashDestination === "card" || edit.type === "transfer" ? "card" : "cash"
+  const [editCashDestination, setEditCashDestination] = useState<"cash" | "card" | "vm_card">(
+    edit.cashDestination === "vm_card"
+      ? "vm_card"
+      : edit.cashDestination === "card" || edit.type === "transfer"
+        ? "card"
+        : "cash"
   );
   const [editCounterparty, setEditCounterparty] = useState(edit.counterparty);
   const [editAmount, setEditAmount] = useState(
@@ -1293,6 +1297,7 @@ export function PaymentControls({
                   <div className="wh-direction wh-direction--compact">
                     <button type="button" className={`wh-direction__btn${editCashDestination === "cash" ? " wh-direction__btn--active" : ""}`} onClick={() => setEditCashDestination("cash")}><Banknote size={13} /> Оставить в кассе</button>
                     <button type="button" className={`wh-direction__btn${editCashDestination === "card" ? " wh-direction__btn--active" : ""}`} onClick={() => setEditCashDestination("card")}><CreditCard size={13} /> На карту Ю. М.</button>
+                    <button type="button" className={`wh-direction__btn${editCashDestination === "vm_card" ? " wh-direction__btn--active" : ""}`} onClick={() => setEditCashDestination("vm_card")} title="Деньги сразу учтутся на карте В.М. и попадут в отдельный фильтр архива"><CreditCard size={13} /> На карту В.М.</button>
                   </div>
                 </div>
               )}

@@ -22,6 +22,7 @@ import type {
   CustomerDeal,
   WarehouseReceipt,
 } from "@/lib/warehouse-shared";
+import { DEAL_ACCOUNT_LABELS, paymentAccount } from "@/lib/deal-archive";
 import { useEscapeClose } from "@/hooks/use-escape-close";
 
 interface PaymentDetailsPayload {
@@ -43,6 +44,8 @@ const paymentTypeLabel: Record<string, string> = {
   refund: "Возврат",
   cash: "Наличные",
   transfer: "Перевод",
+  ym_card: "Карта ЮМ",
+  vm_card: "Карта В.М.",
   deposit: "Внесение",
   advertising: "Реклама",
   website: "Сайт/хостинг",
@@ -114,7 +117,11 @@ export function PaymentDetailsModal({
   if (!paymentId) return null;
 
   const payment = data?.payment;
-  const accountLabel = payment?.type === "cash" ? "Касса" : "Расчётный счёт";
+  // Раньше любая карта попадала в «Расчётный счёт». Показываем тот же
+  // счёт, что и в архиве заказов: касса / В.М. / ЮМ / р/с.
+  const accountLabel = payment
+    ? DEAL_ACCOUNT_LABELS[paymentAccount(payment)]
+    : "—";
 
   return (
     <ModalPortal>
@@ -158,7 +165,7 @@ export function PaymentDetailsModal({
               </div>
 
               <div className="payment-details__facts">
-                <Fact icon={payment.type === "cash" ? <Banknote size={14} /> : <CreditCard size={14} />} label="Счёт" value={accountLabel} />
+                <Fact icon={paymentAccount(payment) === "cash" ? <Banknote size={14} /> : <CreditCard size={14} />} label="Счёт" value={accountLabel} />
                 <Fact icon={<FileText size={14} />} label="Тип" value={paymentTypeLabel[payment.type || "regular"] || payment.type || "Оплата"} />
                 <Fact icon={<CheckCircle2 size={14} />} label="Статус" value={payment.isPaid ? `Проведён${payment.paidAt ? ` · ${fmtDate(payment.paidAt)}` : ""}` : "Ожидает проведения"} />
                 <Fact icon={<UserRound size={14} />} label="Дата документа" value={fmtDate(payment.date)} />
