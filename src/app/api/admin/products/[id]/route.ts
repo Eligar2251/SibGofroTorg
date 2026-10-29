@@ -91,7 +91,6 @@ export async function PATCH(
     // их, остальное — через полную форму редактирования.
     const allowed = new Set([
       "isVisible",
-      "inStock",
       "isFeatured",
       "isSale",
       "isPromo",

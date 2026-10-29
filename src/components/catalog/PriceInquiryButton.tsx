@@ -53,20 +53,44 @@ export function PriceInquiryButton({
   const [open, setOpen] = useState(defaultOpen);
   const [mounted, setMounted] = useState(false);
   const [phase, setPhase] = useState<Phase>("form");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [phoneReadOnly, setPhoneReadOnly] = useState(false);
   const [comment, setComment] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [consent, setConsent] = useState(false);
   const [consentError, setConsentError] = useState(false);
 
-  const { phone, phoneHref, messengerBanner } = useSiteSettings();
+  const { phoneHref, messengerBanner } = useSiteSettings();
   const maxUrl = safeUrl(messengerBanner.max?.url);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.user) return;
+        if (data.user.phoneDisplay || data.user.phone) {
+          setCustomerPhone(String(data.user.phoneDisplay || data.user.phone));
+          setPhoneReadOnly(true);
+        }
+        if (data.user.name) {
+          setCustomerName(String(data.user.name));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const isRestock = kind === "restock";
-  const topic = isRestock ? "Уточнить поступление" : "Узнать цену";
+  const topic = isRestock ? "Заказ поставки" : "Узнать цену";
   const productInfo = `${topic}: ${productName}${
     productSku ? ` (арт. ${productSku})` : ""
   }`;
@@ -81,7 +105,8 @@ export function PriceInquiryButton({
         cache: "no-store",
         body: JSON.stringify({
           type: "inquiry",
-          customerName: "Клиент",
+          customerName: customerName.trim() || "Клиент",
+          customerPhone: customerPhone.trim(),
           productInfo,
           comment: comment.trim() || "",
           communicationChannel: "max",
@@ -102,7 +127,7 @@ export function PriceInquiryButton({
       );
       setPhase("error");
     }
-  }, [productInfo, comment]);
+  }, [productInfo, comment, customerName, customerPhone]);
 
   useEffect(() => {
     if (!open) return;
@@ -132,6 +157,11 @@ export function PriceInquiryButton({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!customerPhone.trim()) {
+      setErrorMsg("Укажите номер телефона — по нему менеджер свяжется с вами");
+      setPhase("error");
+      return;
+    }
     if (!consent) {
       setConsentError(true);
       return;
@@ -222,7 +252,24 @@ export function PriceInquiryButton({
             </div>
 
             <label className="pi-field">
-              <span className="pi-field__label">Комментарий (необязательно)</span>
+              <span className="pi-field__label">Телефон для связи *</span>
+              <span className="pi-phone-wrap">
+                <Phone size={15} />
+                <input
+                  type="tel"
+                  className="pi-input"
+                  value={customerPhone}
+                  readOnly={phoneReadOnly}
+                  onChange={(event) => setCustomerPhone(event.target.value)}
+                  placeholder="+7 (999) 123-45-67"
+                  autoComplete="tel"
+                  required
+                />
+              </span>
+            </label>
+
+            <label className="pi-field">
+              <span className="pi-field__label">Комментарий и количество (необязательно)</span>
               <textarea
                 className="pi-textarea"
                 rows={2}

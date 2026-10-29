@@ -99,13 +99,11 @@ export function buildStockLabel(input: {
   stockQty?: number | null;
   inStock?: boolean | null;
 }): StockLabel {
-  if (input.stockQty != null) {
-    if (input.stockQty <= 0) return { text: "Нет в наличии", tone: "out" };
-    if (input.stockQty < 10) return { text: `Мало: ${input.stockQty} шт`, tone: "low" };
-    return { text: `В наличии: ${input.stockQty} шт`, tone: "ok" };
-  }
-
-  return input.inStock
-    ? { text: "В наличии", tone: "ok" }
-    : { text: "Нет в наличии", tone: "out" };
+  const qty =
+    input.stockQty != null && Number.isFinite(Number(input.stockQty))
+      ? Number(input.stockQty)
+      : 0;
+  if (Math.floor(qty) < 1) return { text: "Нет в наличии", tone: "out" };
+  if (qty < 10) return { text: `Мало: ${qty} шт`, tone: "low" };
+  return { text: `В наличии: ${qty} шт`, tone: "ok" };
 }

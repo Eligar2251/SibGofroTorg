@@ -264,7 +264,7 @@ export default async function ProductPage({
     sku: product.sku,
     price: displayPrice ?? effectivePrice ?? basePrice,
     imageUrl: product.imageUrl,
-    inStock: !outOfStock,
+    inStock: !outOfStock && !product.madeToOrder,
   });
 
   /* ── Хлебные крошки ── */
@@ -381,7 +381,14 @@ export default async function ProductPage({
               </div>
             )}
             {/* Наличие — бейдж на фото (правый верхний угол) */}
-            {!outOfStock ? (
+            {product.madeToOrder ? (
+              <span className="badge-stock badge-stock--out">
+                <span className="badge-stock__label">
+                  <span className="pdp-stock-dot pdp-stock-dot--out" />
+                  Под заказ
+                </span>
+              </span>
+            ) : !outOfStock ? (
               <span className="badge-stock badge-stock--in">
                 <span className="badge-stock__label">
                   <span className="pdp-stock-dot pdp-stock-dot--in" />
@@ -389,7 +396,7 @@ export default async function ProductPage({
                 </span>
                 {product.stockQty != null && product.stockQty <= 30 && (
                   <span className="badge-stock__qty">
-                    осталось {product.stockQty} шт.
+                    осталось {Math.floor(product.stockQty)} шт.
                   </span>
                 )}
               </span>
@@ -566,24 +573,7 @@ export default async function ProductPage({
 
               {/* Форма сайта: количество + добавление в корзину */}
               <div className="pdp-cart-block">
-                {outOfStock ? (
-                  <div className="pdp-made-to-order">
-                    <div className="pdp-out-of-stock">
-                      <ShoppingCart size={15} />
-                      {displayPrice != null
-                        ? "Товара нет в наличии — оставьте заявку, уточним срок поступления"
-                        : "Товара нет в наличии — оставьте заявку, уточним срок поступления и актуальную цену"}
-                    </div>
-                    <PriceInquiryButton
-                      productName={product.name}
-                      productSku={product.sku}
-                      productImageUrl={product.imageUrl}
-                      className="pdp-made-to-order__btn"
-                      label={RESTOCK_INQUIRY_LABEL}
-                      kind="restock"
-                    />
-                  </div>
-                ) : product.madeToOrder ? (
+                {product.madeToOrder ? (
                   <div className="pdp-made-to-order">
                     <div className="pdp-made-to-order__text">
                       <FileText size={15} />
@@ -599,6 +589,21 @@ export default async function ProductPage({
                       productImageUrl={product.imageUrl}
                       className="pdp-made-to-order__btn"
                       label="Узнать цену"
+                    />
+                  </div>
+                ) : outOfStock ? (
+                  <div className="pdp-made-to-order">
+                    <div className="pdp-out-of-stock">
+                      <ShoppingCart size={15} />
+                      Под заказ · 2–3 дня — товара сейчас нет на складе, оставьте заявку на поставку
+                    </div>
+                    <PriceInquiryButton
+                      productName={product.name}
+                      productSku={product.sku}
+                      productImageUrl={product.imageUrl}
+                      className="pdp-made-to-order__btn"
+                      label={RESTOCK_INQUIRY_LABEL}
+                      kind="restock"
                     />
                   </div>
                 ) : effectivePrice == null && variants.length === 0 ? (

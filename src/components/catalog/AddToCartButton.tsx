@@ -6,6 +6,11 @@ import { useCart } from "@/context/CartContext";
 import { ShoppingCart, Check, Plus, Minus, Package } from "lucide-react";
 import Link from "next/link";
 import { ymGoal } from "@/lib/ym";
+import {
+  getAvailableStockQty,
+  RESTOCK_INQUIRY_LABEL,
+} from "@/lib/stock-availability";
+import { PriceInquiryButton } from "./PriceInquiryButton";
 import type { ProductVariant } from "@/lib/types";
 
 interface AddToCartButtonProps {
@@ -40,7 +45,9 @@ export function AddToCartButton({
   product,
   selectedVariant = null,
   allVariants = [],
-  manageVariantStock = allVariants.some((variant) => variant.stockQty > 0),
+  manageVariantStock = allVariants.some(
+    (variant) => getAvailableStockQty({ stockQty: variant.stockQty }) > 0,
+  ),
 }: AddToCartButtonProps) {
   const { addToCart, cart } = useCart();
 
@@ -51,9 +58,7 @@ export function AddToCartButton({
   const effectiveStock =
     selectedVariant != null && manageVariantStock
       ? selectedVariant.stockQty
-      : product.stockQty != null
-        ? product.stockQty
-        : null;
+      : product.stockQty ?? 0;
   const effectiveImageUrl =
     selectedVariant?.imageUrl ?? product.imageUrl ?? null;
   const effectiveSku =
@@ -69,7 +74,7 @@ export function AddToCartButton({
       ? Math.max(1, Number(selectedVariant?.packQty ?? product.packQty))
       : 1;
   const hasPacks = packSize > 1;
-  const maxStock = effectiveStock != null ? Number(effectiveStock) : null;
+  const maxStock = getAvailableStockQty({ stockQty: effectiveStock });
 
   const [inputMode, setInputMode] = useState<InputMode>("pieces");
   // По умолчанию добавляем 1 штуку (не целую заводскую пачку).
@@ -90,25 +95,44 @@ export function AddToCartButton({
       i.productId === product.id &&
       (i.variantId ?? null) === (selectedVariant?.id ?? null),
   );
+  const poolUsedQty =
+    selectedVariant != null && !manageVariantStock
+      ? cart
+          .filter(
+            (i) =>
+              i.productId === product.id &&
+              (i.stockPoolId === product.id || i.variantId == null),
+          )
+          .reduce((sum, i) => sum + i.quantity, 0)
+      : (inCart?.quantity ?? 0);
+  const remainingStock = Math.max(0, maxStock - poolUsedQty);
 
   const totalPieces: number = (() => {
+    if (remainingStock <= 0) return 0;
     const raw = parseInt(inputValue, 10);
-    if (isNaN(raw) || raw < 1) return inputMode === "packs" ? packSize : 1;
-    if (inputMode === "packs") {
-      const pieces = raw * packSize;
-      return maxStock !== null ? Math.min(pieces, maxStock) : pieces;
+    if (isNaN(raw) || raw < 1) {
+      const fallback = inputMode === "packs" ? packSize : 1;
+      return Math.min(fallback, remainingStock);
     }
-    return maxStock !== null ? Math.min(raw, maxStock) : raw;
+    if (inputMode === "packs") {
+      return Math.min(raw * packSize, remainingStock);
+    }
+    return Math.min(raw, remainingStock);
   })();
 
   // Если склад ведётся по вариантам, нулевой остаток блокирует покупку.
-  // При общем остатке проверяем количество родительского товара ниже.
+  // При общем остатке проверяем количество родительского товара.
   const selectedIsOut =
-    manageVariantStock && selectedVariant != null && selectedVariant.stockQty <= 0;
+    manageVariantStock &&
+    selectedVariant != null &&
+    getAvailableStockQty({ stockQty: selectedVariant.stockQty }) <= 0;
   const allVariantsOut =
     manageVariantStock &&
     allVariants.length > 0 &&
-    allVariants.every((variant) => variant.stockQty <= 0);
+    allVariants.every(
+      (variant) => getAvailableStockQty({ stockQty: variant.stockQty }) <= 0,
+    );
+  const parentIsOut = !manageVariantStock && maxStock <= 0;
 
   function switchMode(mode: InputMode) {
     if (mode === inputMode) return;
@@ -125,11 +149,11 @@ export function AddToCartButton({
 
   const minVal = 1;
   const maxVal =
-    maxStock !== null
+    remainingStock > 0
       ? inputMode === "packs"
-        ? Math.floor(maxStock / packSize)
-        : maxStock
-      : undefined;
+        ? Math.max(1, Math.floor(remainingStock / packSize))
+        : remainingStock
+      : 1;
 
   function clamp(val: number) {
     let result = Math.max(minVal, val);
@@ -161,7 +185,7 @@ export function AddToCartButton({
   }
 
   function handleAdd() {
-    if (totalPieces < 1) return;
+    if (totalPieces < 1 || maxStock <= 0 || remainingStock <= 0) return;
     addToCart(
       {
         productId: product.id,
@@ -185,38 +209,44 @@ export function AddToCartButton({
     setTimeout(() => setAdded(false), 2500);
   }
 
-  if (effectivePrice == null || effectivePrice <= 0) {
-    return (
-      <div className="atc-noprice">
-        <p>Цена рассчитывается индивидуально — оставьте заявку</p>
-        <Link href="/order" className="atc-noprice__btn">
-          Оставить заявку
-        </Link>
-      </div>
-    );
-  }
-
-  // Если выбранный вариант распродан ИЛИ все варианты распроданы —
-  // блокируем кнопку, показываем «Нет в наличии».
-  if (selectedIsOut || allVariantsOut) {
+  // Если выбранный вариант распродан, все варианты распроданы или
+  // родительский остаток 0 — блокируем покупку и предлагаем заявку на поставку.
+  if (selectedIsOut || allVariantsOut || parentIsOut) {
     return (
       <div className="atc-wrap">
         <div className="atc-pack-info" style={{ color: "var(--red)" }}>
           <Package size={14} />
           <span>
-            {selectedVariant
-              ? `Вариант «${selectedVariant.name}» распродан`
-              : "Все варианты распроданы"}
-            {maxStock === 0 ? "" : ` — оставьте заявку, уточним поступление`}
+            {selectedVariant && selectedIsOut
+              ? `Вариант «${selectedVariant.name}» сейчас под заказ (нет на складе)`
+              : allVariantsOut
+                ? "Все варианты сейчас под заказ (нет на складе)"
+                : "Товар сейчас под заказ (нет на складе)"}
           </span>
         </div>
-        <Link
-          href="/order"
+        <PriceInquiryButton
+          productName={effectiveName}
+          productSku={effectiveSku}
+          productImageUrl={effectiveImageUrl}
           className="atc-noprice__btn"
-          style={{ display: "block", textAlign: "center" }}
-        >
-          Оставить заявку
-        </Link>
+          label={RESTOCK_INQUIRY_LABEL}
+          kind="restock"
+        />
+      </div>
+    );
+  }
+
+  if (effectivePrice == null || effectivePrice <= 0) {
+    return (
+      <div className="atc-noprice">
+        <p>Цена рассчитывается индивидуально — оставьте заявку</p>
+        <PriceInquiryButton
+          productName={effectiveName}
+          productSku={effectiveSku}
+          productImageUrl={effectiveImageUrl}
+          className="atc-noprice__btn"
+          label="Узнать цену"
+        />
       </div>
     );
   }
@@ -324,10 +354,13 @@ export function AddToCartButton({
       <button
         type="button"
         onClick={handleAdd}
+        disabled={remainingStock <= 0}
         className={`atc-btn${added ? " atc-btn--added" : ""}`}
       >
         {added ? (
           <><Check size={18} /> Добавлено в корзину!</>
+        ) : remainingStock <= 0 ? (
+          <><Check size={18} /> Весь доступный остаток в корзине</>
         ) : (
           <><ShoppingCart size={18} /> Добавить в корзину</>
         )}

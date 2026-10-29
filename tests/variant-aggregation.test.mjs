@@ -89,4 +89,16 @@ test("an out-of-stock parent stays unavailable when variant quantities are uncon
   assert.equal(summary.variantStockManaged, false);
   assert.equal(summary.totalStock, 0);
   assert.equal(summary.anyInStock, false);
+
+  const legacyNullProduct = makeProduct({ inStock: true, stockQty: null });
+  const legacySummary = aggregateVariants([makeVariant("red")], legacyNullProduct);
+  assert.equal(legacySummary.totalStock, 0);
+  assert.equal(legacySummary.anyInStock, false);
+
+  const [enrichedLegacy] = enrichProductsWithVariants(
+    [legacyNullProduct],
+    new Map([[legacyNullProduct.id, [makeVariant("red")]]]),
+  );
+  assert.equal(enrichedLegacy.stockQty, 0);
+  assert.equal(enrichedLegacy.inStock, false);
 });

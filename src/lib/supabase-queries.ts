@@ -244,6 +244,8 @@ function isMissingDimensionProfileColumnError(err: any): boolean {
 
 function mapProductRow(row: any): FirestoreProduct {
   const images = normalizeProductImages(row.images);
+  const parsedStockQty = row.stock_qty != null ? Number(row.stock_qty) : 0;
+  const stockQty = Number.isFinite(parsedStockQty) ? parsedStockQty : 0;
   return {
     id: row.id,
     name: row.name || "",
@@ -270,8 +272,9 @@ function mapProductRow(row: any): FirestoreProduct {
       row.dimension_unit,
     ),
     note: row.note || null,
-    inStock: row.in_stock ?? true,
-    stockQty: row.stock_qty != null ? Number(row.stock_qty) : null,
+    // Наличие всегда определяется по фактическому остатку на складе (≥ 1 шт.).
+    inStock: Math.floor(stockQty) >= 1,
+    stockQty,
     stockWarnQty: row.stock_warn_qty != null ? Number(row.stock_warn_qty) : null,
     // Постоянный штрихкод из БД. Может отсутствовать у товаров,
     // созданных до миграции — читающий код подставляет
@@ -486,7 +489,7 @@ const getCachedProducts = unstable_cache(
     return products;
   },
   // Версия ключа сбрасывает старые записи с мутировавшими ценами/остатками.
-  ["base-products", "variant-aggregation-v2"],
+  ["base-products", "variant-aggregation-v3"],
   { revalidate: DATA_REVALIDATE, tags: ["products", "variants"] }
 );
 
@@ -968,6 +971,9 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     data.dimensionHeight,
     data.dimensionUnit,
   );
+  const parsedStockQty =
+    data.stockQty == null || data.stockQty === "" ? 0 : Number(data.stockQty);
+  const safeStockQty = Number.isFinite(parsedStockQty) ? parsedStockQty : 0;
   const payload: Record<string, any> = {
     name: data.name || "",
     slug,
@@ -987,8 +993,8 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     pack_qty: data.packQty ?? null,
     volume: calculatedVolume,
     note: data.note || null,
-    in_stock: data.inStock ?? true,
-    stock_qty: data.stockQty ?? null,
+    in_stock: Math.floor(safeStockQty) >= 1,
+    stock_qty: safeStockQty,
     stock_warn_qty: data.stockWarnQty ?? null,
     is_promo: data.isPromo ?? false,
     promo_label: data.promoLabel || null,
@@ -1122,7 +1128,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     minWholesaleQty: "min_wholesale_qty", dimensionLength: "dimension_length",
     dimensionWidth: "dimension_width", dimensionHeight: "dimension_height",
     dimensionUnit: "dimension_unit", weight: "weight", material: "material",
-    packQty: "pack_qty", volume: "volume", note: "note", inStock: "in_stock",
+    packQty: "pack_qty", volume: "volume", note: "note",
     stockQty: "stock_qty", stockWarnQty: "stock_warn_qty", isPromo: "is_promo",
     promoLabel: "promo_label", promoLabelColor: "promo_label_color",
     tags: "tags",
@@ -1188,9 +1194,11 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   // Приводим их к числам явно, чтобы в БД не оставались старые/битые
   // значения и чтобы UI после сохранения показывал именно то, что ввёл админ.
   if (data.stockQty !== undefined) {
-    payload.stock_qty = data.stockQty == null || data.stockQty === ""
-      ? null
-      : Number(data.stockQty);
+    const parsedStockQty =
+      data.stockQty == null || data.stockQty === "" ? 0 : Number(data.stockQty);
+    const safeStockQty = Number.isFinite(parsedStockQty) ? parsedStockQty : 0;
+    payload.stock_qty = safeStockQty;
+    payload.in_stock = Math.floor(safeStockQty) >= 1;
   }
   if (data.packQty !== undefined) {
     payload.pack_qty = data.packQty == null || data.packQty === ""

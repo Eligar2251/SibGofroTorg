@@ -6,6 +6,7 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { requireAdminApi } from "@/lib/auth";
 import { createProduct, getProducts } from "@/lib/supabase-queries";
 import { logAdminAction } from "@/lib/activity-log";
@@ -93,8 +94,8 @@ export async function POST(request: NextRequest) {
           dimensionWidth: r.dimensionWidth,
           dimensionHeight: r.dimensionHeight,
           dimensionUnit: "мм",
-          stockQty: r.stockQty,
-          inStock: (r.stockQty ?? 0) > 0,
+          stockQty: r.stockQty ?? 0,
+          inStock: Math.floor(r.stockQty ?? 0) >= 1,
           // Остальные поля админ заполнит позже в массовом
           // редактировании. Штрихкод создаётся автоматически.
           isVisible: true,
@@ -108,6 +109,10 @@ export async function POST(request: NextRequest) {
           error: e?.message ? String(e.message).slice(0, 200) : "Ошибка создания",
         });
       }
+    }
+
+    if (created > 0) {
+      revalidateTag("products", { expire: 0 });
     }
 
     await logAdminAction(

@@ -56,8 +56,8 @@ CREATE TABLE IF NOT EXISTS products (
   pack_qty INT,
   volume NUMERIC,
   note TEXT,
-  in_stock BOOLEAN DEFAULT TRUE,
-  stock_qty NUMERIC,
+  in_stock BOOLEAN DEFAULT FALSE,
+  stock_qty NUMERIC DEFAULT 0,
   stock_warn_qty INT,
   is_promo BOOLEAN DEFAULT FALSE,
   promo_label TEXT,
@@ -95,6 +95,22 @@ CREATE INDEX IF NOT EXISTS idx_products_tags ON products USING GIN (tags);
 CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock) WHERE in_stock = TRUE;
 DROP TRIGGER IF EXISTS trg_products_updated ON products;
 CREATE TRIGGER trg_products_updated BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE OR REPLACE FUNCTION sync_product_in_stock()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.stock_qty IS NULL THEN
+    NEW.stock_qty := 0;
+  END IF;
+  NEW.in_stock := FLOOR(NEW.stock_qty) >= 1;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_products_sync_in_stock ON products;
+CREATE TRIGGER trg_products_sync_in_stock
+  BEFORE INSERT OR UPDATE ON products
+  FOR EACH ROW EXECUTE FUNCTION sync_product_in_stock();
 
 CREATE OR REPLACE FUNCTION calculate_product_box_volume()
 RETURNS TRIGGER AS $$
