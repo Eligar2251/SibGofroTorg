@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { VariantPicker } from "./VariantPicker";
 import { AddToCartButton } from "./AddToCartButton";
+import { getAvailableStockQty } from "@/lib/stock-availability";
 import type { ProductVariant } from "@/lib/types";
 
 export interface ProductPurchaseBlockProps {
@@ -38,8 +39,10 @@ export function ProductPurchaseBlock({
   unavailable = false,
   unavailableSlot,
 }: ProductPurchaseBlockProps) {
-  // Склад по вариантам ведётся, если у варианта есть остаток.
-  const manageVariantStock = variants.some((variant) => variant.stockQty > 0);
+  // Склад по вариантам ведётся, если хотя бы у одного варианта задан остаток >= 1.
+  const manageVariantStock = variants.some(
+    (variant) => getAvailableStockQty({ stockQty: variant.stockQty }) > 0,
+  );
 
   // Локальный state выбранного варианта. null = не выбран
   // (например, у товара вообще нет вариантов).

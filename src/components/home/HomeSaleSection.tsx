@@ -7,6 +7,7 @@ import { useCart } from "@/context/CartContext";
 import { GlyphIcon } from "@/components/ui/Glyph";
 import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { getProductEffectivePrice } from "@/lib/types";
+import { getAvailableStockQty } from "@/lib/stock-availability";
 import { toSameOriginMediaUrl } from "@/lib/media";
 import {
   formatProductSize,
@@ -49,7 +50,8 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
 
   function handleAdd(p: SaleProduct) {
     const price = effectivePrice(p);
-    if (price == null) return;
+    const maxStock = getAvailableStockQty(p);
+    if (price == null || maxStock <= 0) return;
     addToCart(
       {
         productId: p.id,
@@ -57,7 +59,7 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
         sku: p.sku,
         price,
         imageUrl: p.imageUrl,
-        maxStock: p.stockQty ?? null,
+        maxStock,
       },
       1
     );
@@ -65,9 +67,9 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
 
   function handleInc(p: SaleProduct, currentQty: number) {
     const price = effectivePrice(p);
-    if (price == null) return;
-    const maxStock = p.stockQty ?? null;
-    const next = maxStock != null ? Math.min(currentQty + 1, maxStock) : currentQty + 1;
+    const maxStock = getAvailableStockQty(p);
+    if (price == null || maxStock <= 0) return;
+    const next = Math.min(currentQty + 1, maxStock);
     if (next === currentQty) return;
     updateQty(p.id, next);
     openCartDock({
@@ -100,9 +102,9 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
 
   function handleManualQty(p: SaleProduct, requested: number) {
     const price = effectivePrice(p);
-    if (price == null || requested < 1) return;
-    const maxStock = p.stockQty ?? null;
-    const next = maxStock != null ? Math.min(requested, maxStock) : requested;
+    const maxStock = getAvailableStockQty(p);
+    if (price == null || requested < 1 || maxStock <= 0) return;
+    const next = Math.min(requested, maxStock);
     updateQty(p.id, next);
     openCartDock({
       productId: p.id,
@@ -135,13 +137,13 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
               p.price != null &&
               price != null &&
               price < p.price;
-            const inCart = cart.find((i) => i.productId === p.id);
-            const out = p.stockQty != null && p.stockQty <= 0;
+            const inCart = cart.find((i) => i.productId === p.id && !i.variantId);
+            const maxStock = getAvailableStockQty(p);
+            const out = maxStock <= 0;
             // В распродаже размер — главная подсказка о товаре.
             const size =
               formatProductSize(p, "any") || formatVariantSizes(p.variantSizes, 2);
-            const atMax =
-              inCart != null && p.stockQty != null && inCart.quantity >= p.stockQty;
+            const atMax = inCart != null && inCart.quantity >= maxStock;
 
             return (
               <div key={p.id} className="sale-card">
@@ -189,10 +191,8 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
 
                   <div className={`sale-card__stock${out ? " sale-card__stock--out" : ""}`}>
                     {out
-                      ? "Нет в наличии"
-                      : p.stockQty != null
-                        ? `В наличии: ${p.stockQty.toLocaleString("ru-RU")} шт.`
-                        : "В наличии"}
+                      ? "Под заказ · нет в наличии"
+                      : `В наличии: ${maxStock.toLocaleString("ru-RU")} шт.`}
                   </div>
 
                   {price != null && !out ? (

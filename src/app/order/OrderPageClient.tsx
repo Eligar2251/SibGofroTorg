@@ -54,7 +54,17 @@ export function OrderPageClient({
   pickupHoursLabel: string;
 }) {
   const router = useRouter();
-  const { cart, updateQty, removeFromCart, rawSubtotal, discountPercent, discountAmount, totalSum, clearCart } = useCart();
+  const {
+    cart,
+    updateQty,
+    removeFromCart,
+    syncStockLimits,
+    rawSubtotal,
+    discountPercent,
+    discountAmount,
+    totalSum,
+    clearCart,
+  } = useCart();
 
   const [step, setStep] = useState(1);
   const [delivery, setDelivery] = useState<DeliveryMethod>("courier");
@@ -133,6 +143,52 @@ export function OrderPageClient({
       })
       .catch(() => {});
   }, []);
+
+  const cartLinesSignature = cart
+    .map((i) => `${i.productId}::${i.variantId || ""}`)
+    .join("|");
+
+  // Проверяем актуальные складские остатки позиций корзины (без кеша),
+  // чтобы старые записи в localStorage не позволяли заказать товар с 0 на складе.
+  useEffect(() => {
+    if (!cartLinesSignature) return;
+    let cancelled = false;
+    fetch("/api/products/stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        items: cart.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId ?? null,
+          variantName: item.variantName ?? null,
+          name: item.name,
+          quantity: item.quantity,
+        })),
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !Array.isArray(data?.items)) return;
+        syncStockLimits(
+          data.items.map((it: any) => ({
+            productId: String(it.productId || ""),
+            variantId: it.variantId ?? null,
+            availableQty: Number(it.availableQty || 0),
+            stockPoolId: it.stockPoolId ?? null,
+          })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartLinesSignature, syncStockLimits]);
+
+  const unavailableItems = cart.filter(
+    (item) => item.maxStock != null && item.maxStock <= 0,
+  );
 
   const deliveryCost =
     delivery === "pickup"
@@ -250,6 +306,12 @@ export function OrderPageClient({
       setError("Корзина пуста");
       return;
     }
+    if (step === 1 && unavailableItems.length > 0) {
+      setError(
+        `В корзине есть товар не в наличии («${unavailableItems[0].name}» доступен только под заказ). Удалите его из корзины, чтобы продолжить оформление.`
+      );
+      return;
+    }
     if (step === 2) {
       // пустое обязательное поле до самой оплаты).
       if (delivery === "courier" && !address.trim()) {
@@ -303,6 +365,13 @@ export function OrderPageClient({
 
   async function handleSubmit() {
     if (cart.length === 0) return;
+    if (unavailableItems.length > 0) {
+      setStep(1);
+      setError(
+        `Товар «${unavailableItems[0].name}» закончился на складе и доступен только под заказ. Удалите его из корзины, чтобы оформить заказ.`
+      );
+      return;
+    }
     if (!consent) {
       setConsentError(true);
       setError("Необходимо согласиться на обработку персональных данных");
@@ -389,6 +458,17 @@ export function OrderPageClient({
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        if (Array.isArray((body as any)?.stockItems)) {
+          syncStockLimits(
+            (body as any).stockItems.map((it: any) => ({
+              productId: String(it.productId || ""),
+              variantId: it.variantId ?? null,
+              availableQty: Number(it.availableQty || 0),
+              stockPoolId: it.stockPoolId ?? null,
+            })),
+          );
+          setStep(1);
+        }
         throw new Error(
           (body as Record<string, string>).error || "Ошибка оформления"
         );
@@ -563,8 +643,31 @@ export function OrderPageClient({
                           <div className="cart-item__price-unit">
                             {item.price.toLocaleString("ru-RU")} ₽/шт.
                           </div>
+                          {item.maxStock != null && item.maxStock <= 0 ? (
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                color: "var(--red, #dc2626)",
+                              }}
+                            >
+                              Нет в наличии · только под заказ (удалите из корзины)
+                            </div>
+                          ) : item.maxStock != null && item.quantity >= item.maxStock ? (
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: 12,
+                                color: "var(--kraft, #b45309)",
+                              }}
+                            >
+                              Максимум со склада: {item.maxStock} шт.
+                            </div>
+                          ) : null}
                         </div>
                         <div className="cart-item__right">
+                          {item.maxStock != null && item.maxStock <= 0 ? null : (
                           <div className="cart-item__stepper">
                             <button
                               type="button"
@@ -594,6 +697,10 @@ export function OrderPageClient({
                             />
                             <button
                               type="button"
+                              disabled={
+                                item.maxStock != null &&
+                                item.quantity >= item.maxStock
+                              }
                               onClick={() =>
                                 updateQty(
                                   item.productId,
@@ -606,6 +713,7 @@ export function OrderPageClient({
                               <Plus size={12} />
                             </button>
                           </div>
+                          )}
                           <div className="cart-item__sum">
                             {(item.price * item.quantity).toLocaleString(
                               "ru-RU"

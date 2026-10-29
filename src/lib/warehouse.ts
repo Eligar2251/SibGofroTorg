@@ -805,13 +805,19 @@ async function adjustStock(productId: string, delta: number): Promise<void> {
     .from("products")
     .update({
       stock_qty: newQty,
-      in_stock: newQty > 0,
+      in_stock: Math.floor(newQty) >= 1,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
 
   if (updateError) {
     throw new Error(`Не удалось обновить остаток товара ${id}: ${updateError.message}`);
+  }
+  invalidateProductsCache();
+  try {
+    revalidateTag("products", { expire: 0 });
+  } catch {
+    /* outside Next request store in tests */
   }
 }
 
@@ -951,11 +957,16 @@ export async function setWarehouseStock(productId: string, quantity: number): Pr
   const qty = Math.round(rawQty * 1000) / 1000;
   const { error } = await db.from("products").update({
     stock_qty: qty,
-    in_stock: qty > 0,
+    in_stock: Math.floor(qty) >= 1,
     updated_at: new Date().toISOString(),
   }).eq("id", productId);
   if (error) throw error;
-  revalidateTag("products", { expire: 0 });
+  invalidateProductsCache();
+  try {
+    revalidateTag("products", { expire: 0 });
+  } catch {
+    /* outside Next request store in tests */
+  }
 }
 
 export interface StockRevisionItem {
@@ -1070,7 +1081,7 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
       .from("products")
       .update({
         stock_qty: actual,
-        in_stock: actual > 0,
+        in_stock: Math.floor(actual) >= 1,
         updated_at: new Date().toISOString(),
       })
       .eq("id", productId);
@@ -1088,8 +1099,12 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
   }
 
   invalidateProductsCache();
-  revalidateTag("products", { expire: 0 });
-  revalidateTag("variants", { expire: 0 });
+  try {
+    revalidateTag("products", { expire: 0 });
+    revalidateTag("variants", { expire: 0 });
+  } catch {
+    /* outside Next request store in tests */
+  }
   return { updated: changes.length, skipped, changes };
 }
 
@@ -4814,7 +4829,7 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     id: row.id, name: row.name, sku: row.sku || null,
     stockQty: Number(row.stock_qty || 0),
     stockWarnQty: row.stock_warn_qty != null ? Number(row.stock_warn_qty) : null,
-    inStock: row.in_stock ?? (Number(row.stock_qty || 0) > 0),
+    inStock: Math.floor(Number(row.stock_qty || 0)) >= 1,
     price: row.price != null ? Number(row.price) : null,
     priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
     purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,

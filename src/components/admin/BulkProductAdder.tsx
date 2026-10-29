@@ -128,7 +128,7 @@ export function BulkProductAdder({ adminPath }: { adminPath: string }) {
         dimensionLength: r.length.trim() || null,
         dimensionWidth: r.width.trim() || null,
         dimensionHeight: r.height.trim() || null,
-        stockQty: r.stock.trim() || null,
+        stockQty: r.stock.trim() || "0",
       }));
     if (products.length === 0) {
       setError("Заполните хотя бы одно название товара");

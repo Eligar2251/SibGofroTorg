@@ -79,7 +79,7 @@ export async function PUT(request: NextRequest) {
       dimensionWidth: "dimension_width", dimensionHeight: "dimension_height",
       dimensionUnit: "dimension_unit", weight: "weight", volume: "volume", material: "material",
       packQty: "pack_qty", note: "note", description: "description",
-      stockQty: "stock_qty", stockWarnQty: "stock_warn_qty", inStock: "in_stock", isVisible: "is_visible",
+      stockQty: "stock_qty", stockWarnQty: "stock_warn_qty", isVisible: "is_visible",
       isPromo: "is_promo", isFeatured: "is_featured",
       isSale: "is_sale", categoryId: "category_id",
       sku: "sku", promoLabel: "promo_label", promoLabelColor: "promo_label_color",
@@ -96,6 +96,13 @@ export async function PUT(request: NextRequest) {
       const payload: Record<string, any> = { updated_at: new Date().toISOString() };
       for (const [jsKey, dbKey] of Object.entries(fieldMap)) {
         if (rest[jsKey] !== undefined) payload[dbKey] = rest[jsKey];
+      }
+      if (rest.stockQty !== undefined) {
+        const parsedStock =
+          rest.stockQty == null || rest.stockQty === "" ? 0 : Number(rest.stockQty);
+        const safeStock = Number.isFinite(parsedStock) ? parsedStock : 0;
+        payload.stock_qty = safeStock;
+        payload.in_stock = Math.floor(safeStock) >= 1;
       }
       if ("category_id" in payload && !payload.category_id) {
         payload.category_id = null;

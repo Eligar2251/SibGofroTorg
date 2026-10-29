@@ -18,6 +18,7 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { sendAdminNotifications } from "@/lib/notify";
 import { publishLocalChange } from "@/lib/realtime-hub";
 import { logConsent } from "@/lib/consent-log";
+import { validateOrderItemsAgainstLiveDb } from "@/lib/order-stock-db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -225,17 +226,34 @@ export async function POST(request: NextRequest) {
     if (typeRaw === "order" && Array.isArray(body.items)) {
       const items = body.items.slice(0, MAX_ITEMS).map((item: any) => ({
         productId: clip(item.productId, 80),
+        variantId: item.variantId ? clip(item.variantId, 80) : null,
+        variantName: item.variantName ? clip(item.variantName, 120) : null,
         name: clip(item.name, 200),
         sku: item.sku ? clip(item.sku, 80) : "—",
         quantity: Math.min(
           MAX_QTY,
-          Math.max(1, Number(item.quantity) || 1)
+          Math.max(1, Math.round(Number(item.quantity) || 1))
         ),
         price: Math.max(0, Number(item.price) || 0),
       }));
       if (items.length === 0) {
         return NextResponse.json(
           { error: "Корзина пуста" },
+          { status: 400 }
+        );
+      }
+      // Строгая серверная проверка фактического остатка на складе:
+      // нельзя оформить бронирование на товар с остатком 0 / под заказ
+      // или заказать больше, чем есть на складе.
+      const stockCheck = await validateOrderItemsAgainstLiveDb(items);
+      if (!stockCheck.ok) {
+        return NextResponse.json(
+          {
+            error:
+              stockCheck.error ||
+              "Выбранного количества товара нет в наличии на складе",
+            stockItems: stockCheck.items,
+          },
           { status: 400 }
         );
       }
@@ -278,7 +296,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (typeRaw === "order") {
-      revalidateTag("products", { expire: 0 });
+      try {
+        revalidateTag("products", { expire: 0 });
+      } catch {
+        /* outside Next request store in tests */
+      }
     }
 
     // Контактное лицо в конкретном заказе может отличаться от владельца

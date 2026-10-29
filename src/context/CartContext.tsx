@@ -44,11 +44,19 @@ export interface LastAddedItem {
   qty: number;
 }
 
+export interface CartStockSnapshot {
+  productId: string;
+  variantId?: string | null;
+  availableQty: number;
+  stockPoolId?: string | null;
+}
+
 interface CartContextType {
   cart: CartItem[];
   addToCart: (item: Omit<CartItem, "quantity">, qty?: number) => void;
   removeFromCart: (productId: string, variantId?: string | null) => void;
   updateQty: (productId: string, qty: number, variantId?: string | null) => void;
+  syncStockLimits: (snapshots: CartStockSnapshot[]) => void;
   clearCart: () => void;
   lastAdded: LastAddedItem | null;
   clearLastAdded: () => void;
@@ -128,6 +136,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addToCart = (product: Omit<CartItem, "quantity">, qty = 1) => {
+    if (product.maxStock != null && product.maxStock <= 0) return;
     const addedQty = Math.max(1, Math.round(qty));
     const incomingKey = cartItemKey(product);
     const incomingPool = stockPoolKey(product);
@@ -141,7 +150,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     );
     const maxForLine =
       product.maxStock != null
-        ? Math.max(0, product.maxStock - otherPoolQty)
+        ? Math.max(0, Math.floor(product.maxStock) - otherPoolQty)
         : Number.POSITIVE_INFINITY;
     const lineQty = Math.min((existing?.quantity ?? 0) + addedQty, maxForLine);
 
@@ -158,14 +167,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       );
       const currentMaxForLine =
         product.maxStock != null
-          ? Math.max(0, product.maxStock - siblingQty)
+          ? Math.max(0, Math.floor(product.maxStock) - siblingQty)
           : Number.POSITIVE_INFINITY;
       const nextQty = Math.min((current?.quantity ?? 0) + addedQty, currentMaxForLine);
       if (nextQty < 1) return prev;
 
       if (current) {
         return prev.map((item) =>
-          cartItemKey(item) === incomingKey ? { ...item, quantity: nextQty } : item
+          cartItemKey(item) === incomingKey
+            ? {
+                ...item,
+                quantity: nextQty,
+                maxStock: product.maxStock ?? item.maxStock ?? null,
+                stockPoolId: product.stockPoolId ?? item.stockPoolId ?? null,
+              }
+            : item
         );
       }
       return [...prev, { ...product, quantity: nextQty }];
@@ -219,6 +235,61 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const syncStockLimits = useCallback((snapshots: CartStockSnapshot[]) => {
+    if (!Array.isArray(snapshots) || snapshots.length === 0) return;
+    const byKey = new Map<string, CartStockSnapshot>();
+    for (const snap of snapshots) {
+      byKey.set(cartItemKey(snap), snap);
+    }
+
+    setCart((prev) => {
+      let changed = false;
+      const usedByPool = new Map<string, number>();
+      const next = prev.map((item) => {
+        const key = cartItemKey(item);
+        const snap = byKey.get(key);
+        if (!snap) return item;
+
+        const available = Math.max(0, Math.floor(Number(snap.availableQty) || 0));
+        const nextPoolId = snap.stockPoolId ?? null;
+        const poolKey = stockPoolKey({
+          productId: item.productId,
+          variantId: item.variantId,
+          stockPoolId: nextPoolId,
+        });
+        const usedSoFar = usedByPool.get(poolKey) || 0;
+        const remainingForLine = Math.max(0, available - usedSoFar);
+
+        // Если остаток 0 — сохраняем строку с maxStock: 0, чтобы страница
+        // оформления явно показала клиенту, что товар ушёл «под заказ»,
+        // и заблокировала оформление до удаления позиции.
+        const nextQty =
+          remainingForLine >= 1
+            ? Math.min(item.quantity, remainingForLine)
+            : item.quantity;
+        const nextMaxStock = available <= 0 ? 0 : available;
+
+        usedByPool.set(poolKey, usedSoFar + (available > 0 ? nextQty : 0));
+
+        if (
+          item.maxStock !== nextMaxStock ||
+          item.quantity !== nextQty ||
+          (item.stockPoolId ?? null) !== nextPoolId
+        ) {
+          changed = true;
+          return {
+            ...item,
+            quantity: nextQty,
+            maxStock: nextMaxStock,
+            stockPoolId: nextPoolId,
+          };
+        }
+        return item;
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   const clearCart = () => {
     setCart([]);
     hideCartDock();
@@ -255,6 +326,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         addToCart,
         removeFromCart,
         updateQty,
+        syncStockLimits,
         clearCart,
         lastAdded,
         clearLastAdded,

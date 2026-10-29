@@ -7,6 +7,7 @@ import Image from "next/image";
 import { useCart } from "@/context/CartContext";
 import { PriceInquiryButton } from "./PriceInquiryButton";
 import {
+  getAvailableStockQty,
   isOutOfStock,
   OUT_OF_STOCK_LABEL,
   RESTOCK_INQUIRY_LABEL,
@@ -74,7 +75,7 @@ interface CompactProduct {
 export function ProductCardCompact({
   product,
   highlight,
-  orderMode = false,
+  orderMode: _orderMode = false,
 }: {
   product: CompactProduct;
   highlight?: boolean;
@@ -83,17 +84,14 @@ export function ProductCardCompact({
 }) {
   const { addToCart, updateQty, removeFromCart, openCartDock, cart } = useCart();
   const packSize = product.packQty ? Math.max(1, Number(product.packQty)) : 1;
-  const maxStock = product.stockQty ?? null;
-  // Нет на складе — купить нельзя (кнопка «Уточнить поступление»), но
-  // если у товара задана цена, показываем её.
+  const maxStock = getAvailableStockQty(product);
+  // Нет на складе (остаток <= 0) — купить в корзину нельзя, выводим «Под заказ».
   const outOfStock = isOutOfStock(product);
-  const orderOffer = orderMode && outOfStock;
 
   const [showHover, setShowHover] = useState(false);
 
-  const inCart = cart.find((i) => i.productId === product.id);
-  const atMaxStock =
-    inCart != null && maxStock != null && inCart.quantity >= maxStock;
+  const inCart = cart.find((i) => i.productId === product.id && !i.variantId);
+  const atMaxStock = inCart != null && inCart.quantity >= maxStock;
 
   const dims = formatProductSize(product);
   // Скидка — как на странице товара: цена со скидкой, зачёркнутая
@@ -115,7 +113,7 @@ export function ProductCardCompact({
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!product.price || product.madeToOrder || outOfStock) return;
+    if (!product.price || product.madeToOrder || outOfStock || maxStock < 1) return;
     addToCart(cartPayload(), 1);
     ymGoal("add_to_cart", { product_id: product.id });
   }
@@ -123,13 +121,12 @@ export function ProductCardCompact({
   function handleInc(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!product.price || product.madeToOrder || outOfStock) return;
+    if (!product.price || product.madeToOrder || outOfStock || maxStock < 1) return;
     if (!inCart) {
       handleAdd(e);
       return;
     }
-    const next =
-      maxStock != null ? Math.min(inCart.quantity + 1, maxStock) : inCart.quantity + 1;
+    const next = Math.min(inCart.quantity + 1, maxStock);
     if (next === inCart.quantity) return;
     updateQty(product.id, next);
     openCartDock({
@@ -163,7 +160,7 @@ export function ProductCardCompact({
   }
 
   function handleManualQty(next: number) {
-    const qty = maxStock != null ? Math.min(next, maxStock) : next;
+    const qty = Math.min(next, maxStock);
     if (qty < 1 || !inCart || !product.price || product.madeToOrder || outOfStock) return;
     updateQty(product.id, qty);
     openCartDock({
@@ -207,10 +204,10 @@ export function ProductCardCompact({
             {discount.badge}
           </span>
         )}
-        {outOfStock && (
+        {outOfStock && !product.madeToOrder && (
           <span className="pcc__badge pcc__badge--out">{OUT_OF_STOCK_LABEL}</span>
         )}
-        {maxStock !== null && maxStock > 0 && maxStock <= 20 && (
+        {!product.madeToOrder && maxStock > 0 && maxStock <= 20 && (
           <span className="pcc__badge pcc__badge--low">Осталось {maxStock}</span>
         )}
 
@@ -256,14 +253,14 @@ export function ProductCardCompact({
                   <span className="pcc__hover-val">{packSize} шт.</span>
                 </div>
               )}
-              {maxStock !== null && (
+              {!product.madeToOrder && (
                 <div className="pcc__hover-row">
                   <span className="pcc__hover-label">Склад</span>
                   <span
                     className="pcc__hover-val"
                     style={{ color: maxStock > 0 ? "#5dcb61" : "#ef4444" }}
                   >
-                    {maxStock > 0 ? `${maxStock} шт.` : "нет"}
+                    {maxStock > 0 ? `${maxStock} шт.` : "под заказ"}
                   </span>
                 </div>
               )}
@@ -343,7 +340,7 @@ export function ProductCardCompact({
           ) : (
             <span className="pcc__price-muted">Цена по запросу</span>
           )}
-          {orderOffer && (
+          {!product.madeToOrder && outOfStock && (
             <span className="pcc__mto-note">
               <Clock3 size={10} />
               Под заказ
@@ -356,14 +353,13 @@ export function ProductCardCompact({
 
         {/* Управление количеством: степпер без суммы на карточке —
            итог показывается в попапе над плавающей корзиной. */}
-        {orderOffer ? (
+        {product.madeToOrder ? (
           <PriceInquiryButton
             productName={product.name}
             productSku={product.sku}
             productImageUrl={product.imageUrl}
             className="pcc__inquiry-btn"
-            label="Заказать поставку"
-            kind="restock"
+            label="Узнать цену"
           />
         ) : outOfStock ? (
           <PriceInquiryButton
@@ -373,14 +369,6 @@ export function ProductCardCompact({
             className="pcc__inquiry-btn"
             label={RESTOCK_INQUIRY_LABEL}
             kind="restock"
-          />
-        ) : product.madeToOrder ? (
-          <PriceInquiryButton
-            productName={product.name}
-            productSku={product.sku}
-            productImageUrl={product.imageUrl}
-            className="pcc__inquiry-btn"
-            label="Узнать цену"
           />
         ) : product.hasVariants ? (
           <Link

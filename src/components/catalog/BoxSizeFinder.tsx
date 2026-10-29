@@ -21,6 +21,7 @@ import { useCart } from "@/context/CartContext";
 import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { PriceInquiryButton } from "@/components/catalog/PriceInquiryButton";
 import {
+  getAvailableStockQty,
   isProductAvailable,
   OUT_OF_STOCK_LABEL,
   RESTOCK_INQUIRY_LABEL,
@@ -152,10 +153,10 @@ export function BoxSizeFinder({
       );
     }
 
-    const maxStock = p.stockQty ?? null;
+    const maxStock = getAvailableStockQty(p);
 
     if (inCart) {
-      const atMax = maxStock != null && inCart.quantity >= maxStock;
+      const atMax = inCart.quantity >= maxStock;
       return (
         <div className="pcc__stepper bsf-stepper">
           <button
@@ -177,9 +178,7 @@ export function BoxSizeFinder({
             max={maxStock}
             className="pcc__stepper-input"
             ariaLabel="Количество"
-            onCommit={(qty) =>
-              updateQty(p.id, maxStock != null ? Math.min(qty, maxStock) : qty)
-            }
+            onCommit={(qty) => updateQty(p.id, Math.min(qty, maxStock))}
           />
           <button
             type="button"

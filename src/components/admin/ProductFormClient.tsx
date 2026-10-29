@@ -332,8 +332,12 @@ export function ProductFormClient({
     const featuredOrderRaw = String(data.get("featuredOrder") || "").trim();
     const featuredOrder = featuredOrderRaw ? Number(featuredOrderRaw) : null;
 
+    const stockQtyRaw = String(data.get("stockQty") ?? "").trim();
+    const parsedStock = stockQtyRaw !== "" ? Number(stockQtyRaw) : 0;
+    const safeStockQty = Number.isFinite(parsedStock) ? parsedStock : 0;
+
     const body = {
-      stockQty: data.get("stockQty") !== "" ? Number(data.get("stockQty")) : null,
+      stockQty: safeStockQty,
       stockWarnQty:
         data.get("stockWarnQty") !== "" ? Number(data.get("stockWarnQty")) : null,
       name: data.get("name"),
@@ -365,7 +369,7 @@ export function ProductFormClient({
       packQty: data.get("packQty") ? Number(data.get("packQty")) : null,
       volume: calculatedVolume,
       note: data.get("note") || null,
-      inStock: data.get("inStock") === "on",
+      inStock: Math.floor(safeStockQty) >= 1,
       isPromo: data.get("isPromo") === "on",
       promoLabel: cleanPromoLabel || null,
       tags,
@@ -877,10 +881,13 @@ export function ProductFormClient({
               <input
                 name="stockQty"
                 type="number"
-                defaultValue={product?.stockQty ?? ""}
-                placeholder="Не ограничено"
+                defaultValue={product?.stockQty ?? 0}
+                placeholder="0"
                 className="admin-input"
               />
+              <span className="admin-hint">
+                Наличие определяется автоматически: при остатке ≥ 1 шт. товар доступен к заказу, при 0 — «Под заказ».
+              </span>
             </div>
             <div className="admin-field">
               <label className="admin-label">Предупреждать при остатке ≤</label>
@@ -936,11 +943,6 @@ export function ProductFormClient({
           <h2 className="admin-h2">Настройки</h2>
           <div className="admin-grid-2">
             {[
-              {
-                name: "inStock",
-                label: "В наличии",
-                defaultChecked: product?.inStock ?? true,
-              },
               {
                 name: "isVisible",
                 label: "Показывать на сайте",

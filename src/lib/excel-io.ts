@@ -20,6 +20,7 @@ import {
   updateProduct,
   createOrder,
   updateSettings,
+  invalidateProductsCache,
 } from "./supabase-queries";
 import {
   getCounterparties,
@@ -899,6 +900,7 @@ export async function importExcelWorkbook(buffer: Buffer): Promise<ImportReport>
           findBestByName(name, products, (p) => p.name, 98) ||
           null;
 
+        const stockQtyVal = num(row, "Остаток", "stockQty") ?? 0;
         const payload: Record<string, any> = {
           name,
           slug: cell(row, "Слаг", "slug") || slugify(name),
@@ -911,9 +913,9 @@ export async function importExcelWorkbook(buffer: Buffer): Promise<ImportReport>
           dimensionLength: num(row, "Длина мм", "dimensionLength"),
           dimensionWidth: num(row, "Ширина мм", "dimensionWidth"),
           dimensionHeight: num(row, "Высота мм", "dimensionHeight"),
-          stockQty: num(row, "Остаток", "stockQty") ?? 0,
+          stockQty: stockQtyVal,
           stockWarnQty: num(row, "Порог остатка", "stockWarnQty"),
-          inStock: bool(row, "В наличии", "inStock") ?? true,
+          inStock: Math.floor(stockQtyVal) >= 1,
           madeToOrder: bool(row, "На заказ", "madeToOrder") ?? false,
           isVisible: bool(row, "Видимый", "isVisible") ?? true,
           isFeatured: bool(row, "Избранный", "isFeatured") ?? false,
@@ -1636,14 +1638,19 @@ export async function importExcelWorkbook(buffer: Buffer): Promise<ImportReport>
   report.success = totalErrors === 0 || totalCreated + totalUpdated > 0;
   report.message = `Создано: ${totalCreated}, обновлено: ${totalUpdated}, ошибок: ${totalErrors}, предупреждений: ${report.warnings.length}`;
 
-  revalidateTag("orders", { expire: 0 });
-  revalidateTag("products", { expire: 0 });
-  revalidateTag("warehouse-receipts", { expire: 0 });
-  revalidateTag("warehouse-deals", { expire: 0 });
-  revalidateTag("warehouse-payments", { expire: 0 });
-  revalidateTag("warehouse-salaries", { expire: 0 });
-  revalidateTag("warehouse-employees", { expire: 0 });
-  revalidateTag("warehouse-counterparties", { expire: 0 });
+  invalidateProductsCache();
+  try {
+    revalidateTag("orders", { expire: 0 });
+    revalidateTag("products", { expire: 0 });
+    revalidateTag("warehouse-receipts", { expire: 0 });
+    revalidateTag("warehouse-deals", { expire: 0 });
+    revalidateTag("warehouse-payments", { expire: 0 });
+    revalidateTag("warehouse-salaries", { expire: 0 });
+    revalidateTag("warehouse-employees", { expire: 0 });
+    revalidateTag("warehouse-counterparties", { expire: 0 });
+  } catch {
+    /* outside Next request store in tests */
+  }
 
   return report;
 }

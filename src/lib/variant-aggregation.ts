@@ -1,4 +1,5 @@
 import type { FirestoreProduct, ProductVariant } from "./types";
+import { getAvailableStockQty } from "./stock-availability";
 
 export interface VariantAggregate {
   hasVariants: boolean;
@@ -23,14 +24,20 @@ export function aggregateVariants(
   variants: ProductVariant[] | undefined,
   product: Pick<FirestoreProduct, "price" | "stockQty" | "inStock">,
 ): VariantAggregate {
+  const parentPurchasable = getAvailableStockQty({ stockQty: product.stockQty });
+  const parentStock =
+    product.stockQty != null && Number.isFinite(Number(product.stockQty))
+      ? Math.max(0, Number(product.stockQty))
+      : 0;
+
   if (!variants || variants.length === 0) {
     return {
       hasVariants: false,
       variantCount: 0,
       priceMin: product.price,
       priceMax: product.price,
-      totalStock: Number(product.stockQty ?? 0),
-      anyInStock: Number(product.stockQty ?? 0) > 0,
+      totalStock: parentStock,
+      anyInStock: parentPurchasable > 0,
       variantStockManaged: false,
     };
   }
@@ -42,16 +49,15 @@ export function aggregateVariants(
     .filter((price): price is number => price != null && price > 0);
   const priceMin = prices.length > 0 ? Math.min(...prices) : null;
   const priceMax = prices.length > 0 ? Math.max(...prices) : null;
-  const variantStockManaged = variants.some((variant) => variant.stockQty > 0);
-  const productHasStock =
-    product.inStock !== false &&
-    (product.stockQty == null || Number(product.stockQty) > 0);
+  const variantStockManaged = variants.some(
+    (variant) => getAvailableStockQty({ stockQty: variant.stockQty }) > 0,
+  );
   const totalStock = variantStockManaged
     ? variants.reduce((sum, variant) => sum + Math.max(0, variant.stockQty || 0), 0)
-    : Number(product.stockQty ?? 0);
+    : parentStock;
   const anyInStock = variantStockManaged
-    ? variants.some((variant) => variant.stockQty > 0)
-    : productHasStock;
+    ? variants.some((variant) => getAvailableStockQty({ stockQty: variant.stockQty }) > 0)
+    : parentPurchasable > 0;
 
   return {
     hasVariants: true,
@@ -94,10 +100,18 @@ export function enrichProductsWithVariants(
     }
 
     // Нулевые остатки у всех новых вариантов означают, что используется
-    // общий остаток родительского товара. Не затираем его нулями.
+    // общий остаток родительского товара. Не затираем его нулями, но
+    // синхронизируем inStock со складским остатком родителя.
     if (aggregate.variantStockManaged) {
       product.inStock = aggregate.anyInStock;
       product.stockQty = aggregate.totalStock;
+    } else {
+      const parentStock =
+        baseProduct.stockQty != null && Number.isFinite(Number(baseProduct.stockQty))
+          ? Number(baseProduct.stockQty)
+          : 0;
+      product.stockQty = parentStock;
+      product.inStock = aggregate.anyInStock;
     }
 
     return product;

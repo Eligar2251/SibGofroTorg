@@ -39,7 +39,6 @@ interface BulkProduct {
   discountBadge: string;
   stockQty: number | null;
   stockWarnQty: number | null;
-  inStock: boolean;
   dimensionLength: number | null;
   dimensionWidth: number | null;
   dimensionHeight: number | null;
@@ -200,9 +199,6 @@ export function BulkProductEditor({
           ? {
               ...item,
               [field]: value,
-              ...(field === "stockQty"
-                ? { inStock: (Number(value) || 0) > 0 }
-                : {}),
             }
           : item
       )
@@ -430,7 +426,7 @@ export function BulkProductEditor({
                 <th>Название</th><th>SKU</th><th>Категория</th>
                 <th>Цена, ₽</th><th>Закупка, ₽</th><th>Опт, ₽</th><th>Опт от</th>
                 <th>Скидка</th><th>Скидка</th><th>Бейдж скидки</th>
-                <th>Остаток</th><th>Порог остатка</th><th>В наличии</th><th>В пачке</th>
+                <th>Остаток</th><th>Порог остатка</th><th>В пачке</th>
               </tr></thead>
               <tbody>{displayedProducts.map((product) => (
                 <tr key={product.id} className={workingIds.has(product.id) ? "bulk-row--selected" : ""}>
@@ -445,9 +441,8 @@ export function BulkProductEditor({
                   <td><select className="admin-select" value={product.discountType} onChange={(e) => update(product.id, "discountType", e.target.value as BulkProduct["discountType"])}><option value="">Без скидки</option><option value="percent">%</option><option value="fixed">−₽</option></select></td>
                   <td><input type="number" min={0} step="0.1" className="admin-input bulk-number" value={product.discountValue ?? ""} onChange={(e) => update(product.id, "discountValue", numeric(e.target.value))} /></td>
                   <td><input className="admin-input" value={product.discountBadge} onChange={(e) => update(product.id, "discountBadge", e.target.value)} placeholder="Скидка, Акция..." /></td>
-                  <td><input type="number" min={0} className="admin-input bulk-number" value={product.stockQty ?? ""} onChange={(e) => update(product.id, "stockQty", numeric(e.target.value))} /></td>
+                  <td><input type="number" min={0} className="admin-input bulk-number" value={product.stockQty ?? 0} onChange={(e) => update(product.id, "stockQty", numeric(e.target.value) ?? 0)} /></td>
                   <td><input type="number" min={0} className="admin-input bulk-number" value={product.stockWarnQty ?? ""} onChange={(e) => update(product.id, "stockWarnQty", numeric(e.target.value))} /></td>
-                  <td><input type="checkbox" checked={product.inStock} onChange={(e) => update(product.id, "inStock", e.target.checked)} /></td>
                   <td><input type="number" min={1} className="admin-input bulk-number" value={product.packQty ?? ""} onChange={(e) => update(product.id, "packQty", numeric(e.target.value))} /></td>
                 </tr>
               ))}</tbody>
