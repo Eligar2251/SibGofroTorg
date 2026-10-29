@@ -102,17 +102,25 @@ const HOME_FAQ = [
 
 export default async function HomePage() {
   // localizeMediaDeep переводит ссылки на фото в собственные /media/...
-  const [categories, allVisibleProducts, promotions, wpRates, settings, homeTiles] =
-    localizeMediaDeep(
-      await Promise.all([
-        getCategories(),
-        getProducts({}),
-        getPromotions(),
-        getWastepaperRates(),
-        getSettings().catch(() => ({} as Record<string, string>)),
-        getHomeTiles().catch(() => [] as HomeTile[]),
-      ])
-    );
+  const [
+    categories,
+    allVisibleProducts,
+    expandedVisibleProducts,
+    promotions,
+    wpRates,
+    settings,
+    homeTiles,
+  ] = localizeMediaDeep(
+    await Promise.all([
+      getCategories(),
+      getProducts({}),
+      getProducts({ expandLinked: true }),
+      getPromotions(),
+      getWastepaperRates(),
+      getSettings().catch(() => ({} as Record<string, string>)),
+      getHomeTiles().catch(() => [] as HomeTile[]),
+    ])
+  );
   // «Распродажа остатков»: товары с флагом isSale, которые в наличии.
   const saleProducts = allVisibleProducts
     .filter((p) => p.isSale && isProductAvailable(p))
@@ -252,8 +260,8 @@ export default async function HomePage() {
       return [showcaseTile];
   });
 
-  // Товары с габаритами — для плитки «Подбор коробки» на главной.
-  const boxFinderProducts: BoxFinderProduct[] = allVisibleProducts
+  // Товары с габаритами — для плитки «Подбор коробки» на главной (все размеры связок).
+  const boxFinderProducts: BoxFinderProduct[] = expandedVisibleProducts
     .filter((p) => p.dimensionLength != null && p.dimensionWidth != null)
     .map((p) => ({
       id: p.id,
@@ -292,15 +300,6 @@ export default async function HomePage() {
     dimensionHeight: p.dimensionHeight ?? null,
     dimensionUnit: p.dimensionUnit ?? null,
     dimensionValues: p.dimensionValues ?? null,
-    // У «родителя» габариты часто пустые — берём размеры вариантов.
-    variantSizes: (p.variants || []).map((v) => ({
-      name: v.name ?? null,
-      optionType: v.optionType ?? null,
-      dimensionLength: v.dimensionLength ?? null,
-      dimensionWidth: v.dimensionWidth ?? null,
-      dimensionHeight: v.dimensionHeight ?? null,
-      dimensionUnit: v.dimensionUnit ?? null,
-    })),
   });
   const serializedSaleProducts = saleProducts.map(serializeSaleProduct);
 

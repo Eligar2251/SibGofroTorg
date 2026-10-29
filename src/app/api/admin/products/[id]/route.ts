@@ -4,7 +4,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { updateProduct, deleteProduct } from "@/lib/supabase-queries";
+import {
+  updateProduct,
+  deleteProduct,
+  invalidateProductsCache,
+} from "@/lib/supabase-queries";
+import { saveProductLinkForProduct } from "@/lib/product-links-store";
 import { requireAdminApi } from "@/lib/auth";
 import { isValidBarcode } from "@/lib/qr";
 
@@ -44,6 +49,11 @@ export async function PUT(
     }
 
     await updateProduct(id, body);
+    if (body.productLinks && typeof body.productLinks === "object") {
+      await saveProductLinkForProduct(id, body.productLinks);
+      invalidateProductsCache();
+      revalidateTag("product-links", { expire: 0 });
+    }
     revalidateTag("products", { expire: 0 });
     return NextResponse.json({ success: true });
   } catch (error) {

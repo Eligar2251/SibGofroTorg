@@ -120,7 +120,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const [categories, products] = await Promise.all([
       getCategories(),
-      getProducts({ limitCount: 5000 }),
+      getProducts({ limitCount: 5000, expandLinked: true }),
     ]);
 
     const categoryUrls: MetadataRoute.Sitemap = categories.map((c) => ({

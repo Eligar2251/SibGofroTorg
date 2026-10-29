@@ -3,7 +3,6 @@
 // =========================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { isProductAvailable } from "@/lib/stock-availability";
 import { getCategoryBySlug, getProducts } from "@/lib/supabase-queries";
 import { parseTagList } from "@/lib/home-tiles";
 
@@ -46,6 +45,7 @@ export async function GET(request: NextRequest) {
       categoryId,
       search: q,
       sortBy: sort,
+      inStockOnly: stock === "yes" ? true : undefined,
       // Если лимит не передан, ставим 48 для главной страницы, 
       // иначе undefined для категорий/поиска (чтобы забрать всё, но в пределах разумного)
       limitCount: limitCount ?? (categorySlug || q || tags.length ? undefined : 48),
@@ -54,11 +54,6 @@ export async function GET(request: NextRequest) {
       saleOnly: saleOnly || undefined,
       tags: tags.length ? tags : undefined,
     });
-
-    if (stock === "yes") {
-      // Единое правило наличия: флаг in_stock + положительный остаток.
-      products = products.filter((p) => isProductAvailable(p));
-    }
 
     // Страховка: никогда не отдаём безразмерный ответ через public API
     if (products.length > 100) {

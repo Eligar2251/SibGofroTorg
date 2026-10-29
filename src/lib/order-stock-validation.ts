@@ -1,9 +1,7 @@
 // =========================================================
 // FILE: src/lib/order-stock-validation.ts
 // Проверка фактического складского остатка позиций корзины и заказа.
-// Гарантирует, что клиент не сможет оформить заказ на отсутствующий
-// товар (stockQty <= 0 / null), товар «под заказ» или количество
-// сверх остатка на складе.
+// Каждая карточка товара — самостоятельная складская единица (products).
 // =========================================================
 
 import { getAvailableStockQty } from "./stock-availability";
@@ -24,14 +22,6 @@ export interface StockProductRecord {
   madeToOrder: boolean;
 }
 
-export interface StockVariantRecord {
-  id: string;
-  productId: string;
-  name: string;
-  stockQty: number;
-  isVisible: boolean;
-}
-
 export type OrderItemStockStatus =
   | "ok"
   | "out_of_stock"
@@ -46,7 +36,6 @@ export interface EvaluatedOrderItemStock {
   displayName: string;
   requestedQty: number;
   availableQty: number;
-  /** Если варианты делят общий остаток родительского товара — id товара. */
   stockPoolId: string | null;
   status: OrderItemStockStatus;
   error: string | null;
@@ -68,9 +57,7 @@ export function buildCartLineKey(
 export function evaluateOrderItemsStock(
   items: OrderStockCheckItem[],
   productsMap: ReadonlyMap<string, StockProductRecord>,
-  variantsByProduct: ReadonlyMap<string, StockVariantRecord[]>,
 ): OrderStockValidationResult {
-  // Первый проход: резолвим остаток и пул для каждой позиции и суммируем запрос по пулу.
   const poolRequested = new Map<string, number>();
 
   interface ResolvedDraft {
@@ -132,84 +119,10 @@ export function evaluateOrderItemsStock(
       };
     }
 
-    const visibleVariants = (variantsByProduct.get(productId) || []).filter(
-      (v) => v.isVisible !== false,
-    );
-    const manageVariantStock = visibleVariants.some(
-      (v) => getAvailableStockQty({ stockQty: v.stockQty }) > 0,
-    );
-
-    if (visibleVariants.length > 0 && variantId) {
-      const variant = visibleVariants.find((v) => v.id === variantId);
-      if (!variant) {
-        return {
-          productId,
-          variantId,
-          lineKey,
-          displayName,
-          requestedQty,
-          availableQty: 0,
-          stockPoolId: null,
-          poolKey: null,
-          earlyStatus: "unavailable",
-          earlyError: `Выбранный вариант товара «${displayName}» больше недоступен.`,
-        };
-      }
-
-      if (manageVariantStock) {
-        const availableQty = getAvailableStockQty({ stockQty: variant.stockQty });
-        const poolKey = `variant:${variant.id}`;
-        poolRequested.set(poolKey, (poolRequested.get(poolKey) || 0) + requestedQty);
-        return {
-          productId,
-          variantId,
-          lineKey,
-          displayName,
-          requestedQty,
-          availableQty,
-          stockPoolId: null,
-          poolKey,
-          earlyStatus: null,
-          earlyError: null,
-        };
-      }
-
-      // Все варианты с нулевым индивидуальным остатком — общий остаток родителя.
-      const availableQty = getAvailableStockQty({ stockQty: product.stockQty });
-      const poolKey = `product:${product.id}`;
-      poolRequested.set(poolKey, (poolRequested.get(poolKey) || 0) + requestedQty);
-      return {
-        productId,
-        variantId,
-        lineKey,
-        displayName,
-        requestedQty,
-        availableQty,
-        stockPoolId: product.id,
-        poolKey,
-        earlyStatus: null,
-        earlyError: null,
-      };
-    }
-
-    if (visibleVariants.length > 0 && !variantId && manageVariantStock) {
-      return {
-        productId,
-        variantId: null,
-        lineKey,
-        displayName,
-        requestedQty,
-        availableQty: 0,
-        stockPoolId: null,
-        poolKey: null,
-        earlyStatus: "unavailable",
-        earlyError: `Выберите вариант товара «${displayName}» на странице товара.`,
-      };
-    }
-
     const availableQty = getAvailableStockQty({ stockQty: product.stockQty });
     const poolKey = `product:${product.id}`;
     poolRequested.set(poolKey, (poolRequested.get(poolKey) || 0) + requestedQty);
+
     return {
       productId,
       variantId,
@@ -217,14 +130,13 @@ export function evaluateOrderItemsStock(
       displayName,
       requestedQty,
       availableQty,
-      stockPoolId: visibleVariants.length > 0 ? product.id : null,
+      stockPoolId: product.id,
       poolKey,
       earlyStatus: null,
       earlyError: null,
     };
   });
 
-  // Второй проход: проверяем доступность и лимиты пула.
   const evaluated: EvaluatedOrderItemStock[] = drafts.map((d) => {
     if (d.earlyStatus) {
       return {
@@ -250,11 +162,14 @@ export function evaluateOrderItemsStock(
         availableQty: 0,
         stockPoolId: d.stockPoolId,
         status: "out_of_stock",
-        error: `Товара «${d.displayName}» нет в наличии на складе — он доступен только под заказ.`,
+        error: `Товар «${d.displayName}» закончился на складе — он доступен только под заказ.`,
       };
     }
 
-    const totalForPool = d.poolKey ? poolRequested.get(d.poolKey) || d.requestedQty : d.requestedQty;
+    const totalForPool = d.poolKey
+      ? poolRequested.get(d.poolKey) || d.requestedQty
+      : d.requestedQty;
+
     if (totalForPool > d.availableQty) {
       return {
         productId: d.productId,
@@ -265,7 +180,7 @@ export function evaluateOrderItemsStock(
         availableQty: d.availableQty,
         stockPoolId: d.stockPoolId,
         status: "insufficient_stock",
-        error: `Товара «${d.displayName}» недостаточно на складе (доступно ${d.availableQty} шт.).`,
+        error: `На складе осталось только ${d.availableQty} шт. товара «${d.displayName}» (в заказе ${totalForPool} шт.).`,
       };
     }
 
@@ -282,10 +197,10 @@ export function evaluateOrderItemsStock(
     };
   });
 
-  const firstFailed = evaluated.find((item) => item.status !== "ok");
+  const firstFailed = evaluated.find((it) => it.status !== "ok");
   return {
     ok: !firstFailed,
-    error: firstFailed?.error ?? null,
+    error: firstFailed?.error || null,
     items: evaluated,
   };
 }

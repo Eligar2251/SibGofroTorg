@@ -10,22 +10,18 @@ import { buildStockLabel } from "../src/lib/scan.ts";
 import { evaluateOrderItemsStock } from "../src/lib/order-stock-validation.ts";
 
 test("stock availability relies strictly on stockQty and ignores manual inStock flag", () => {
-  // Регрессия: пустой/null остаток при включённом inStock НЕ должен делать товар доступным
   assert.equal(getAvailableStockQty({ stockQty: null, inStock: true }), 0);
   assert.equal(isProductAvailable({ stockQty: null, inStock: true }), false);
   assert.equal(isOutOfStock({ stockQty: null, inStock: true }), true);
 
-  // Регрессия: нулевой или отрицательный остаток при inStock=true — нет в наличии
   assert.equal(getAvailableStockQty({ stockQty: 0, inStock: true }), 0);
   assert.equal(isProductAvailable({ stockQty: 0, inStock: true }), false);
   assert.equal(getAvailableStockQty({ stockQty: -4, inStock: true }), 0);
   assert.equal(isProductAvailable({ stockQty: -4, inStock: true }), false);
 
-  // Дробный остаток меньше 1 целой единицы не даёт положить 1 шт. в корзину
   assert.equal(getAvailableStockQty({ stockQty: 0.5, inStock: true }), 0);
   assert.equal(isProductAvailable({ stockQty: 0.5, inStock: true }), false);
 
-  // Положительный остаток делает товар доступным независимо от устаревшего inStock=false
   assert.equal(getAvailableStockQty({ stockQty: 7, inStock: false }), 7);
   assert.equal(isProductAvailable({ stockQty: 7, inStock: false }), true);
   assert.equal(getAvailableStockQty({ stockQty: 3.8, inStock: false }), 3);
@@ -57,139 +53,62 @@ test("evaluateOrderItemsStock blocks ordering out-of-stock, null-stock, made-to-
     ["p-mto", { id: "p-mto", name: "Короб под заказ", stockQty: 50, isVisible: true, madeToOrder: true }],
     ["p-hidden", { id: "p-hidden", name: "Скрытый короб", stockQty: 10, isVisible: false, madeToOrder: false }],
   ]);
-  const variants = new Map();
 
-  const rZero = evaluateOrderItemsStock(
-    [{ productId: "p-zero", quantity: 1 }],
-    products,
-    variants,
-  );
+  const rZero = evaluateOrderItemsStock([{ productId: "p-zero", quantity: 1 }], products);
   assert.equal(rZero.ok, false);
   assert.equal(rZero.items[0].status, "out_of_stock");
   assert.equal(rZero.items[0].availableQty, 0);
 
-  const rNull = evaluateOrderItemsStock(
-    [{ productId: "p-null", quantity: 1 }],
-    products,
-    variants,
-  );
+  const rNull = evaluateOrderItemsStock([{ productId: "p-null", quantity: 1 }], products);
   assert.equal(rNull.ok, false);
   assert.equal(rNull.items[0].status, "out_of_stock");
 
-  const rMto = evaluateOrderItemsStock(
-    [{ productId: "p-mto", quantity: 1 }],
-    products,
-    variants,
-  );
+  const rMto = evaluateOrderItemsStock([{ productId: "p-mto", quantity: 1 }], products);
   assert.equal(rMto.ok, false);
   assert.equal(rMto.items[0].status, "made_to_order");
 
-  const rHidden = evaluateOrderItemsStock(
-    [{ productId: "p-hidden", quantity: 1 }],
-    products,
-    variants,
-  );
+  const rHidden = evaluateOrderItemsStock([{ productId: "p-hidden", quantity: 1 }], products);
   assert.equal(rHidden.ok, false);
   assert.equal(rHidden.items[0].status, "unavailable");
 
   const rMissing = evaluateOrderItemsStock(
     [{ productId: "p-missing", name: "Удалённый товар", quantity: 1 }],
     products,
-    variants,
   );
   assert.equal(rMissing.ok, false);
   assert.equal(rMissing.items[0].status, "unavailable");
 });
 
-test("evaluateOrderItemsStock enforces stock limits across regular products, pooled variants, and per-variant stock", () => {
+test("evaluateOrderItemsStock enforces independent stock limits for each linked product card", () => {
   const products = new Map([
-    ["p-ok", { id: "p-ok", name: "Короб 600", stockQty: 10, isVisible: true, madeToOrder: false }],
-    ["p-pooled", { id: "p-pooled", name: "Скотч цветной", stockQty: 5, isVisible: true, madeToOrder: false }],
-    ["p-split", { id: "p-split", name: "Плёнка", stockQty: 100, isVisible: true, madeToOrder: false }],
+    ["p-main", { id: "p-main", name: "Короб 600×400×400", stockQty: 10, isVisible: true, madeToOrder: false }],
+    ["p-sibling-out", { id: "p-sibling-out", name: "Короб 400×300×300", stockQty: 0, isVisible: true, madeToOrder: false }],
   ]);
 
-  const variants = new Map([
-    [
-      "p-pooled",
-      [
-        { id: "v-red", productId: "p-pooled", name: "Красный", stockQty: 0, isVisible: true },
-        { id: "v-blue", productId: "p-pooled", name: "Синий", stockQty: 0, isVisible: true },
-      ],
-    ],
-    [
-      "p-split",
-      [
-        { id: "v-in", productId: "p-split", name: "Белая", stockQty: 4, isVisible: true },
-        { id: "v-out", productId: "p-split", name: "Чёрная", stockQty: 0, isVisible: true },
-      ],
-    ],
-  ]);
-
-  // Превышение остатка обычного товара
-  const rTooMany = evaluateOrderItemsStock(
-    [{ productId: "p-ok", quantity: 11 }],
-    products,
-    variants,
-  );
+  const rTooMany = evaluateOrderItemsStock([{ productId: "p-main", quantity: 11 }], products);
   assert.equal(rTooMany.ok, false);
   assert.equal(rTooMany.items[0].status, "insufficient_stock");
   assert.equal(rTooMany.items[0].availableQty, 10);
 
-  // Допустимое количество
-  const rExact = evaluateOrderItemsStock(
-    [{ productId: "p-ok", quantity: 10 }],
-    products,
-    variants,
-  );
+  const rExact = evaluateOrderItemsStock([{ productId: "p-main", quantity: 10 }], products);
   assert.equal(rExact.ok, true);
 
-  // Варианты с общим пулом родителя: 2 + 3 <= 5 — ок
-  const rPoolOk = evaluateOrderItemsStock(
+  // Дублирующиеся строки одного товара суммируются против его остатка
+  const rSplitLinesOver = evaluateOrderItemsStock(
     [
-      { productId: "p-pooled", variantId: "v-red", variantName: "Красный", quantity: 2 },
-      { productId: "p-pooled", variantId: "v-blue", variantName: "Синий", quantity: 3 },
+      { productId: "p-main", quantity: 6 },
+      { productId: "p-main", quantity: 5 },
     ],
     products,
-    variants,
   );
-  assert.equal(rPoolOk.ok, true);
-  assert.equal(rPoolOk.items[0].stockPoolId, "p-pooled");
+  assert.equal(rSplitLinesOver.ok, false);
+  assert.equal(rSplitLinesOver.items[0].status, "insufficient_stock");
 
-  // Варианты с общим пулом родителя: 3 + 3 > 5 — отказ
-  const rPoolOver = evaluateOrderItemsStock(
-    [
-      { productId: "p-pooled", variantId: "v-red", quantity: 3 },
-      { productId: "p-pooled", variantId: "v-blue", quantity: 3 },
-    ],
+  // Связанная карточка с остатком 0 блокируется даже при наличии остатка у главной карточки
+  const rSiblingZero = evaluateOrderItemsStock(
+    [{ productId: "p-sibling-out", quantity: 1 }],
     products,
-    variants,
   );
-  assert.equal(rPoolOver.ok, false);
-  assert.equal(rPoolOver.items[0].status, "insufficient_stock");
-
-  // Раздельный учёт вариантов: нулевой вариант нельзя заказать даже при большом stockQty родителя
-  const rSplitOut = evaluateOrderItemsStock(
-    [{ productId: "p-split", variantId: "v-out", quantity: 1 }],
-    products,
-    variants,
-  );
-  assert.equal(rSplitOut.ok, false);
-  assert.equal(rSplitOut.items[0].status, "out_of_stock");
-
-  // Раздельный учёт вариантов: заказ без выбора variantId отклоняется
-  const rSplitNoVariant = evaluateOrderItemsStock(
-    [{ productId: "p-split", quantity: 1 }],
-    products,
-    variants,
-  );
-  assert.equal(rSplitNoVariant.ok, false);
-  assert.equal(rSplitNoVariant.items[0].status, "unavailable");
-
-  // Раздельный учёт вариантов: доступный вариант в пределах остатка проходит
-  const rSplitOk = evaluateOrderItemsStock(
-    [{ productId: "p-split", variantId: "v-in", quantity: 4 }],
-    products,
-    variants,
-  );
-  assert.equal(rSplitOk.ok, true);
+  assert.equal(rSiblingZero.ok, false);
+  assert.equal(rSiblingZero.items[0].status, "out_of_stock");
 });

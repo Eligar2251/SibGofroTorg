@@ -49,6 +49,9 @@ interface ProductItem {
   isSale?: boolean;
   imageUrl?: string | null;
   viewCount?: number;
+  linkGroupId?: string | null;
+  isGroupPrimary?: boolean;
+  linkedCount?: number;
 }
 
 export function ProductListClient({
@@ -491,7 +494,27 @@ export function ProductListClient({
                           )}
                         </div>
                         <div>
-                          <div className="admin-product-name">{product.name}</div>
+                          <div className="admin-product-name" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span>{product.name}</span>
+                            {product.linkGroupId && (product.linkedCount ?? 0) >= 2 && (
+                              <span
+                                style={{
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  padding: "1px 6px",
+                                  borderRadius: 5,
+                                  background: product.isGroupPrimary ? "#FFF3D6" : "#EEF4FF",
+                                  color: product.isGroupPrimary ? "#966000" : "#2356A8",
+                                  border: product.isGroupPrimary ? "1px solid #EBD094" : "1px solid #C8DBFA",
+                                }}
+                                title="Карточка объединена с другими товарами в одну карточку на витрине"
+                              >
+                                {product.isGroupPrimary
+                                  ? `Связка (${product.linkedCount}) · Главная`
+                                  : `Связка (${product.linkedCount})`}
+                              </span>
+                            )}
+                          </div>
                           <div className="admin-product-sku">
                             {product.sku || "—"}
                           </div>

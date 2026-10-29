@@ -62,9 +62,6 @@ export interface BulkPriceProduct {
   /** Базовая цена товара (products.price). */
   price: number | null;
   purchasePrice: number | null;
-  /** У товара есть варианты: цена на сайте берётся из них. */
-  hasVariants: boolean;
-  variantCount: number;
   stockQty: number;
   isVisible: boolean;
   discountType: "percent" | "fixed" | null;
@@ -130,7 +127,6 @@ export function BulkPricesClient({
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [onlyWithPurchase, setOnlyWithPurchase] = useState(false);
-  const [hideVariants, setHideVariants] = useState(true);
   const [onlyVisible, setOnlyVisible] = useState(false);
   const [hideSelectedInCatalog, setHideSelectedInCatalog] = useState(true);
 
@@ -293,10 +289,8 @@ export function BulkPricesClient({
     let marginSum = 0;
     let markupSum = 0;
     let marginCount = 0;
-    let withVariants = 0;
 
     for (const { product, info } of selectedRows) {
-      if (product.hasVariants) withVariants += 1;
       if (info.newPrice === null) continue;
       withPrice += 1;
       if (info.oldPrice !== null) oldSum += info.oldPrice;
@@ -313,7 +307,6 @@ export function BulkPricesClient({
 
     return {
       total: selectedRows.length,
-      withVariants,
       withPrice,
       withoutPrice: selectedRows.length - withPrice,
       withoutPurchase,
@@ -476,7 +469,6 @@ export function BulkPricesClient({
     return products.filter((product) => {
       if (categoryFilter !== "all" && (product.categoryId || "") !== categoryFilter) return false;
       if (onlyWithPurchase && !(product.purchasePrice != null && product.purchasePrice > 0)) return false;
-      if (hideVariants && product.hasVariants) return false;
       if (onlyVisible && !product.isVisible) return false;
       if (hideSelectedInCatalog && drafts[product.id]) return false;
       if (query) {
@@ -489,7 +481,6 @@ export function BulkPricesClient({
     categoryFilter,
     drafts,
     hideSelectedInCatalog,
-    hideVariants,
     onlyVisible,
     onlyWithPurchase,
     products,
@@ -499,7 +490,7 @@ export function BulkPricesClient({
   const win = useWindowedList(searched, {
     min: 60,
     step: 60,
-    resetKey: `${search}|${categoryFilter}|${onlyWithPurchase}|${hideVariants}|${onlyVisible}|${hideSelectedInCatalog}`,
+    resetKey: `${search}|${categoryFilter}|${onlyWithPurchase}|${onlyVisible}|${hideSelectedInCatalog}`,
   });
 
   const allSelected = searched.length > 0 && searched.every((p) => drafts[p.id]);
@@ -909,14 +900,6 @@ export function BulkPricesClient({
                             {!product.isVisible ? (
                               <span className="admin-badge admin-badge--muted">скрыт</span>
                             ) : null}
-                            {product.hasVariants ? (
-                              <span
-                                className="admin-badge admin-badge--amber"
-                                title="У товара есть варианты: цена на сайте берётся из них, базовая цена может не действовать"
-                              >
-                                варианты: {product.variantCount}
-                              </span>
-                            ) : null}
                             {product.discountType ? (
                               <span
                                 className="admin-badge admin-badge--red"
@@ -1084,12 +1067,6 @@ export function BulkPricesClient({
                     <AlertTriangle size={13} /> в убыток: <strong>{summary.loss}</strong>
                   </span>
                 ) : null}
-                {summary.withVariants > 0 ? (
-                  <span style={{ color: "var(--adm-kraft)" }}>
-                    <AlertTriangle size={13} /> с вариантами: <strong>{summary.withVariants}</strong> — цена
-                    на сайте берётся из вариантов
-                  </span>
-                ) : null}
                 {summary.withoutPurchase > 0 ? (
                   <span style={{ color: "var(--adm-kraft)" }}>
                     без закупочной цены: <strong>{summary.withoutPurchase}</strong> (накрутка и маржа не считаются)
@@ -1223,14 +1200,6 @@ export function BulkPricesClient({
             <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
               <input
                 type="checkbox"
-                checked={hideVariants}
-                onChange={(event) => setHideVariants(event.target.checked)}
-              />
-              без товаров с вариантами
-            </label>
-            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
-              <input
-                type="checkbox"
                 checked={onlyVisible}
                 onChange={(event) => setOnlyVisible(event.target.checked)}
               />
@@ -1284,11 +1253,6 @@ export function BulkPricesClient({
                       </td>
                       <td>
                         <span style={{ fontWeight: isSelected ? 700 : 500 }}>{product.name}</span>
-                        {product.hasVariants ? (
-                          <span className="admin-badge admin-badge--amber" style={{ marginLeft: 6 }}>
-                            варианты
-                          </span>
-                        ) : null}
                         {!product.isVisible ? (
                           <span className="admin-badge admin-badge--muted" style={{ marginLeft: 6 }}>
                             скрыт

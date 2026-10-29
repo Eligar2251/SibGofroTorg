@@ -1,7 +1,5 @@
 import React from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import Image from "next/image";
 import {
   getProductBySlug,
   getProductBySlugForPage,
@@ -10,21 +8,13 @@ import {
   getProductReviews,
   getProductReviewStats,
 } from "@/lib/supabase-queries";
-import { ProductCardCompact } from "@/components/catalog/ProductCardCompact";
-import { ProductPurchaseBlock } from "@/components/catalog/ProductPurchaseBlock";
-import { PriceInquiryButton } from "@/components/catalog/PriceInquiryButton";
 import {
-  isOutOfStock,
-  OUT_OF_STOCK_LABEL,
-  RESTOCK_INQUIRY_LABEL,
-} from "@/lib/stock-availability";
-import { MarkdownText } from "@/components/catalog/MarkdownText";
+  ProductDetailClient,
+  type PdpCardEntry,
+  type PdpReviewItem,
+} from "@/components/catalog/ProductDetailClient";
+import { isOutOfStock } from "@/lib/stock-availability";
 import { stripMarkdown } from "@/lib/markdown";
-import { ProductViewTracker } from "@/components/catalog/ProductViewTracker";
-import { Stars } from "@/components/catalog/Stars";
-import { ReviewForm } from "@/components/catalog/ReviewForm";
-import { ReviewHelpfulButton } from "@/components/catalog/ReviewHelpfulButton";
-// Стили страницы товара подключаются только здесь.
 import "@/app/pdp.css";
 import {
   FirestoreCategory,
@@ -32,48 +22,25 @@ import {
   getProductEffectivePrice,
 } from "@/lib/types";
 import { SITE_ADDRESS } from "@/lib/site-config";
-import {
-  BadgeCheck,
-  Barcode,
-  FileText,
-  MapPin,
-  MessageSquare,
-  ShoppingCart,
-} from "lucide-react";
-import { GlyphIcon } from "@/components/ui/Glyph";
-import {
-  normalizeProductLabelColor,
-  DEFAULT_PRODUCT_LABEL_COLOR,
-  DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
-} from "@/lib/product-fields";
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { formatProductSize } from "@/lib/product-size";
 import { dimensionOrderLabel } from "@/lib/dimension-profiles";
-import {
-  toSameOriginMediaUrl,
-  localizeMediaDeep,
-  toAbsoluteMediaUrl,
-} from "@/lib/media";
+import { localizeMediaDeep, toAbsoluteMediaUrl } from "@/lib/media";
 import {
   SITE_URL,
   SITE_NAME,
   buildBreadcrumbJsonLd,
   buildProductJsonLd,
 } from "@/lib/seo";
+import { toCardProduct } from "@/lib/product-card";
+import {
+  resolveLinkedCardLabels,
+  resolveLinkedGroupTitle,
+} from "@/lib/product-links";
 
 export const revalidate = 120;
 
-/* ── Склонение слов: plural(5, "отзыв", "отзыва", "отзывов") ── */
-function plural(n: number, one: string, few: string, many: string): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
-}
-
-/* ── Формат даты отзыва (Firestore Timestamp | string | Date) ── */
 function formatReviewDate(ts: unknown): string {
   try {
     const v = ts as { toDate?: () => Date } | string | number | Date | null;
@@ -111,15 +78,18 @@ export async function generateMetadata({
   if (!product) return { title: "Товар не найден" };
 
   const basePrice = product.basePrice ?? product.price;
-  const effectivePrice = getProductEffectivePrice({ ...product, price: basePrice });
+  const effectivePrice = getProductEffectivePrice({
+    ...product,
+    price: basePrice,
+  });
   const title = `${product.name} купить в Новосибирске`;
   const description = product.description
     ? stripMarkdown(product.description).slice(0, 160)
     : `${product.name}${
-      effectivePrice != null
-        ? ` — ${effectivePrice.toLocaleString("ru-RU")} ₽`
-        : ""
-    }. Доставка и самовывоз в Новосибирске. ${SITE_NAME}.`;
+        effectivePrice != null
+          ? ` — ${effectivePrice.toLocaleString("ru-RU")} ₽`
+          : ""
+      }. Доставка и самовывоз в Новосибирске. ${SITE_NAME}.`;
 
   return {
     title,
@@ -131,12 +101,118 @@ export async function generateMetadata({
       title: `${title} — ${SITE_NAME}`,
       description,
       url: `${SITE_URL}/catalog/product/${product.slug}`,
-      // og:image — с нашего домена (см. src/lib/media.ts).
       images: (() => {
         const ogImage = toAbsoluteMediaUrl(product.imageUrl, SITE_URL);
         return ogImage ? [{ url: ogImage }] : undefined;
       })(),
       type: "website",
+    },
+  };
+}
+
+function buildPdpCardEntry(
+  p: FirestoreProduct,
+  allCats: FirestoreCategory[],
+  label: string,
+  isPrimary: boolean,
+  reviewsRaw: any[],
+  reviewStatsRaw: any,
+): PdpCardEntry {
+  const category = allCats.find((c) => c.id === p.categoryId) || null;
+  const outOfStock = isOutOfStock(p);
+  const basePrice = p.basePrice ?? p.price;
+  const effectivePrice = getProductEffectivePrice({ ...p, price: basePrice });
+  const hasDiscount =
+    basePrice != null && effectivePrice != null && effectivePrice < basePrice;
+  const oldPrice = hasDiscount && basePrice != null ? basePrice : null;
+  const discountPercent =
+    hasDiscount && oldPrice != null && effectivePrice != null
+      ? Math.round((1 - effectivePrice / oldPrice) * 100)
+      : 0;
+  const displayPrice = effectivePrice ?? basePrice ?? null;
+
+  const dims = formatProductSize(p);
+  const specs = [
+    dims && {
+      label: p.dimensionValues?.length
+        ? `Размеры (${dimensionOrderLabel(
+            p.dimensionValues.filter((v) => v.value != null),
+          )})`
+        : "Размеры (ДхШхВ)",
+      value: dims,
+    },
+    p.material && { label: "Материал", value: p.material },
+    p.packQty && { label: "В упаковке", value: `${p.packQty} шт.` },
+    p.weight && { label: "Вес единицы", value: `${p.weight} кг` },
+    p.volume && { label: "Объём", value: `${p.volume} л` },
+    p.note && { label: "Примечание", value: p.note },
+  ].filter(Boolean) as { label: string; value: string }[];
+
+  const galleryImages: { url: string; alt: string }[] = [];
+  if (p.images && p.images.length > 0) {
+    p.images.forEach((img, i) =>
+      galleryImages.push({ url: img.url, alt: `${p.name} фото ${i + 1}` }),
+    );
+  } else if (p.imageUrl) {
+    galleryImages.push({ url: p.imageUrl, alt: p.name });
+  }
+
+  const reviews: PdpReviewItem[] = (reviewsRaw || []).map((r: any) => ({
+    id: String(r.id),
+    userName: r.userName || "Покупатель",
+    userAvatar: r.userAvatar || null,
+    rating: Number(r.rating) || 5,
+    date: formatReviewDate(r.createdAt),
+    isVerifiedPurchase: Boolean(r.isVerifiedPurchase),
+    title: r.title || null,
+    text: r.text || "",
+    pros: r.pros || null,
+    cons: r.cons || null,
+    images: Array.isArray(r.images)
+      ? r.images.map((im: any) => ({ url: String(im.url || "") })).filter((im: any) => im.url)
+      : [],
+    helpfulCount: Number(r.helpfulCount) || 0,
+  }));
+
+  const stats = reviewStatsRaw || EMPTY_REVIEW_STATS;
+
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    sku: p.sku ?? null,
+    label,
+    isPrimary,
+    categoryName: category?.name ?? null,
+    categorySlug: category?.slug ?? null,
+    description: p.description ?? null,
+    imageUrl: p.imageUrl ?? null,
+    galleryImages,
+    promoLabel: p.promoLabel ?? null,
+    promoLabelColor: p.promoLabelColor ?? null,
+    promoLabelTextColor: p.promoLabelTextColor ?? null,
+    madeToOrder: Boolean(p.madeToOrder),
+    madeToOrderMinQty: p.madeToOrderMinQty ?? null,
+    outOfStock,
+    stockQty: p.stockQty ?? null,
+    packQty: p.packQty ?? null,
+    displayPrice,
+    oldPrice,
+    discountPercent,
+    priceWholesale: p.priceWholesale ?? null,
+    minWholesaleQty: p.minWholesaleQty ?? null,
+    specs,
+    reviews,
+    reviewStats: {
+      averageRating: Number(stats.averageRating) || 0,
+      totalReviews: Number(stats.totalReviews) || 0,
+      distribution: {
+        5: Number(stats.distribution?.[5] ?? 0),
+        4: Number(stats.distribution?.[4] ?? 0),
+        3: Number(stats.distribution?.[3] ?? 0),
+        2: Number(stats.distribution?.[2] ?? 0),
+        1: Number(stats.distribution?.[1] ?? 0),
+      },
     },
   };
 }
@@ -147,100 +223,71 @@ export default async function ProductPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  // Товар вместе с вариантами — одним запросом.
-  const { product, variants } = localizeMediaDeep(
-    await getProductBySlugForPage(slug)
+  const { product, linkedProducts, linkGroup } = localizeMediaDeep(
+    await getProductBySlugForPage(slug),
   );
   if (!product) notFound();
 
-  /* Все выборки параллельно — один раундтрип к кэшу данных */
-  const [allCats, reviews, reviewStats, related] = localizeMediaDeep(
+  const groupMembers =
+    linkedProducts.length > 0 && linkedProducts.some((p) => p.id === product.id)
+      ? linkedProducts
+      : [product, ...linkedProducts];
+
+  // Загружаем категории, похожие товары и отзывы всех связанных карточек параллельно,
+  // чтобы переключение между вариантами на клиенте происходило за 0 мс без единого запроса.
+  const [allCats, related, perCardReviews] = localizeMediaDeep(
     await Promise.all([
-    getAllCategories(),
-    /* Отзывы и статистика — не критичны для рендера страницы,
-       при ошибке (нет индекса и т.п.) показываем пустую секцию */
-    getProductReviews(product.id, {
-      limitCount: 8,
-      onlyApproved: true,
-      sortBy: "newest",
-    }).catch(() => []),
-    getProductReviewStats(product.id).catch(() => EMPTY_REVIEW_STATS),
+      getAllCategories(),
       product.categoryId
         ? getRelatedProducts(product.categoryId, product.id, 4).catch(() => [])
         : Promise.resolve([]),
-    ])
+      Promise.all(
+        groupMembers.map(async (member) => {
+          const [revs, stats] = await Promise.all([
+            getProductReviews(member.id, {
+              limitCount: 8,
+              onlyApproved: true,
+              sortBy: "newest",
+            }).catch(() => []),
+            getProductReviewStats(member.id).catch(() => EMPTY_REVIEW_STATS),
+          ]);
+          return { id: member.id, reviews: revs, reviewStats: stats };
+        }),
+      ),
+    ]),
   );
 
-  const category = allCats.find(
-    (c: FirestoreCategory) => c.id === product.categoryId
+  const labelsMap = resolveLinkedCardLabels(
+    groupMembers,
+    linkGroup?.labels ?? null,
+  );
+  const groupTitle = resolveLinkedGroupTitle(
+    groupMembers,
+    linkGroup?.groupTitle ?? null,
+  );
+  const primaryId = linkGroup?.primaryProductId || groupMembers[0].id;
+
+  const reviewsMap = new Map(
+    perCardReviews.map((entry) => [entry.id, entry] as const),
   );
 
-  // Нет на складе — купить нельзя (автозаявка «Уточнить поступление»),
-  const outOfStock = isOutOfStock(product);
-  const basePrice = product.basePrice ?? product.price;
-  const effectivePrice = getProductEffectivePrice({ ...product, price: basePrice });
-  const hasDiscount =
-    basePrice != null &&
-    effectivePrice != null &&
-    effectivePrice < basePrice;
-  const oldPrice =
-    hasDiscount && basePrice != null ? basePrice : null;
-  const discountPercent =
-    hasDiscount && oldPrice != null && effectivePrice != null
-      ? Math.round((1 - effectivePrice / oldPrice) * 100)
-      : 0;
-
-  // Если у товара есть варианты — считаем «от X ₽» для крупного
-  // блока цены на странице.
-  const variantPrices = variants
-    .map((variant) => variant.price)
-    .filter((price): price is number => price != null && price > 0);
-  const variantPriceMin =
-    variantPrices.length > 0 ? Math.min(...variantPrices) : null;
-  const displayPrice =
-    variantPriceMin != null
-      ? variantPriceMin
-      : (effectivePrice ?? basePrice);
-  const displayOldPrice = variantPriceMin != null ? oldPrice : oldPrice;
-  const displayDiscountPercent =
-    variantPriceMin != null
-      ? Math.max(0, discountPercent)
-      : discountPercent;
-
-  const dims = formatProductSize(product);
-
-  const specs = [
-    dims && {
-      label: product.dimensionValues?.length
-        ? `Размеры (${dimensionOrderLabel(product.dimensionValues.filter((v) => v.value != null))})`
-        : "Размеры (ДхШхВ)",
-      value: dims,
-    },
-    product.material && { label: "Материал", value: product.material },
-    product.packQty && {
-      label: "В упаковке",
-      value: `${product.packQty} шт.`,
-    },
-    product.weight && {
-      label: "Вес единицы",
-      value: `${product.weight} кг`,
-    },
-    product.volume && { label: "Объём", value: `${product.volume} л` },
-    product.note && { label: "Примечание", value: product.note },
-  ].filter(Boolean) as { label: string; value: string }[];
-
-  /* ── Галерея: собираем список изображений ── */
-  const galleryImages: { url: string; alt: string }[] = [];
-  if (product.images && product.images.length > 0) {
-    product.images.forEach((img, i) =>
-      galleryImages.push({ url: img.url, alt: `${product.name} фото ${i + 1}` })
+  const cards: PdpCardEntry[] = groupMembers.map((member) => {
+    const revEntry = reviewsMap.get(member.id);
+    return buildPdpCardEntry(
+      member,
+      allCats,
+      labelsMap[member.id] || member.name,
+      member.id === primaryId,
+      revEntry?.reviews || [],
+      revEntry?.reviewStats || EMPTY_REVIEW_STATS,
     );
-  } else if (product.imageUrl) {
-    galleryImages.push({ url: product.imageUrl, alt: product.name });
-  }
-  const hasThumbs = galleryImages.length > 1;
+  });
 
-  /* ── JSON-LD ── */
+  const activeEntry = cards.find((c) => c.id === product.id) || cards[0];
+  const category = allCats.find(
+    (c: FirestoreCategory) => c.id === product.categoryId,
+  );
+
   const breadcrumb = buildBreadcrumbJsonLd(
     [
       { name: "Главная", url: SITE_URL },
@@ -252,7 +299,7 @@ export default async function ProductPage({
         name: product.name,
         url: `${SITE_URL}/catalog/product/${product.slug}`,
       },
-    ].filter(Boolean) as { name: string; url: string }[]
+    ].filter(Boolean) as { name: string; url: string }[],
   );
 
   const productLd = buildProductJsonLd({
@@ -262,576 +309,24 @@ export default async function ProductPage({
       ? stripMarkdown(product.description)
       : product.description,
     sku: product.sku,
-    price: displayPrice ?? effectivePrice ?? basePrice,
+    price: activeEntry.displayPrice,
     imageUrl: product.imageUrl,
-    inStock: !outOfStock && !product.madeToOrder,
+    inStock: !activeEntry.outOfStock && !activeEntry.madeToOrder,
   });
 
-  /* ── Хлебные крошки ── */
-  const breadcrumbTrail = [
-    { name: "Главная", url: "/" },
-    { name: "Каталог", url: "/catalog" },
-    ...(category
-      ? [{ name: category.name, url: `/catalog/${category.slug}` }]
-      : []),
-    { name: product.name, url: null },
-  ];
-
-  const { averageRating, totalReviews } = reviewStats;
+  const relatedCards = related.map((p: FirestoreProduct) => toCardProduct(p));
 
   return (
     <div className="pdp-page">
       <JsonLd data={[breadcrumb, productLd]} />
-      <ProductViewTracker productId={product.id} />
-
-      {/* ══ ХЛЕБНЫЕ КРОШКИ ══ */}
-      <div className="pdp-breadcrumb-bar">
-        <div className="container-wide">
-          <div className="breadcrumbs pdp-breadcrumbs">
-            <div className="breadcrumbs-left">
-              {breadcrumbTrail.map((item, idx) => (
-                <React.Fragment key={idx}>
-                  {idx > 0 && <span className="bc-sep">›</span>}
-                  {item.url ? (
-                    <Link href={item.url} className="bc-link">
-                      {item.name}
-                    </Link>
-                  ) : (
-                    <span className="bc-current">{item.name}</span>
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-
-            {product.sku && (
-              <div className="breadcrumbs-right">
-                <span className="bc-sku">
-                  <Barcode size={14} strokeWidth={2} />
-                  Артикул: {product.sku}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ══ ОСНОВНОЙ БЛОК ══ */}
-      <div className="container-wide pdp-main-wrap">
-        <div
-          className={`product-page${hasThumbs ? "" : " product-page--no-thumbs"}`}
-        >
-          {/* ── 1. МИНИАТЮРЫ (только если фото больше одного) ── */}
-          {hasThumbs && (
-            <div className="gallery-thumbs">
-              {galleryImages.map((img, idx) => (
-                <span
-                  key={idx}
-                  className={`thumb${idx === 0 ? " active" : ""}`}
-                >
-                  <Image
-                    src={toSameOriginMediaUrl(img.url)}
-                    alt={img.alt}
-                    width={72}
-                    height={72}
-                    style={{ objectFit: "cover", width: "100%", height: "100%" }}
-                  />
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* ── 2. ГЛАВНОЕ ФОТО ── */}
-          <div className="gallery-main">
-            {product.imageUrl ? (
-              /* Фото в фактических пропорциях: контейнер повторяет
-                 соотношение сторон изображения, ничего не обрезается */
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={toSameOriginMediaUrl(product.imageUrl)}
-                alt={product.name}
-                className="gallery-main__img"
-                loading="eager"
-                fetchPriority="high"
-                decoding="async"
-              />
-            ) : (
-              <span className="pdp-img-placeholder"><GlyphIcon value="box" size={64} /></span>
-            )}
-            {/* Бейджи акций/скидок — левый верхний угол фото */}
-            {(product.promoLabel || discountPercent > 0) && (
-              <div className="gallery-badges">
-                {product.promoLabel && (
-                  <span
-                    className="badge-promo"
-                    style={{
-                      backgroundColor:
-                        normalizeProductLabelColor(product.promoLabelColor) ||
-                        DEFAULT_PRODUCT_LABEL_COLOR,
-                      color:
-                        normalizeProductLabelColor(product.promoLabelTextColor) ||
-                        DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
-                    }}
-                  >
-                    {product.promoLabel}
-                  </span>
-                )}
-                {discountPercent > 0 && (
-                  <span className="badge-discount">−{discountPercent}%</span>
-                )}
-              </div>
-            )}
-            {/* Наличие — бейдж на фото (правый верхний угол) */}
-            {product.madeToOrder ? (
-              <span className="badge-stock badge-stock--out">
-                <span className="badge-stock__label">
-                  <span className="pdp-stock-dot pdp-stock-dot--out" />
-                  Под заказ
-                </span>
-              </span>
-            ) : !outOfStock ? (
-              <span className="badge-stock badge-stock--in">
-                <span className="badge-stock__label">
-                  <span className="pdp-stock-dot pdp-stock-dot--in" />
-                  В наличии
-                </span>
-                {product.stockQty != null && product.stockQty <= 30 && (
-                  <span className="badge-stock__qty">
-                    осталось {Math.floor(product.stockQty)} шт.
-                  </span>
-                )}
-              </span>
-            ) : (
-              <span className="badge-stock badge-stock--out">
-                <span className="badge-stock__label">
-                  <span className="pdp-stock-dot pdp-stock-dot--out" />
-                  {OUT_OF_STOCK_LABEL}
-                </span>
-              </span>
-            )}
-          </div>
-
-          {/* ── 3. ЦЕНТРАЛЬНАЯ КОЛОНКА: заголовок + характеристики ── */}
-          <div className="product-col">
-            <div className="product-head">
-              {/* Заголовок */}
-              <h1 className="product-title">{product.name}</h1>
-
-            {/* Рейтинг */}
-            <div className="rating-row">
-              {totalReviews > 0 ? (
-                <>
-                  <Stars value={averageRating} size={15} />
-                  <span className="rating-value">
-                    {averageRating.toFixed(1)}
-                  </span>
-                  <span className="rating-dot">•</span>
-                  <a href="#reviews" className="rating-link">
-                    {totalReviews}{" "}
-                    {plural(totalReviews, "отзыв", "отзыва", "отзывов")}
-                  </a>
-                </>
-              ) : (
-                <a href="#reviews" className="rating-link rating-link--muted">
-                  Отзывов пока нет — будьте первым
-                </a>
-              )}
-            </div>
-
-            {/* Бренд */}
-            <div className="brand-row">
-              <div className="brand-logo">С</div>
-              <div>
-                <div className="brand-name">
-                  СибГофроТорг{" "}
-                  <BadgeCheck
-                    size={14}
-                    style={{ color: "#16a34a", display: "inline" }}
-                  />
-                </div>
-                <div className="brand-sub">Производитель • ГОСТ</div>
-              </div>
-            </div>
-
-            </div>
-            {/* /product-head */}
-
-            {/* ── 4. ХАРАКТЕРИСТИКИ ── */}
-            <div className="product-info">
-              {/* Характеристики — сразу под заголовком */}
-              <div className="specs-section">
-                <div className="specs-header">
-                  <span className="specs-title">Характеристики</span>
-                </div>
-                <div className="specs-table">
-                  {specs.length > 0 ? (
-                    specs.map((s, idx) => (
-                      <div key={idx} className="spec-row">
-                        <div className="spec-name">{s.label}</div>
-                        <div className="spec-value">{s.value}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="spec-row">
-                      <div className="spec-name">Характеристики</div>
-                      <div className="spec-value">уточняйте у менеджера</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* /product-col */}
-
-          {/* ── ОПИСАНИЕ — под фото, полностью (markdown) ── */}
-          {product.description && (
-            <div id="description" className="pdp-desc-block">
-              <h2 className="pdp-desc-title">Описание</h2>
-              <MarkdownText
-                text={product.description}
-                className="pdp-desc-text"
-              />
-            </div>
-          )}
-
-          {/* ── 4. БЛОК ПОКУПКИ ── */}
-          <div className="purchase-block">
-            <div className="purchase-card">
-              {/* Цена. Если у товара есть варианты — показываем
-                 «от X ₽» по минимальной цене. Иначе — обычная
-                 логика с effectivePrice. При отсутствии на складе
-                 цена остаётся видимой (если задана) рядом с меткой
-                 «Нет в наличии». */}
-              {product.madeToOrder ? (
-                <div className="pdp-price-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
-                  <span className="pdp-price-current pdp-price-current--mto">
-                    Под заказ
-                    {(product as any).madeToOrderMinQty > 1
-                      ? ` от ${(product as any).madeToOrderMinQty} шт.`
-                      : ""}
-                  </span>
-                  {(product as any).madeToOrderMinQty > 1 && (
-                    <span style={{ fontSize: 13, color: "var(--ink-soft, #666)", fontWeight: 500 }}>
-                      Минимальный заказ: {(product as any).madeToOrderMinQty} шт.
-                    </span>
-                  )}
-                </div>
-              ) : displayPrice != null ? (
-                <div className="pdp-price-row">
-                  <span className="pdp-price-current">
-                    {/* «от X ₽» если у товара есть варианты */}
-                    {variantPriceMin != null && (
-                      <span className="pdp-price-from">от{"\u00a0"}</span>
-                    )}
-                    {displayPrice.toLocaleString("ru-RU")}{"\u00a0₽"}
-                  </span>
-                  {displayOldPrice != null && (
-                    <span className="pdp-price-old">
-                      {displayOldPrice.toLocaleString("ru-RU")} ₽
-                    </span>
-                  )}
-                  {displayDiscountPercent > 0 && (
-                    <span className="pdp-price-save">−{displayDiscountPercent}%</span>
-                  )}
-                  {variants.length > 0 && (
-                    <span className="pdp-price-variants">
-                      {variants.length}{" "}
-                      {plural(variants.length, "вариант", "варианта", "вариантов")}
-                    </span>
-                  )}
-                  {outOfStock && (
-                    <span className="pdp-price-out-note">{OUT_OF_STOCK_LABEL}</span>
-                  )}
-                </div>
-              ) : outOfStock ? (
-                <div className="pdp-price-row">
-                  <span className="pdp-price-current pdp-price-current--out">
-                    {OUT_OF_STOCK_LABEL}
-                  </span>
-                </div>
-              ) : (
-                <div className="pdp-price-row">
-                  <span className="pdp-price-current pdp-price-current--mto">
-                    Цена по запросу
-                  </span>
-                </div>
-              )}
-
-              {/* Оптовая цена */}
-              {!product.madeToOrder && product.priceWholesale != null && (
-                <div className="pdp-wholesale-row">
-                  <span className="pdp-wholesale-label">Опт:</span>
-                  <strong className="pdp-wholesale-price">
-                    {product.priceWholesale.toLocaleString("ru-RU")} ₽
-                  </strong>
-                  {product.minWholesaleQty && (
-                    <span className="pdp-wholesale-min">
-                      от {product.minWholesaleQty} шт.
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Форма сайта: количество + добавление в корзину */}
-              <div className="pdp-cart-block">
-                {product.madeToOrder ? (
-                  <div className="pdp-made-to-order">
-                    <div className="pdp-made-to-order__text">
-                      <FileText size={15} />
-                      Под заказ
-                      {(product as any).madeToOrderMinQty > 1
-                        ? ` от ${(product as any).madeToOrderMinQty} шт.`
-                        : ""}
-                      — оставьте заявку, менеджер рассчитает стоимость и сроки
-                    </div>
-                    <PriceInquiryButton
-                      productName={product.name}
-                      productSku={product.sku}
-                      productImageUrl={product.imageUrl}
-                      className="pdp-made-to-order__btn"
-                      label="Узнать цену"
-                    />
-                  </div>
-                ) : outOfStock ? (
-                  <div className="pdp-made-to-order">
-                    <div className="pdp-out-of-stock">
-                      <ShoppingCart size={15} />
-                      Под заказ · 2–3 дня — товара сейчас нет на складе, оставьте заявку на поставку
-                    </div>
-                    <PriceInquiryButton
-                      productName={product.name}
-                      productSku={product.sku}
-                      productImageUrl={product.imageUrl}
-                      className="pdp-made-to-order__btn"
-                      label={RESTOCK_INQUIRY_LABEL}
-                      kind="restock"
-                    />
-                  </div>
-                ) : effectivePrice == null && variants.length === 0 ? (
-                  <div className="pdp-made-to-order">
-                    <div className="pdp-made-to-order__text">
-                      <FileText size={15} />
-                      Цена по запросу — оставьте заявку, менеджер сообщит
-                      актуальную стоимость и сроки
-                    </div>
-                    <PriceInquiryButton
-                      productName={product.name}
-                      productSku={product.sku}
-                      productImageUrl={product.imageUrl}
-                      className="pdp-made-to-order__btn"
-                      label="Узнать цену"
-                    />
-                  </div>
-                ) : (
-                  <ProductPurchaseBlock
-                    product={{
-                      id: product.id,
-                      name: product.name,
-                      sku: product.sku,
-                      price: effectivePrice ?? basePrice,
-                      imageUrl: product.imageUrl,
-                      stockQty: product.stockQty,
-                      packQty: product.packQty,
-                    }}
-                    variants={variants}
-                  />
-                )}
-              </div>
-
-              {/* Доставка и самовывоз */}
-              <div className="delivery-section">
-                <div className="delivery-row">
-                  <MapPin size={16} className="delivery-ic" />
-                  <div className="delivery-info">
-                    <div className="delivery-address">
-                      Самовывоз: {SITE_ADDRESS}
-                    </div>
-                    <div className="delivery-from">
-                      Доставка по Новосибирску и всей России
-                    </div>
-                  </div>
-                </div>
-                <Link href="/delivery" className="delivery-link">
-                  Условия доставки и оплаты →
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ══ НИЖНИЕ БЛОКИ ══ */}
-
-        {/* Похожие товары */}
-        {related.length > 0 && (
-          <div className="pdp-related bottom-section">
-            <div className="section-title">Похожие товары</div>
-            <div className="product-grid-compact">
-              {related.map((p: FirestoreProduct) => (
-                <ProductCardCompact key={p.id} product={p} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ══ ОТЗЫВЫ ══ */}
-        <div className="bottom-section" id="reviews">
-          <div className="section-title">
-            Отзывы
-            {totalReviews > 0 && (
-              <span className="reviews-title-count"> · {totalReviews}</span>
-            )}
-          </div>
-
-          {totalReviews > 0 ? (
-            <div className="reviews-layout">
-              {/* Сводка */}
-              <aside className="reviews-summary">
-                <div className="reviews-score-row">
-                  <div className="reviews-score">
-                    {averageRating.toFixed(1)}
-                  </div>
-                  <div>
-                    <Stars value={averageRating} size={17} />
-                    <div className="reviews-total">
-                      {totalReviews}{" "}
-                      {plural(totalReviews, "отзыв", "отзыва", "отзывов")}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="reviews-bars">
-                  {[5, 4, 3, 2, 1].map((s) => {
-                    const cnt =
-                      reviewStats.distribution[
-                        s as keyof typeof reviewStats.distribution
-                      ] ?? 0;
-                    const pct =
-                      totalReviews > 0
-                        ? Math.round((cnt / totalReviews) * 100)
-                        : 0;
-                    return (
-                      <div key={s} className="reviews-bar-row">
-                        <span className="reviews-bar-star">{s} <GlyphIcon value="star" size={11} /></span>
-                        <span className="reviews-bar">
-                          <span style={{ width: `${pct}%` }} />
-                        </span>
-                        <span className="reviews-bar-count">{cnt}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <ReviewForm productId={product.id} />
-              </aside>
-
-              {/* Список отзывов */}
-              <div className="reviews-list">
-                {reviews.map((r) => {
-                  const date = formatReviewDate(r.createdAt);
-                  return (
-                    <article key={r.id} className="review-card">
-                      <div className="review-head">
-                        {r.userAvatar ? (
-                          <span className="review-avatar review-avatar--img">
-                            <Image
-                              src={toSameOriginMediaUrl(r.userAvatar)}
-                              alt=""
-                              width={42}
-                              height={42}
-                              style={{ objectFit: "cover" }}
-                            />
-                          </span>
-                        ) : (
-                          <span className="review-avatar">
-                            {r.userName?.trim()?.[0]?.toUpperCase() || "П"}
-                          </span>
-                        )}
-                        <div className="review-author">
-                          <div className="review-name">
-                            {r.userName || "Покупатель"}
-                          </div>
-                          <div className="review-meta">
-                            <Stars value={r.rating} size={13} />
-                            {date && (
-                              <span className="review-date">{date}</span>
-                            )}
-                          </div>
-                        </div>
-                        {r.isVerifiedPurchase && (
-                          <span className="review-verified">
-                            Подтверждённая покупка
-                          </span>
-                        )}
-                      </div>
-
-                      {r.title && <div className="review-title">{r.title}</div>}
-                      <p className="review-text">{r.text}</p>
-
-                      {(r.pros || r.cons) && (
-                        <div className="review-pros-cons">
-                          {r.pros && (
-                            <div className="review-pc">
-                              <span className="review-pc__label review-pc__label--plus">
-                                Достоинства
-                              </span>
-                              <p>{r.pros}</p>
-                            </div>
-                          )}
-                          {r.cons && (
-                            <div className="review-pc">
-                              <span className="review-pc__label review-pc__label--minus">
-                                Недостатки
-                              </span>
-                              <p>{r.cons}</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {r.images && r.images.length > 0 && (
-                        <div className="review-photos">
-                          {r.images.map((im, i) => (
-                            <span key={i} className="review-photo">
-                              <Image
-                                src={toSameOriginMediaUrl(im.url)}
-                                alt={`Фото покупателя ${i + 1}`}
-                                width={64}
-                                height={64}
-                                style={{ objectFit: "cover" }}
-                              />
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      <ReviewHelpfulButton
-                        productId={product.id}
-                        reviewId={r.id}
-                        initialCount={r.helpfulCount || 0}
-                      />
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            /* Пустое состояние */
-            <div className="reviews-empty">
-              <div className="reviews-empty__icon">
-                <MessageSquare size={26} />
-              </div>
-              <div className="reviews-empty__title">Пока нет отзывов</div>
-              <p className="reviews-empty__sub">
-                Будьте первым, кто поделится впечатлением об этом товаре — это
-                поможет другим покупателям
-              </p>
-              <div className="reviews-empty__form">
-                <ReviewForm productId={product.id} />
-              </div>
-            </div>
-          )}
-        </div>
-
-      </div>
+      <ProductDetailClient
+        initialProductId={product.id}
+        cards={cards}
+        groupTitle={groupTitle}
+        related={relatedCards}
+        siteAddress={SITE_ADDRESS}
+        siteName={SITE_NAME}
+      />
     </div>
   );
 }

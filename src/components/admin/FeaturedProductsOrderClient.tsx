@@ -44,11 +44,6 @@ type FeaturedProduct = {
   discountValue?: number | null;
   discountBadge?: string | null;
   material?: string | null;
-  hasVariants?: boolean;
-  variantCount?: number;
-  variantPriceMin?: number | null;
-  variantPriceMax?: number | null;
-  variantTotalStock?: number;
   isVisible?: boolean;
 };
 

@@ -96,7 +96,7 @@ const TABLE_META: Record<string, TableMeta> = {
   },
   categories: { label: "Категории", group: "Каталог" },
   products: { label: "Товары", group: "Каталог" },
-  product_variants: { label: "Варианты товаров", group: "Каталог" },
+  product_link_groups: { label: "Связки карточек товаров", group: "Каталог" },
   product_reviews: { label: "Отзывы", group: "Каталог" },
   review_helpful_votes: { label: "Отзывы: полезность", group: "Каталог" },
   product_questions: { label: "Вопросы о товарах", group: "Каталог" },
