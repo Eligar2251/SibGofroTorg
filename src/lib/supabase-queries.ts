@@ -38,10 +38,18 @@ import type {
   ProductQuestion,
   ProductRating,
   ProductView,
-  ProductVariant,
 } from "./types";
-import { getCachedVariantsMap } from "./variants";
-import { enrichProductsWithVariants } from "./variant-aggregation";
+import {
+  collapseLinkedProductsForStorefront,
+  enrichProductsWithLinks,
+  findProductLinkGroup,
+  type ProductLinkGroup,
+} from "./product-links";
+import {
+  getProductLinkGroups,
+  invalidateProductLinksCache,
+  removeProductFromLinksStore,
+} from "./product-links-store";
 import {
   calculateBoxVolumeLiters,
   normalizeProductLabelColor,
@@ -460,37 +468,32 @@ async function fetchAllProducts(): Promise<FirestoreProduct[]> {
   }
 }
 
-/** Принудительный сброс memory-кеша товаров.
+/** Принудительный сброс memory-кеша товаров и связок карточек.
  *  Вызывается после любого write (create/update/delete), чтобы
  *  следующий запрос читал свежие данные из Supabase. */
 export function invalidateProductsCache(): void {
   memoryProductsCache = null;
+  invalidateProductLinksCache();
 }
 
 const getCachedProducts = unstable_cache(
   async () => {
-    const baseProducts = await fetchAllProducts();
-    // Подтягиваем сводку по вариантам: используется в каталоге для
-    // «от X ₽», бейджа «Есть варианты», сводного остатка и т.п.
-    // enrichProductsWithVariants создаёт копии, не меняя цену и остаток
-    // в общем memory-кеше исходных строк products.
-    const productIds = baseProducts.map((product) => product.id);
-    const variantsMap = await getCachedVariantsMap(productIds);
-    const products = enrichProductsWithVariants(baseProducts, variantsMap);
+    const [baseProducts, linkGroups] = await Promise.all([
+      fetchAllProducts(),
+      getProductLinkGroups(),
+    ]);
+    // Обогащаем карточки информацией о связках (как на Ozon),
+    // не мутируя исходные объекты в memoryProductsCache.
+    const products = enrichProductsWithLinks(baseProducts, linkGroups);
 
     for (const product of products) {
-      // Штрихкод: сначала постоянный код из БД; фоллбек —
-      // детерминированный из id (старые товары до миграции, это тот
-      // же код, что печатался на их этикетках). Ленивое вычисление
-      // qrSlug: ~микросекунды на товар, кеш на 120с.
       product.barcode = product.barcode || computeBarcode(product.id);
       product.qrSlug = computeQrSlug(product.id);
     }
     return products;
   },
-  // Версия ключа сбрасывает старые записи с мутировавшими ценами/остатками.
-  ["base-products", "variant-aggregation-v3"],
-  { revalidate: DATA_REVALIDATE, tags: ["products", "variants"] }
+  ["base-products", "product-links-v1"],
+  { revalidate: DATA_REVALIDATE, tags: ["products", "product-links"] }
 );
 
 async function fetchProductReviewsRaw(productId: string): Promise<ProductReview[]> {
@@ -705,8 +708,8 @@ function featuredRankFor(product: FirestoreProduct, orderMap: Map<string, number
 // порядок применяется в первую очередь к товарам в наличии (требование
 // от 2026-09: «нет в наличии — выводится ниже тех, что есть»).
 function defaultProductCompare(a: FirestoreProduct, b: FirestoreProduct, orderMap: Map<string, number>): number {
-  const availA = isProductAvailable(a);
-  const availB = isProductAvailable(b);
+  const availA = Boolean(a.linkedGroupAnyInStock ?? isProductAvailable(a));
+  const availB = Boolean(b.linkedGroupAnyInStock ?? isProductAvailable(b));
   if (availA !== availB) return availA ? -1 : 1;
 
   if (a.isFeatured !== b.isFeatured) return a.isFeatured ? -1 : 1;
@@ -730,16 +733,18 @@ export async function getProducts(opts: {
   promoOnly?: boolean;
   featuredOnly?: boolean;
   saleOnly?: boolean;
+  inStockOnly?: boolean;
   /** Метки товара: берём товары, у которых есть ХОТЯ БЫ ОДНА из них.
    *  Учитываются и products.tags, и бейджи (promo_label / discount_badge). */
   tags?: string[];
   includeHidden?: boolean;
+  /** true = вернуть каждую карточку отдельно без объединения связок (админка, подбор коробок, sitemap). */
+  expandLinked?: boolean;
 } = {}): Promise<FirestoreProduct[]> {
-  let products = await getCachedProducts();
+  const allProducts = await getCachedProducts();
+  const allVisibleProducts = allProducts.filter((p) => p.isVisible !== false);
 
-  if (!opts.includeHidden) {
-    products = products.filter((p) => p.isVisible !== false);
-  }
+  let products = opts.includeHidden ? [...allProducts] : [...allVisibleProducts];
 
   if (opts.categoryId) {
     products = products.filter((p) => p.categoryId === opts.categoryId);
@@ -747,6 +752,7 @@ export async function getProducts(opts: {
   if (opts.promoOnly) products = products.filter((p) => p.isPromo);
   if (opts.featuredOnly) products = products.filter((p) => p.isFeatured);
   if (opts.saleOnly) products = products.filter((p) => p.isSale);
+  if (opts.inStockOnly) products = products.filter((p) => isProductAvailable(p));
   if (opts.tags && opts.tags.length > 0) {
     const wanted = opts.tags.map((t) => normalizeTag(t)).filter(Boolean);
     products = products.filter((p) => productHasAnyTag(p, wanted));
@@ -785,25 +791,44 @@ export async function getProducts(opts: {
     featuredOrderIds.map((id, index) => [id, index] as const)
   );
 
-  switch (opts.sortBy) {
-    case "price_asc":
-      products.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
-      break;
-    case "price_desc":
-      products.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
-      break;
-    case "name":
-      products.sort((a, b) => a.name.localeCompare(b.name, "ru"));
-      break;
-    case "newest":
-      products.sort((a, b) => {
-        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return tb - ta;
-      });
-      break;
-    default:
-      products.sort((a, b) => defaultProductCompare(a, b, featuredOrderMap));
+  const sortProductsList = (list: FirestoreProduct[]) => {
+    switch (opts.sortBy) {
+      case "price_asc":
+        list.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+        break;
+      case "price_desc":
+        list.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
+        break;
+      case "name":
+        list.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+        break;
+      case "newest":
+        list.sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tb - ta;
+        });
+        break;
+      default:
+        if (!opts.search) {
+          list.sort((a, b) => defaultProductCompare(a, b, featuredOrderMap));
+        }
+    }
+  };
+
+  sortProductsList(products);
+
+  // Для публичной витрины объединяем связанные карточки в одну карточку (как на Ozon)
+  if (!opts.includeHidden && !opts.expandLinked) {
+    const preferMatchedVariant = Boolean(
+      opts.search?.trim() || opts.inStockOnly || opts.promoOnly || opts.saleOnly,
+    );
+    products = collapseLinkedProductsForStorefront(products, allVisibleProducts, {
+      preferMatchedVariant,
+    });
+    if (!opts.search) {
+      sortProductsList(products);
+    }
   }
 
   if (opts.limitCount) products = products.slice(0, opts.limitCount);
@@ -904,11 +929,31 @@ export async function getProductById(id: string): Promise<FirestoreProduct | nul
  */
 export async function getProductByIdForAdmin(id: string): Promise<FirestoreProduct | null> {
   const db = getAdminDb();
-  const { data, error } = await db.from("products").select("*").eq("id", id).maybeSingle();
+  const [{ data, error }, linkGroups] = await Promise.all([
+    db.from("products").select("*").eq("id", id).maybeSingle(),
+    getProductLinkGroups({ bypassCache: true }),
+  ]);
   if (error || !data) return null;
   const product = mapProductRow(data);
   product.barcode = product.barcode || computeBarcode(product.id);
   product.qrSlug = computeQrSlug(product.id);
+
+  const group = findProductLinkGroup(linkGroups, product.id);
+  if (group) {
+    product.linkGroupId = group.id;
+    product.isGroupPrimary = group.primaryProductId === product.id;
+    product.linkedProductIds = [...group.productIds];
+    product.linkedGroupTitle = group.groupTitle ?? null;
+    product.linkedGroupLabels = { ...(group.labels || {}) };
+    product.linkedVariantLabel = group.labels?.[product.id] ?? null;
+  } else {
+    product.linkGroupId = null;
+    product.isGroupPrimary = true;
+    product.linkedProductIds = [];
+    product.linkedGroupTitle = null;
+    product.linkedGroupLabels = {};
+    product.linkedVariantLabel = null;
+  }
   return product;
 }
 
@@ -918,36 +963,65 @@ export async function getProductBySlug(slug: string): Promise<FirestoreProduct |
 }
 
 /**
- * Версия для страницы товара: всегда подтягивает полный список
- * видимых вариантов (для UI «выбери цвет/размер»).
- * Использует кеш getCachedVariantsMap, так что дополнительный
- * запрос идёт только если данные устарели.
+ * Версия для страницы товара: возвращает сам товар и все видимые карточки
+ * его связки (уже загруженные из кеша — 0 дополнительных запросов в БД),
+ * чтобы переключение между связанными карточками происходило мгновенно
+ * на клиенте без подгрузок и сетевых запросов.
  */
 export async function getProductBySlugForPage(
   slug: string,
-): Promise<{ product: FirestoreProduct | null; variants: ProductVariant[] }> {
-  const product = await getProductBySlug(slug);
-  if (!product) return { product: null, variants: [] };
-  // Берём кешированную карту (та же, что и в getCachedProducts) —
-  // это сохраняет 1 запрос в БД.
-  const map = await getCachedVariantsMap([product.id]);
-  // Defensive: getCachedVariantsMap всегда возвращает Map, но если
-  // на edge крутится старая версия, которая вернула что-то иное
-  // (например, массив из-за двойного оборачивания productIds), то
-  // без этой проверки мы получим "X.get is not a function" и страница
-  // товара упадёт. Поэтому проверяем тип и при необходимости
-  // восстанавливаем карту из entries.
-  const variantsMap: Map<string, ProductVariant[]> =
-    map instanceof Map
-      ? map
-      : new Map<string, ProductVariant[]>(
-          Array.isArray(map) ? (map as Array<[string, ProductVariant[]]>) : []
-        );
-  const allVariants = variantsMap.get(product.id) || [];
-  // Для страницы товара — только видимые
+): Promise<{
+  product: FirestoreProduct | null;
+  linkedProducts: FirestoreProduct[];
+  linkGroup: ProductLinkGroup | null;
+}> {
+  const [products, linkGroups] = await Promise.all([
+    getCachedProducts(),
+    getProductLinkGroups(),
+  ]);
+  const product = products.find((p) => p.slug === slug) || null;
+  if (!product) {
+    return { product: null, linkedProducts: [], linkGroup: null };
+  }
+
+  const group = findProductLinkGroup(linkGroups, product.id);
+  if (!group) {
+    return {
+      product,
+      linkedProducts: product.isVisible !== false ? [product] : [],
+      linkGroup: null,
+    };
+  }
+
+  const byId = new Map<string, FirestoreProduct>();
+  for (const p of products) {
+    if (p.isVisible !== false) byId.set(p.id, p);
+  }
+
+  const visibleMembers = group.productIds
+    .map((id) => byId.get(id))
+    .filter((p): p is FirestoreProduct => Boolean(p));
+
+  if (visibleMembers.length < 2) {
+    return {
+      product,
+      linkedProducts: visibleMembers.length > 0 ? visibleMembers : [product],
+      linkGroup: null,
+    };
+  }
+
+  const primary =
+    visibleMembers.find((p) => p.id === group.primaryProductId) ||
+    visibleMembers[0];
+  const orderedMembers = [
+    primary,
+    ...visibleMembers.filter((p) => p.id !== primary.id),
+  ];
+
   return {
     product,
-    variants: allVariants.filter((v) => v.isVisible),
+    linkedProducts: orderedMembers,
+    linkGroup: group,
   };
 }
 
@@ -957,9 +1031,19 @@ export async function getRelatedProducts(
   limitCount = 4
 ): Promise<FirestoreProduct[]> {
   const products = await getCachedProducts();
-  return products
-    .filter((p) => p.categoryId === categoryId && p.id !== excludeProductId && p.isVisible !== false)
-    .slice(0, limitCount);
+  const visible = products.filter((p) => p.isVisible !== false);
+  const current = products.find((p) => p.id === excludeProductId);
+  const excludeIds = new Set<string>([
+    excludeProductId,
+    ...(current?.linkedProductIds || []),
+  ]);
+  const sameCategory = visible.filter(
+    (p) => p.categoryId === categoryId && !excludeIds.has(p.id),
+  );
+  return collapseLinkedProductsForStorefront(sameCategory, visible).slice(
+    0,
+    limitCount,
+  );
 }
 
 export async function createProduct(data: Record<string, any>): Promise<{ id: string }> {
@@ -1286,8 +1370,12 @@ export async function deleteProduct(id: string): Promise<void> {
   const db = getAdminDb();
   const { error } = await db.from("products").delete().eq("id", id);
   if (error) throw error;
+  await removeProductFromLinksStore(id).catch((err) => {
+    console.error("[product-links] cleanup on deleteProduct error:", err);
+  });
   invalidateProductsCache();
   revalidateTag("products", { expire: 0 });
+  revalidateTag("product-links", { expire: 0 });
 }
 
 // ── Штрихкоды товаров (постоянные EAN-13 в products.barcode) ──

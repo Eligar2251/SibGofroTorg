@@ -1016,51 +1016,7 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
     }
     const rawActual = Number(item.actualQty);
     const actual = Math.max(0, Math.round((Number.isFinite(rawActual) ? rawActual : 0) * 1000) / 1000);
-    const variantId =
-      item.variantId == null || item.variantId === ""
-        ? null
-        : String(item.variantId);
 
-    if (variantId) {
-      // ── Ревизия по конкретному варианту ───────────────────────
-      const { data: variant, error: vErr } = await db
-        .from("product_variants")
-        .select("id, product_id, stock_qty, name")
-        .eq("id", variantId)
-        .maybeSingle();
-      if (vErr || !variant) {
-        skipped += 1;
-        continue;
-      }
-      const current = Number(variant.stock_qty || 0);
-      if (current === actual) {
-        skipped += 1;
-        continue;
-      }
-      const { error: updErr } = await db
-        .from("product_variants")
-        .update({ stock_qty: actual, updated_at: new Date().toISOString() })
-        .eq("id", variantId);
-      if (updErr) {
-        // Если таблица вариантов ещё не создана (миграция не применена) —
-        // не валим всю ревизию, а просто пропускаем эту строку.
-        console.error("applyStockRevision variant update error:", updErr);
-        skipped += 1;
-        continue;
-      }
-      changes.push({
-        productId: String(variant.product_id || productId),
-        name: item.name || variant.name || "",
-        from: current,
-        to: actual,
-        diff: actual - current,
-        variantId,
-        variantName: item.variantName ?? variant.name ?? null,
-      });
-      continue;
-    }
-
-    // ── Ревизия товара без вариантов (старая логика) ────────────
     const { data: product } = await db
       .from("products")
       .select("id, name, stock_qty")
@@ -1101,7 +1057,6 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
   invalidateProductsCache();
   try {
     revalidateTag("products", { expire: 0 });
-    revalidateTag("variants", { expire: 0 });
   } catch {
     /* outside Next request store in tests */
   }
@@ -4570,31 +4525,13 @@ async function buildOrderItemsFromProducts(
   for (const { productId, quantity, variantId, variantName } of merged.values()) {
     const { data: product } = await db.from("products").select("*").eq("id", productId).maybeSingle();
     if (!product || product.is_visible === false) continue;
-    // Цена/имя/SKU варианта (если выбран) подтягиваются с варианта.
-    let variantPrice: number | null = null;
-    let variantPriceWholesale: number | null = null;
-    let variantSku: string | null = product.sku ? String(product.sku) : null;
-    let variantImage: string | null = product.image_url || null;
-    if (variantId) {
-      const { data: variant } = await db
-        .from("product_variants")
-        .select("price, price_wholesale, sku, image_url")
-        .eq("id", variantId)
-        .maybeSingle();
-      if (variant) {
-        if (variant.price != null) variantPrice = Number(variant.price);
-        if (variant.price_wholesale != null) variantPriceWholesale = Number(variant.price_wholesale);
-        if (variant.sku) variantSku = String(variant.sku);
-        if (variant.image_url) variantImage = String(variant.image_url);
-      }
-    }
+    const productSku: string | null = product.sku ? String(product.sku) : null;
     const basePrice = getProductEffectivePrice({
       price: product.price != null ? Number(product.price) : null,
       discountType: product.discount_type ?? null,
       discountValue: product.discount_value ?? null,
     });
-    const safePrice = Math.max(0, Number(variantPrice ?? basePrice) || 0);
-    // Имя в строке заказа = имя товара + имя варианта (если есть).
+    const safePrice = Math.max(0, Number(basePrice) || 0);
     const nameWithVariant = variantName
       ? `${String(product.name || "Товар")} (${variantName})`.slice(0, 200)
       : String(product.name || "Товар").slice(0, 200);
@@ -4603,12 +4540,10 @@ async function buildOrderItemsFromProducts(
       variantId,
       variantName,
       name: nameWithVariant,
-      sku: variantSku ? String(variantSku).slice(0, 80) : "—",
+      sku: productSku ? String(productSku).slice(0, 80) : "—",
       quantity,
       price: safePrice,
       lineTotal: round2(quantity * safePrice),
-      // Доп. поля ниже — необязательные, но иногда пригодятся в UI учёта.
-      // Они уже не сохраняются в БД, если там нет соответствующих колонок.
     });
   }
   return result;

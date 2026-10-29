@@ -1030,67 +1030,36 @@ CREATE TRIGGER trg_views_increment
   FOR EACH ROW EXECUTE FUNCTION fn_increment_view_count();
 
 -- =========================================================
--- ВАРИАНТЫ ТОВАРА (product_variants)
+-- СВЯЗКИ КАРТОЧЕК ТОВАРОВ (product_link_groups — как на Ozon)
+-- См. также supabase/migration_product_links.sql
 -- =========================================================
--- Добавлено в схему: каждый товар может иметь 0..N вариантов
--- (цвет, размер, фасовка, материал). У каждого варианта свой
--- SKU, цена, остаток, изображения и (опционально) габариты.
--- Если остаток не задан ни для одного варианта (все значения 0),
--- используется общий остаток products; после указания положительного
--- остатка хотя бы у одного варианта включается раздельный учёт.
--- Товары без вариантов продолжают работать как раньше — данные
--- читаются из самой строки products.
--- =========================================================
-
-CREATE TABLE IF NOT EXISTS product_variants (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id UUID NOT NULL,
-  name TEXT NOT NULL DEFAULT '',
-  option_type TEXT NOT NULL DEFAULT '',
-  color_hex TEXT,
-  sort_order INT NOT NULL DEFAULT 0,
-  price NUMERIC,
-  price_wholesale NUMERIC,
-  sku TEXT,
-  stock_qty INT NOT NULL DEFAULT 0,
-  stock_warn_qty INT,
-  images JSONB DEFAULT '[]'::jsonb,
-  image_url TEXT,
-  dimension_length NUMERIC,
-  dimension_width NUMERIC,
-  dimension_height NUMERIC,
-  dimension_unit TEXT,
-  weight NUMERIC,
-  pack_qty INT,
-  is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+CREATE TABLE IF NOT EXISTS product_link_groups (
+  id TEXT PRIMARY KEY,
+  primary_product_id TEXT NOT NULL,
+  product_ids TEXT[] NOT NULL DEFAULT '{}'::text[],
+  labels JSONB NOT NULL DEFAULT '{}'::jsonb,
+  group_title TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_variants_product ON product_variants(product_id);
-CREATE INDEX IF NOT EXISTS idx_variants_visible_in_stock
-  ON product_variants(product_id, is_visible, stock_qty) WHERE is_visible = TRUE;
-CREATE INDEX IF NOT EXISTS idx_variants_sort
-  ON product_variants(product_id, option_type, sort_order);
+CREATE INDEX IF NOT EXISTS idx_product_link_groups_members
+  ON product_link_groups USING GIN (product_ids);
 
-ALTER TABLE product_variants ENABLE ROW LEVEL SECURITY;
-
--- Анонимный пользователь (витрина) — только чтение видимых вариантов
-DROP POLICY IF EXISTS pv_anon_select ON product_variants;
-CREATE POLICY pv_anon_select ON product_variants
-  FOR SELECT USING (is_visible = TRUE);
-
--- Сервисная роль (Supabase service_role) — полный доступ
--- (запись идёт из server-функций с правами service_role).
-DROP POLICY IF EXISTS pv_service_all ON product_variants;
-CREATE POLICY pv_service_all ON product_variants
-  FOR ALL TO service_role USING (TRUE) WITH CHECK (TRUE);
-
--- Авто-обновление updated_at при UPDATE
-DROP TRIGGER IF EXISTS trg_pv_updated_at ON product_variants;
-CREATE TRIGGER trg_pv_updated_at
-  BEFORE UPDATE ON product_variants
+DROP TRIGGER IF EXISTS trg_product_link_groups_updated ON product_link_groups;
+CREATE TRIGGER trg_product_link_groups_updated
+  BEFORE UPDATE ON product_link_groups
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+ALTER TABLE product_link_groups ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS plg_anon_select ON product_link_groups;
+CREATE POLICY plg_anon_select ON product_link_groups
+  FOR SELECT USING (TRUE);
+
+DROP POLICY IF EXISTS plg_service_all ON product_link_groups;
+CREATE POLICY plg_service_all ON product_link_groups
+  FOR ALL TO service_role USING (TRUE) WITH CHECK (TRUE);
 
 -- =========================================================
 -- РУЧНЫЕ ЗАЯВКИ КЛИЕНТОВ (CRM-обращения, не связаны с заказами)

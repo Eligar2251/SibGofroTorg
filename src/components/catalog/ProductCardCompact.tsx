@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toSameOriginMediaUrl } from "@/lib/media";
 import Link from "next/link";
 import Image from "next/image";
@@ -23,15 +23,7 @@ import {
   DEFAULT_PRODUCT_LABEL_COLOR,
   DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
 } from "@/lib/product-fields";
-
-/** Склонение для «N вариантов» на карточке. */
-function pluralVariants(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "вариант";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "варианта";
-  return "вариантов";
-}
+import type { LinkedCardOption } from "@/lib/product-links";
 
 interface CompactProduct {
   id: string;
@@ -64,12 +56,11 @@ interface CompactProduct {
   discountValue?: number | null;
   discountBadge?: string | null;
   material?: string | null;
-  // ── Сводка по вариантам (если они у товара есть).
-  hasVariants?: boolean;
-  variantCount?: number;
-  variantPriceMin?: number | null;
-  variantPriceMax?: number | null;
-  variantTotalStock?: number;
+  linkGroupId?: string | null;
+  isGroupPrimary?: boolean;
+  linkedGroupTitle?: string | null;
+  linkedVariantLabel?: string | null;
+  linkedCards?: LinkedCardOption[];
 }
 
 export function ProductCardCompact({
@@ -83,29 +74,50 @@ export function ProductCardCompact({
   orderMode?: boolean;
 }) {
   const { addToCart, updateQty, removeFromCart, openCartDock, cart } = useCart();
-  const packSize = product.packQty ? Math.max(1, Number(product.packQty)) : 1;
-  const maxStock = getAvailableStockQty(product);
-  // Нет на складе (остаток <= 0) — купить в корзину нельзя, выводим «Под заказ».
-  const outOfStock = isOutOfStock(product);
+
+  const linkedCards =
+    Array.isArray(product.linkedCards) && product.linkedCards.length >= 2
+      ? product.linkedCards
+      : null;
+
+  const [selectedCardId, setSelectedCardId] = useState<string>(product.id);
+  useEffect(() => {
+    setSelectedCardId(product.id);
+  }, [product.id]);
+
+  const activeLinked = linkedCards
+    ? linkedCards.find((c) => c.id === selectedCardId) || linkedCards[0]
+    : null;
+
+  const current: CompactProduct = activeLinked ? activeLinked : product;
+
+  const packSize = current.packQty ? Math.max(1, Number(current.packQty)) : 1;
+  const maxStock = getAvailableStockQty(current);
+  const outOfStock = isOutOfStock(current);
 
   const [showHover, setShowHover] = useState(false);
 
-  const inCart = cart.find((i) => i.productId === product.id && !i.variantId);
+  const inCart = cart.find((i) => i.productId === current.id && !i.variantId);
   const atMaxStock = inCart != null && inCart.quantity >= maxStock;
 
-  const dims = formatProductSize(product);
-  // Скидка — как на странице товара: цена со скидкой, зачёркнутая
-  // старая цена и бейдж «−15%» (или своя подпись из discountBadge).
-  const discount = getCardDiscount(product);
+  const dims = formatProductSize(current);
+  const discount = getCardDiscount(current);
   const displayPrice = discount.price;
+
+  // Есть ли у вариантов разные фото — если да, показываем миниатюры прямо в чипах
+  const hasDistinctVariantThumbs = Boolean(
+    linkedCards &&
+      linkedCards.filter((c) => Boolean(c.imageUrl)).length >= 2 &&
+      new Set(linkedCards.map((c) => c.imageUrl || "")).size > 1,
+  );
 
   function cartPayload() {
     return {
-      productId: product.id,
-      name: product.name,
-      sku: product.sku,
+      productId: current.id,
+      name: current.name,
+      sku: current.sku,
       price: displayPrice as number,
-      imageUrl: product.imageUrl,
+      imageUrl: current.imageUrl,
       maxStock,
     };
   }
@@ -113,26 +125,26 @@ export function ProductCardCompact({
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!product.price || product.madeToOrder || outOfStock || maxStock < 1) return;
+    if (!current.price || current.madeToOrder || outOfStock || maxStock < 1) return;
     addToCart(cartPayload(), 1);
-    ymGoal("add_to_cart", { product_id: product.id });
+    ymGoal("add_to_cart", { product_id: current.id });
   }
 
   function handleInc(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (!product.price || product.madeToOrder || outOfStock || maxStock < 1) return;
+    if (!current.price || current.madeToOrder || outOfStock || maxStock < 1) return;
     if (!inCart) {
       handleAdd(e);
       return;
     }
     const next = Math.min(inCart.quantity + 1, maxStock);
     if (next === inCart.quantity) return;
-    updateQty(product.id, next);
+    updateQty(current.id, next);
     openCartDock({
-      productId: product.id,
-      name: product.name,
-      imageUrl: product.imageUrl,
+      productId: current.id,
+      name: current.name,
+      imageUrl: current.imageUrl,
       price: displayPrice as number,
       qty: next,
     });
@@ -143,16 +155,16 @@ export function ProductCardCompact({
     e.stopPropagation();
     if (!inCart) return;
     if (inCart.quantity <= 1) {
-      removeFromCart(product.id);
+      removeFromCart(current.id);
       return;
     }
     const next = inCart.quantity - 1;
-    updateQty(product.id, next);
-    if (product.price != null) {
+    updateQty(current.id, next);
+    if (current.price != null) {
       openCartDock({
-        productId: product.id,
-        name: product.name,
-        imageUrl: product.imageUrl,
+        productId: current.id,
+        name: current.name,
+        imageUrl: current.imageUrl,
         price: displayPrice as number,
         qty: next,
       });
@@ -161,12 +173,12 @@ export function ProductCardCompact({
 
   function handleManualQty(next: number) {
     const qty = Math.min(next, maxStock);
-    if (qty < 1 || !inCart || !product.price || product.madeToOrder || outOfStock) return;
-    updateQty(product.id, qty);
+    if (qty < 1 || !inCart || !current.price || current.madeToOrder || outOfStock) return;
+    updateQty(current.id, qty);
     openCartDock({
-      productId: product.id,
-      name: product.name,
-      imageUrl: product.imageUrl,
+      productId: current.id,
+      name: current.name,
+      imageUrl: current.imageUrl,
       price: displayPrice as number,
       qty,
     });
@@ -179,53 +191,45 @@ export function ProductCardCompact({
       onMouseLeave={() => setShowHover(false)}
     >
       {/* ── Фото ── */}
-      <Link href={`/catalog/product/${product.slug}`} className="pcc__media">
-        {product.promoLabel && (
+      <Link href={`/catalog/product/${current.slug}`} className="pcc__media">
+        {current.promoLabel && (
           <span
             className="pcc__badge pcc__badge--promo"
             style={{
-              // Цвет метки всегда задаётся инлайном: так смена цвета в админке
-              // сразу отражается на сайте и не «перебивается» CSS-фоллбеком.
               backgroundColor:
-                normalizeProductLabelColor(product.promoLabelColor) ||
+                normalizeProductLabelColor(current.promoLabelColor) ||
                 DEFAULT_PRODUCT_LABEL_COLOR,
               color:
-                normalizeProductLabelColor(product.promoLabelTextColor) ||
+                normalizeProductLabelColor(current.promoLabelTextColor) ||
                 DEFAULT_PRODUCT_LABEL_TEXT_COLOR,
             }}
           >
-            {product.promoLabel}
+            {current.promoLabel}
           </span>
         )}
         {discount.badge && (
           <span
-            className={`pcc__badge pcc__badge--discount${product.promoLabel ? " pcc__badge--discount-shift" : ""}`}
+            className={`pcc__badge pcc__badge--discount${current.promoLabel ? " pcc__badge--discount-shift" : ""}`}
           >
             {discount.badge}
           </span>
         )}
-        {outOfStock && !product.madeToOrder && (
+        {outOfStock && !current.madeToOrder && (
           <span className="pcc__badge pcc__badge--out">{OUT_OF_STOCK_LABEL}</span>
         )}
-        {!product.madeToOrder && maxStock > 0 && maxStock <= 20 && (
+        {!current.madeToOrder && maxStock > 0 && maxStock <= 20 && (
           <span className="pcc__badge pcc__badge--low">Осталось {maxStock}</span>
         )}
 
         <div className="pcc__img">
-          {product.imageUrl ? (
+          {current.imageUrl ? (
             <Image
-              src={toSameOriginMediaUrl(product.imageUrl)}
-              alt={product.name}
+              src={toSameOriginMediaUrl(current.imageUrl)}
+              alt={current.name}
               fill
               sizes="(max-width: 640px) 44vw, (max-width: 1100px) 30vw, 260px"
-              /* Раньше здесь стоял priority={highlight}: Next добавлял
-                 <link rel="preload"> на первую карточку КАЖДОЙ секции
-                 (главная, каталог, подборки) — браузер ругался
-                 "preloaded but not used". Достаточно eager-загрузки. */
               loading={highlight ? "eager" : "lazy"}
               fetchPriority={highlight ? "high" : "auto"}
-              /* Фото целиком в плитке: без обрезки кромок (contain).
-                 Отступ от краёв задаётся в CSS (.pcc__img img). */
               style={{ objectFit: "contain" }}
             />
           ) : (
@@ -233,7 +237,7 @@ export function ProductCardCompact({
           )}
 
           {/* Hover-оверлей с характеристиками */}
-          {showHover && (dims || product.material) && (
+          {showHover && (dims || current.material) && (
             <div className="pcc__hover-overlay">
               {dims && (
                 <div className="pcc__hover-row">
@@ -241,10 +245,10 @@ export function ProductCardCompact({
                   <span className="pcc__hover-val">{dims}</span>
                 </div>
               )}
-              {product.material && (
+              {current.material && (
                 <div className="pcc__hover-row">
                   <span className="pcc__hover-label">Марка</span>
-                  <span className="pcc__hover-val">{product.material}</span>
+                  <span className="pcc__hover-val">{current.material}</span>
                 </div>
               )}
               {packSize > 1 && (
@@ -253,7 +257,7 @@ export function ProductCardCompact({
                   <span className="pcc__hover-val">{packSize} шт.</span>
                 </div>
               )}
-              {!product.madeToOrder && (
+              {!current.madeToOrder && (
                 <div className="pcc__hover-row">
                   <span className="pcc__hover-label">Склад</span>
                   <span
@@ -271,38 +275,73 @@ export function ProductCardCompact({
 
       {/* ── Тело ── */}
       <div className="pcc__body">
-        {product.sku && <div className="pcc__sku">Арт: {product.sku}</div>}
+        {current.sku && <div className="pcc__sku">Арт: {current.sku}</div>}
 
-        <Link href={`/catalog/product/${product.slug}`} className="pcc__name">
-          {product.name}
+        <Link href={`/catalog/product/${current.slug}`} className="pcc__name">
+          {current.name}
         </Link>
 
-        {/* Размер — отдельной строкой под названием (не внутри ссылки):
-           раньше висел внутри .pcc__name и «съедался» 2-строчным
-           line-clamp, когда название длинное. Теперь всегда виден. */}
         {dims && <div className="pcc__dims">{dims}</div>}
 
-        {/* Цена — шт + партия. Если у товара есть варианты,
-           показываем «от X ₽» (по минимальной цене).
-           У товаров «под заказ» и без цены цену не выводим;
-           у остальных цена видна всегда — в том числе когда
-           товара нет в наличии (тогда ниже метка «Нет в наличии»,
-           а вместо кнопки покупки — «Уточнить поступление»). */}
+        {/* Мгновенный переключатель связанных карточек (как на Ozon — 0 мс, без перезагрузки) */}
+        {linkedCards && (
+          <div
+            className="pcc__linked-options"
+            role="tablist"
+            aria-label={product.linkedGroupTitle || "Варианты товара"}
+          >
+            {linkedCards.map((opt) => {
+              const isSelected = opt.id === current.id;
+              const optOut = isOutOfStock(opt) || Boolean(opt.madeToOrder);
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isSelected}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSelectedCardId(opt.id);
+                  }}
+                  className={
+                    "pcc__linked-chip" +
+                    (isSelected ? " pcc__linked-chip--active" : "") +
+                    (optOut ? " pcc__linked-chip--out" : "")
+                  }
+                  title={
+                    optOut
+                      ? `${opt.name} — под заказ`
+                      : opt.price != null
+                        ? `${opt.name} — ${opt.price.toLocaleString("ru-RU")} ₽`
+                        : opt.name
+                  }
+                >
+                  {hasDistinctVariantThumbs && opt.imageUrl && (
+                    <span className="pcc__linked-chip-thumb" aria-hidden="true">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={toSameOriginMediaUrl(opt.imageUrl)} alt="" />
+                    </span>
+                  )}
+                  <span className="pcc__linked-chip-label">{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Цена */}
         <div className="pcc__prices">
-          {product.madeToOrder ? (
+          {current.madeToOrder ? (
             <span className="pcc__price-muted pcc__price-muted--mto">
               Под заказ
-              {product.madeToOrderMinQty && product.madeToOrderMinQty > 1
-                ? ` от ${product.madeToOrderMinQty} шт.`
+              {current.madeToOrderMinQty && current.madeToOrderMinQty > 1
+                ? ` от ${current.madeToOrderMinQty} шт.`
                 : ""}
             </span>
           ) : displayPrice != null ? (
             <>
               <div className="pcc__price-main">
-                {/* «от» — только когда есть варианты с разной ценой */}
-                {product.hasVariants && product.variantPriceMin !== product.variantPriceMax && (
-                  <span className="pcc__price-from">от{"\u00a0"}</span>
-                )}
                 <span className={`pcc__price-val${discount.oldPrice != null ? " pcc__price-val--sale" : ""}`}>
                   {displayPrice.toLocaleString("ru-RU")}
                 </span>
@@ -313,18 +352,11 @@ export function ProductCardCompact({
                   </span>
                 )}
               </div>
-              {/* Бейдж «N вариантов» — намекает, что есть выбор */}
-              {product.hasVariants && product.variantCount ? (
-                <div className="pcc__variants-badge">
-                  {product.variantCount}{" "}
-                  {pluralVariants(product.variantCount)}
-                </div>
-              ) : null}
-              {product.priceWholesale && product.minWholesaleQty && (
+              {current.priceWholesale && current.minWholesaleQty && (
                 <div className="pcc__price-wholesale">
                   <Package size={9} />
-                  от {product.minWholesaleQty} шт. —{" "}
-                  <strong>{product.priceWholesale.toLocaleString("ru-RU")} ₽</strong>
+                  от {current.minWholesaleQty} шт. —{" "}
+                  <strong>{current.priceWholesale.toLocaleString("ru-RU")} ₽</strong>
                 </div>
               )}
               {outOfStock && (
@@ -340,52 +372,44 @@ export function ProductCardCompact({
           ) : (
             <span className="pcc__price-muted">Цена по запросу</span>
           )}
-          {!product.madeToOrder && outOfStock && (
+          {!current.madeToOrder && outOfStock && (
             <span className="pcc__mto-note">
               <Clock3 size={10} />
               Под заказ
-              {product.madeToOrderMinQty && product.madeToOrderMinQty > 1
-                ? ` от ${product.madeToOrderMinQty} шт.`
+              {current.madeToOrderMinQty && current.madeToOrderMinQty > 1
+                ? ` от ${current.madeToOrderMinQty} шт.`
                 : " · 2–3 дня"}
             </span>
           )}
         </div>
 
-        {/* Управление количеством: степпер без суммы на карточке —
-           итог показывается в попапе над плавающей корзиной. */}
-        {product.madeToOrder ? (
+        {/* Действие: В корзину / Степпер / Заявка на поставку */}
+        {current.madeToOrder ? (
           <PriceInquiryButton
-            productName={product.name}
-            productSku={product.sku}
-            productImageUrl={product.imageUrl}
+            productName={current.name}
+            productSku={current.sku}
+            productImageUrl={current.imageUrl}
             className="pcc__inquiry-btn"
             label="Узнать цену"
           />
         ) : outOfStock ? (
           <PriceInquiryButton
-            productName={product.name}
-            productSku={product.sku}
-            productImageUrl={product.imageUrl}
+            productName={current.name}
+            productSku={current.sku}
+            productImageUrl={current.imageUrl}
             className="pcc__inquiry-btn"
             label={RESTOCK_INQUIRY_LABEL}
             kind="restock"
           />
-        ) : product.hasVariants ? (
-          <Link
-            href={`/catalog/product/${product.slug}`}
-            className="pcc__add-btn pcc__add-btn--wide"
-          >
-            Выбрать вариант
-          </Link>
-        ) : product.price == null ? (
+        ) : current.price == null ? (
           <PriceInquiryButton
-            productName={product.name}
-            productSku={product.sku}
-            productImageUrl={product.imageUrl}
+            productName={current.name}
+            productSku={current.sku}
+            productImageUrl={current.imageUrl}
             className="pcc__inquiry-btn"
             label="Узнать цену"
           />
-        ) : product.price != null ? (
+        ) : current.price != null ? (
           <div className="pcc__actions">
             {inCart ? (
               <div className="pcc__stepper">

@@ -47,7 +47,9 @@ export default async function BoxFinderPage({
     height: dimParam(sp.h),
   };
 
-  const products = localizeMediaDeep(await getProducts({}).catch(() => []));
+  const products = localizeMediaDeep(
+    await getProducts({ expandLinked: true }).catch(() => [])
+  );
 
   const finderProducts: BoxFinderProduct[] = products
     .filter((p) => p.dimensionLength != null && p.dimensionWidth != null)

@@ -9,11 +9,7 @@ import { EditableQuantityInput } from "@/components/ui/EditableQuantityInput";
 import { getProductEffectivePrice } from "@/lib/types";
 import { getAvailableStockQty } from "@/lib/stock-availability";
 import { toSameOriginMediaUrl } from "@/lib/media";
-import {
-  formatProductSize,
-  formatVariantSizes,
-  type ProductVariantSizeSource,
-} from "@/lib/product-size";
+import { formatProductSize } from "@/lib/product-size";
 
 interface SaleProduct {
   id: string;
@@ -31,8 +27,6 @@ interface SaleProduct {
   dimensionHeight?: number | null;
   dimensionUnit?: string | null;
   dimensionValues?: import("@/lib/dimension-profiles").DimensionValue[] | null;
-  /** Размеры вариантов — когда у самого товара габариты не заполнены. */
-  variantSizes?: ProductVariantSizeSource[] | null;
 }
 
 function effectivePrice(p: SaleProduct): number | null {
@@ -141,8 +135,7 @@ export function HomeSaleSection({ products }: { products: SaleProduct[] }) {
             const maxStock = getAvailableStockQty(p);
             const out = maxStock <= 0;
             // В распродаже размер — главная подсказка о товаре.
-            const size =
-              formatProductSize(p, "any") || formatVariantSizes(p.variantSizes, 2);
+            const size = formatProductSize(p, "any");
             const atMax = inCart != null && inCart.quantity >= maxStock;
 
             return (

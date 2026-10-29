@@ -84,88 +84,18 @@ export interface FirestoreProduct {
   // Короткий стабильный slug для URL сканирования (/q/{slug}).
   // Вычисляется детерминированно из id (см. lib/qr.ts).
   qrSlug?: string | null;
-  // ── Сводные данные по вариантам (если они у товара есть).
-  //    Используются в каталоге, чтобы показать диапазон цен
-  //    «от X ₽» и сводный остаток. Не хранятся в products —
-  //    считаются на лету из product_variants.
-  variantCount?: number;
-  hasVariants?: boolean;
-  variantPriceMin?: number | null;
-  variantPriceMax?: number | null;
-  variantTotalStock?: number;
-  // Список вариантов, который тянется на страницу товара и в админку.
-  // На публичных карточках каталога — пустой (там нужны только
-  // сводные min/max).
-  variants?: ProductVariant[];
-}
-
-/**
- * Один вариант товара (цвет, размер, формат упаковки и т.п.).
- *
- * Хранится в отдельной таблице `product_variants`, чтобы у товара
- * могло быть несколько SKU/цен/остатков под одним карточным
- * «родителем». На странице товара клиент видит чипы с цветами/
- * размерами, в каталоге — диапазон «от X ₽».
- *
- * NULL-значения цены/SKU/размеров означают fallback на products.
- * Если остатки у всех вариантов 0, используется общий остаток products;
- * при наличии положительного остатка включается учёт по вариантам.
- */
-export interface ProductVariant {
-  id: string;
-  productId: string;
-  /** Название: «красный», «XL», «пачка 50 шт.» */
-  name: string;
-  /** Группа: «color», «size», «pack», «material», или пустая */
-  optionType: string;
-  /** HEX цвета (если это цвет) — для кружочка на чипе */
-  colorHex?: string | null;
-  sortOrder: number;
-  price: number | null;
-  priceWholesale: number | null;
-  sku: string | null;
-  /** 0 у всех вариантов наследует общий остаток; иначе ведётся раздельный учёт. */
-  stockQty: number;
-  stockWarnQty?: number | null;
-  /** true → есть в наличии (для быстрой фильтрации) */
-  inStock: boolean;
-  images: { url: string; publicId: string }[];
-  imageUrl: string | null;
-  dimensionLength?: number | null;
-  dimensionWidth?: number | null;
-  dimensionHeight?: number | null;
-  dimensionUnit?: string | null;
-  weight?: number | null;
-  packQty?: number | null;
-  isVisible: boolean;
-  createdAt?: any;
-  updatedAt?: any;
-}
-
-/**
- * Объединённый остаток: variant + product. Используется в
- * каталоге, корзине и форме оформления — везде, где клиент видит
- * «этот товар + этот вариант». NULL-поля = берём с products.
- */
-export interface ResolvedVariant {
-  variant: ProductVariant;
-  /** Эффективная цена (variant.price || product.price) */
-  price: number | null;
-  /** Эффективный wholesale (variant.priceWholesale || product.priceWholesale) */
-  priceWholesale: number | null;
-  /** Эффективный sku (variant.sku || product.sku) */
-  sku: string | null;
-  /** Эффективный остаток */
-  stockQty: number;
-  /** Эффективный imageUrl (variant.imageUrl || product.imageUrl) */
-  imageUrl: string | null;
-  /** Эффективные размеры */
-  dimensionLength: number | null;
-  dimensionWidth: number | null;
-  dimensionHeight: number | null;
-  dimensionUnit: string | null;
-  /** Эффективный pack_qty */
-  packQty: number | null;
+  // ── Связка карточек товаров (как на Ozon):
+  //    каждый вариант — отдельная карточка товара со своим складом, SKU и ценой,
+  //    а на витрине связанные карточки отображаются в одной карточке с мгновенным
+  //    переключением без перезагрузки.
+  linkGroupId?: string | null;
+  isGroupPrimary?: boolean;
+  linkedProductIds?: string[];
+  linkedGroupTitle?: string | null;
+  linkedVariantLabel?: string | null;
+  linkedGroupLabels?: Record<string, string>;
+  linkedCards?: import("./product-links").LinkedCardOption[];
+  linkedGroupAnyInStock?: boolean;
 }
 
 export interface Promotion {
@@ -242,70 +172,6 @@ export function getProductEffectivePrice(product: {
     return Math.max(0, product.price - product.discountValue);
   }
   return product.price;
-}
-
-/**
- * Разрешает вариант: где NULL — берёт поле с products.
- * Используется в каталоге, корзине, оформлении и админке —
- * единая точка «смешивания» variant + product.
- */
-export function resolveVariant(
-  variant: ProductVariant,
-  product: Pick<
-    FirestoreProduct,
-    | "price"
-    | "priceWholesale"
-    | "sku"
-    | "imageUrl"
-    | "images"
-    | "stockQty"
-    | "dimensionLength"
-    | "dimensionWidth"
-    | "dimensionHeight"
-    | "dimensionUnit"
-    | "packQty"
-  >,
-  manageVariantStock = variant.stockQty > 0,
-): ResolvedVariant {
-  return {
-    variant,
-    price: variant.price ?? product.price ?? null,
-    priceWholesale:
-      variant.priceWholesale ?? product.priceWholesale ?? null,
-    sku: variant.sku ?? product.sku ?? null,
-    stockQty:
-      manageVariantStock
-        ? variant.stockQty
-        : product.stockQty ?? 0,
-    imageUrl: variant.imageUrl ?? product.imageUrl ?? null,
-    dimensionLength: variant.dimensionLength ?? product.dimensionLength ?? null,
-    dimensionWidth: variant.dimensionWidth ?? product.dimensionWidth ?? null,
-    dimensionHeight:
-      variant.dimensionHeight ?? product.dimensionHeight ?? null,
-    dimensionUnit: variant.dimensionUnit ?? product.dimensionUnit ?? null,
-    packQty: variant.packQty ?? product.packQty ?? null,
-  };
-}
-
-/**
- * Эффективная цена «после скидки» — учитывает скидку с product
- * (discount_type/value), даже если цена пришла из варианта.
- * Скидка одна на товар-родитель и применяется ко всем его
- * вариантам (как на маркетплейсах).
- */
-export function getEffectiveVariantPrice(
-  variant: ProductVariant,
-  product: Pick<
-    FirestoreProduct,
-    "price" | "discountType" | "discountValue"
-  >,
-): number | null {
-  const raw = variant.price ?? product.price;
-  return getProductEffectivePrice({
-    price: raw,
-    discountType: product.discountType,
-    discountValue: product.discountValue,
-  });
 }
 
 export interface OrderItem {

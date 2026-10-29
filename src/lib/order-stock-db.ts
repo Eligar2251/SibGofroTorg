@@ -10,7 +10,6 @@ import {
   type OrderStockCheckItem,
   type OrderStockValidationResult,
   type StockProductRecord,
-  type StockVariantRecord,
 } from "./order-stock-validation";
 
 export async function validateOrderItemsAgainstLiveDb(
@@ -25,7 +24,6 @@ export async function validateOrderItemsAgainstLiveDb(
   ];
 
   const productsMap = new Map<string, StockProductRecord>();
-  const variantsByProduct = new Map<string, StockVariantRecord[]>();
 
   if (productIds.length > 0) {
     const db = getAdminDb();
@@ -49,27 +47,7 @@ export async function validateOrderItemsAgainstLiveDb(
         madeToOrder: row.made_to_order === true,
       });
     }
-
-    const { data: variantRows, error: varErr } = await db
-      .from("product_variants")
-      .select("id, product_id, name, stock_qty, is_visible")
-      .in("product_id", productIds);
-
-    if (!varErr && Array.isArray(variantRows)) {
-      for (const row of variantRows) {
-        const pid = String(row.product_id || "");
-        const list = variantsByProduct.get(pid) || [];
-        list.push({
-          id: String(row.id),
-          productId: pid,
-          name: String(row.name || ""),
-          stockQty: Math.max(0, Number(row.stock_qty || 0)),
-          isVisible: row.is_visible !== false,
-        });
-        variantsByProduct.set(pid, list);
-      }
-    }
   }
 
-  return evaluateOrderItemsStock(items, productsMap, variantsByProduct);
+  return evaluateOrderItemsStock(items, productsMap);
 }

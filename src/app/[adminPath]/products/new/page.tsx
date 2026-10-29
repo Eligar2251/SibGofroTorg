@@ -8,11 +8,11 @@ import {
   getProducts,
 } from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
+import type { LinkableProductSummary } from "@/components/admin/LinkedProductsEditor";
 import { getDimensionProfiles } from "@/lib/dimension-profiles-db";
 import { collectProductTags } from "@/lib/home-tiles";
 import { notFound } from "next/navigation";
 import { ADMIN_PATH } from "@/lib/admin-path";
-
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +24,14 @@ export default async function NewProductPage({
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
 
-  const [categories, featuredOrderIds, allProducts, dimensionProfiles] = await Promise.all([
-    getAllCategories(),
-    getFeaturedProductOrderIds(),
-    getProducts({ includeHidden: true }),
-    getDimensionProfiles(),
-  ]);
+  const [categories, featuredOrderIds, allProducts, dimensionProfiles] =
+    await Promise.all([
+      getAllCategories(),
+      getFeaturedProductOrderIds(),
+      getProducts({ includeHidden: true }),
+      getDimensionProfiles(),
+    ]);
+
   const serializedCategories = categories.map((cat) => ({
     id: cat.id,
     name: cat.name,
@@ -43,6 +45,27 @@ export default async function NewProductPage({
           : null,
   }));
 
+  const linkableProducts: LinkableProductSummary[] = allProducts.map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku ?? null,
+    price: p.price ?? null,
+    stockQty: p.stockQty ?? null,
+    imageUrl: p.imageUrl ?? null,
+    categoryId: p.categoryId || null,
+    isVisible: p.isVisible !== false,
+    dimensionLength: p.dimensionLength ?? null,
+    dimensionWidth: p.dimensionWidth ?? null,
+    dimensionHeight: p.dimensionHeight ?? null,
+    dimensionUnit: p.dimensionUnit ?? null,
+    dimensionValues: p.dimensionValues ?? null,
+    linkGroupId: p.linkGroupId ?? null,
+    isGroupPrimary: p.isGroupPrimary ?? true,
+    linkedProductIds: p.linkedProductIds ?? [],
+    linkedGroupTitle: p.linkedGroupTitle ?? null,
+    linkedVariantLabel: p.linkedVariantLabel ?? null,
+  }));
+
   return (
     <div>
       <h1 className="admin-h1">Добавить товар</h1>
@@ -51,6 +74,7 @@ export default async function NewProductPage({
         dimensionProfiles={dimensionProfiles}
         featuredOrderIds={featuredOrderIds}
         knownTags={collectProductTags(allProducts)}
+        linkableProducts={linkableProducts}
       />
     </div>
   );

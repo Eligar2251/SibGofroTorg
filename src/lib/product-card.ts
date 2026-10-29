@@ -6,11 +6,11 @@
 import type { FirestoreProduct } from "./types";
 import { getProductEffectivePrice } from "./types";
 import type { DimensionValue } from "./dimension-profiles";
+import type { LinkedCardOption } from "./product-links";
 
 export interface CardDiscountSource {
   price: number | null;
   basePrice?: number | null;
-  hasVariants?: boolean;
   discountType?: "percent" | "fixed" | null;
   discountValue?: number | null;
   discountBadge?: string | null;
@@ -34,9 +34,6 @@ export function getCardDiscount(p: CardDiscountSource): {
   const badge = hasDiscount
     ? (p.discountBadge || "").trim() || (percent > 0 ? `−${percent}%` : "Скидка")
     : null;
-  // У товара с вариантами крупная цена — «от» минимальной цены варианта
-  // (как на странице товара), скидка показывается бейджем.
-  if (p.hasVariants) return { price: p.price, oldPrice: null, badge };
   return {
     price: hasDiscount ? effective : p.price,
     oldPrice: hasDiscount ? base : null,
@@ -77,11 +74,11 @@ export function toCardProduct(p: FirestoreProduct) {
     discountType: p.discountType ?? null,
     discountValue: p.discountValue ?? null,
     discountBadge: p.discountBadge ?? null,
-    hasVariants: p.hasVariants ?? false,
-    variantCount: p.variantCount ?? 0,
-    variantPriceMin: p.variantPriceMin ?? null,
-    variantPriceMax: p.variantPriceMax ?? null,
-    variantTotalStock: p.variantTotalStock ?? 0,
+    linkGroupId: p.linkGroupId ?? null,
+    isGroupPrimary: p.isGroupPrimary ?? true,
+    linkedGroupTitle: p.linkedGroupTitle ?? null,
+    linkedVariantLabel: p.linkedVariantLabel ?? null,
+    linkedCards: (p.linkedCards ?? undefined) as LinkedCardOption[] | undefined,
   };
 }
 

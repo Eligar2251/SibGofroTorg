@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     const search = (searchParams.get("search") || "").trim().toLowerCase();
 
     /* Карта productId → название товара для обогащения отзывов */
-    const products = await getProducts({});
+    const products = await getProducts({ includeHidden: true });
     const productNameMap = new Map(products.map((p) => [p.id, p.name]));
 
     let allReviews;

@@ -22,7 +22,14 @@ import {
 } from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
 import { MarkdownText } from "@/components/catalog/MarkdownText";
-import { VariantsEditor } from "./VariantsEditor";
+import {
+  LinkedProductsEditor,
+  type LinkableProductSummary,
+} from "./LinkedProductsEditor";
+import {
+  NEW_PRODUCT_LINK_TOKEN,
+  type ProductLinkUpdateInput,
+} from "@/lib/product-links";
 import {
   calculateBoxVolumeLiters,
   DEFAULT_PRODUCT_LABEL_COLOR,
@@ -98,6 +105,11 @@ interface ProductData {
   featuredOrder?: number | null;
   images?: ProductImage[];
   imageUrl?: string | null;
+  linkGroupId?: string | null;
+  isGroupPrimary?: boolean | null;
+  linkedProductIds?: string[] | null;
+  linkedGroupTitle?: string | null;
+  linkedGroupLabels?: Record<string, string> | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -128,6 +140,7 @@ export function ProductFormClient({
   featuredOrderIds = [],
   knownTags = [],
   dimensionProfiles = [],
+  linkableProducts = [],
 }: {
   categories: Category[];
   /** Типы размеров (Коробки / Скотч / …) — набор полей зависит от категории. */
@@ -136,11 +149,35 @@ export function ProductFormClient({
   featuredOrderIds?: string[];
   /** Метки, уже использованные на сайте — подсказки при вводе. */
   knownTags?: string[];
+  /** Все карточки каталога для объединения в одну карточку (как на Ozon). */
+  linkableProducts?: LinkableProductSummary[];
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+  const [draftName, setDraftName] = useState(product?.name || "");
+  const [draftSku, setDraftSku] = useState(product?.sku || "");
+  const [draftPrice, setDraftPrice] = useState<string>(
+    product?.price != null ? String(product.price) : ""
+  );
+  const [productLinks, setProductLinks] = useState<ProductLinkUpdateInput>(() => {
+    const initialIds = Array.isArray(product?.linkedProductIds)
+      ? product!.linkedProductIds!.filter(Boolean)
+      : [];
+    const initialPrimary =
+      initialIds.length >= 2
+        ? product?.isGroupPrimary && product?.id
+          ? product.id
+          : initialIds[0]
+        : null;
+    return {
+      linkedProductIds: initialIds.length >= 2 ? initialIds : [],
+      primaryProductId: initialPrimary,
+      labels: { ...(product?.linkedGroupLabels || {}) },
+      groupTitle: product?.linkedGroupTitle ?? null,
+    };
+  });
   // Фото: если массив images пуст, но у товара есть главное фото
   // (image_url — обычно пришло импортом из Excel), подставляем его
   // как первый элемент. Иначе пересохранение формы ЗАТИРАЛО
@@ -396,6 +433,7 @@ export function ProductFormClient({
       // product.imageUrl: иначе удалить последнее фото у товара
       // стало бы невозможно (старое «воскресало» при сохранении).
       imageUrl: images[0]?.url || null,
+      productLinks,
     };
 
     try {
@@ -499,6 +537,7 @@ export function ProductFormClient({
                 type="text"
                 required
                 defaultValue={product?.name || ""}
+                onChange={(e) => setDraftName(e.target.value)}
                 className="admin-input"
               />
             </div>
@@ -508,6 +547,7 @@ export function ProductFormClient({
                 name="sku"
                 type="text"
                 defaultValue={product?.sku || ""}
+                onChange={(e) => setDraftSku(e.target.value)}
                 className="admin-input"
               />
             </div>
@@ -711,6 +751,7 @@ export function ProductFormClient({
                 type="number"
                 step="0.01"
                 defaultValue={product?.price ?? ""}
+                onChange={(e) => setDraftPrice(e.target.value)}
                 placeholder="0.00"
                 className="admin-input"
               />
@@ -917,24 +958,31 @@ export function ProductFormClient({
       </div>
 
       <div className="admin-card">
-        <div className="admin-card__pad">
-          {isEdit ? (
-            <VariantsEditor
-              productId={product.id!}
-              basePrice={product?.price ?? null}
-            />
-          ) : (
-            <div className="admin-block">
-              <div className="admin-block__title">
-                Варианты (цвет/размер/фасовка)
-              </div>
-              <p className="admin-block__desc admin-block__desc--muted">
-                Чтобы добавить варианты — сначала сохраните товар. Варианты
-                позволяют покупателю выбирать конкретный цвет, размер или
-                фасовку и хранят свою цену/остаток/артикул.
-              </p>
-            </div>
-          )}
+        <div className="admin-card__pad admin-stack">
+          <h2 className="admin-h2">Связка карточек (как на Ozon)</h2>
+          <LinkedProductsEditor
+            productId={product?.id}
+            currentCard={{
+              id: product?.id || NEW_PRODUCT_LINK_TOKEN,
+              name: draftName || product?.name || "Новый товар",
+              sku: draftSku || null,
+              price: draftPrice !== "" ? Number(draftPrice) : null,
+              stockQty: product?.stockQty ?? 0,
+              imageUrl: images[0]?.url || null,
+              categoryId: categoryId || null,
+              dimensionLength: legacyDims.dimensionLength,
+              dimensionWidth: legacyDims.dimensionWidth,
+              dimensionHeight: legacyDims.dimensionHeight,
+              dimensionUnit: legacyDims.dimensionUnit,
+              dimensionValues: currentDimensionValues,
+            }}
+            allProducts={linkableProducts}
+            initialLinkedIds={productLinks.linkedProductIds}
+            initialPrimaryId={productLinks.primaryProductId}
+            initialLabels={productLinks.labels || {}}
+            initialGroupTitle={productLinks.groupTitle}
+            onChange={setProductLinks}
+          />
         </div>
       </div>
 

@@ -80,6 +80,9 @@ export default async function AdminProductsPage({
     isSale: p.isSale ?? false,
     imageUrl: p.imageUrl ?? null,
     viewCount: p.viewCount ?? 0,
+    linkGroupId: p.linkGroupId ?? null,
+    isGroupPrimary: p.isGroupPrimary ?? true,
+    linkedCount: p.linkedProductIds?.length ?? 0,
   }));
 
   const serializedCats = cats.map((c) => ({ id: c.id, name: c.name }));

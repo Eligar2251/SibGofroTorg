@@ -4,7 +4,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
-import { createProduct, getProducts } from "@/lib/supabase-queries";
+import {
+  createProduct,
+  getProducts,
+  invalidateProductsCache,
+} from "@/lib/supabase-queries";
+import { saveProductLinkForProduct } from "@/lib/product-links-store";
 import { requireAdminApi } from "@/lib/auth";
 import { isValidBarcode } from "@/lib/qr";
 
@@ -44,7 +49,7 @@ export async function GET(request: NextRequest) {
       5000
     );
 
-    const products = await getProducts({});
+    const products = await getProducts({ includeHidden: true });
     const slim = products.slice(0, limit).map((p) => ({
       id: p.id,
       name: p.name,
@@ -82,6 +87,11 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await createProduct(body);
+    if (body.productLinks && typeof body.productLinks === "object") {
+      await saveProductLinkForProduct(result.id, body.productLinks);
+      invalidateProductsCache();
+      revalidateTag("product-links", { expire: 0 });
+    }
     revalidateTag("products", { expire: 0 });
     return NextResponse.json(result);
   } catch (error) {

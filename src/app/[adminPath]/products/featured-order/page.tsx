@@ -63,11 +63,6 @@ export default async function FeaturedOrderPage({
     dimensionHeight: p.dimensionHeight ?? null,
     dimensionUnit: p.dimensionUnit ?? null,
     material: p.material ?? null,
-    hasVariants: p.hasVariants ?? false,
-    variantCount: p.variantCount ?? 0,
-    variantPriceMin: p.variantPriceMin ?? null,
-    variantPriceMax: p.variantPriceMax ?? null,
-    variantTotalStock: p.variantTotalStock ?? 0,
     isVisible: p.isVisible,
   });
   const serializedFeaturedProducts = featuredProducts.map(serializeProduct);
