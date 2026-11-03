@@ -13,17 +13,19 @@ function printHelp() {
 Генератор SQL-пользователя админ-панели
 
 Использование:
-  npm run admin:sql -- --username <логин> --role <роль> --name <имя>
+  node scripts/generate-admin-sql.mjs --username <логин> --role <роль> [--name <имя>] [--password <пароль>]
+  node scripts/generate-admin-sql.mjs <логин> [роль] [имя] [пароль]
 
 Параметры:
   --username, -u   Логин: латиница, цифры, точка, _ или -
-  --role, -r       owner | admin | manager | lawyer | wastepaper
+  --role, -r       owner | admin | manager | lawyer | wastepaper (по умолчанию owner)
   --name, -n       Отображаемое имя (по умолчанию равно логину)
+  --password, -p   Пароль (если не передан — запрашивается скрытым вводом в терминале)
   --output, -o     Записать SQL в файл вместо вывода в терминал
   --help, -h       Показать справку
 
 Пароль безопасно запрашивается в терминале и не отображается.
-Для запуска без терминала передайте пароль через переменную ADMIN_PASSWORD.
+Для запуска без терминала также можно передать переменную ADMIN_PASSWORD.
 `);
 }
 
@@ -34,6 +36,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   const result = {};
+  const positionals = [];
   const aliases = {
     "--username": "username",
     "-u": "username",
@@ -41,6 +44,8 @@ function parseArgs(argv) {
     "-r": "role",
     "--name": "name",
     "-n": "name",
+    "--password": "password",
+    "-p": "password",
     "--output": "output",
     "-o": "output",
   };
@@ -51,15 +56,37 @@ function parseArgs(argv) {
       result.help = true;
       continue;
     }
-    const key = aliases[argument];
-    if (!key) fail(`неизвестный параметр «${argument}»`);
-    const value = argv[index + 1];
-    if (!value || value.startsWith("-")) {
-      fail(`после ${argument} необходимо указать значение`);
+    if (argument.startsWith("-")) {
+      // Поддержка формата --key=value
+      const eqIdx = argument.indexOf("=");
+      if (eqIdx > 0) {
+        const flagPart = argument.slice(0, eqIdx);
+        const valPart = argument.slice(eqIdx + 1);
+        const key = aliases[flagPart];
+        if (!key) fail(`неизвестный параметр «${flagPart}»`);
+        result[key] = valPart;
+        continue;
+      }
+      const key = aliases[argument];
+      if (!key) fail(`неизвестный параметр «${argument}»`);
+      const value = argv[index + 1];
+      if (!value || value.startsWith("-")) {
+        fail(`после ${argument} необходимо указать значение`);
+      }
+      result[key] = value;
+      index += 1;
+      continue;
     }
-    result[key] = value;
-    index += 1;
+    positionals.push(argument);
   }
+
+  // Поддержка позиционных аргументов (особенно удобно в Windows PowerShell,
+  // где `npm run admin:sql -- ...` съедает `--` и флаги `--username`):
+  //   node scripts/generate-admin-sql.mjs <username> [role] [name] [password]
+  if (!result.username && positionals[0]) result.username = positionals[0];
+  if (!result.role && positionals[1]) result.role = positionals[1];
+  if (!result.name && positionals[2]) result.name = positionals[2];
+  if (!result.password && positionals[3]) result.password = positionals[3];
 
   return result;
 }
@@ -118,7 +145,8 @@ async function readHidden(prompt) {
   });
 }
 
-async function getPassword() {
+async function getPassword(explicitPassword) {
+  if (explicitPassword) return String(explicitPassword);
   if (process.env.ADMIN_PASSWORD) return process.env.ADMIN_PASSWORD;
 
   const first = await readHidden("Пароль: ");
@@ -165,7 +193,7 @@ async function main() {
   }
 
   const username = String(options.username || "").trim();
-  const role = String(options.role || "").trim();
+  const role = String(options.role || "owner").trim();
   const displayName = String(options.name || username).trim();
 
   if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) {
@@ -178,7 +206,7 @@ async function main() {
     fail("отображаемое имя должно содержать от 1 до 100 символов");
   }
 
-  const password = await getPassword();
+  const password = await getPassword(options.password);
   if (password.length < 8) fail("пароль должен содержать не менее 8 символов");
 
   const salt = randomBytes(16).toString("hex");
