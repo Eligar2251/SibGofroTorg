@@ -9,12 +9,14 @@ import { createHash } from "crypto";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getAdminDb } from "./supabase";
 import { getProductEffectivePrice } from "./types";
-import { buildPurposeLines } from "./payment-purpose";
+import { isAutoPurposeForDocNumbers } from "./payment-purpose";
 // Прямые правки счетов владельцем: подмешиваются в остатки кассы.
 import { getMoneyAdjustments } from "./money-accounts";
 // Ревизия пишет остатки напрямую — нужно сбросить memory-кеш товаров,
 // иначе витрина ещё до двух минут отдаёт старые значения.
 import { invalidateProductsCache } from "./supabase-queries";
+import { getWarehouseAssemblies } from "./warehouse-assembly-store";
+import { summarizeProductAssemblies } from "./warehouse-assembly";
 import type {
   StockDocItem,
   CounterpartyRole,
@@ -1325,37 +1327,28 @@ export async function createReceipt(data: any): Promise<{ id: string; number: nu
       });
     }
   } else {
-    // ★ Создаём исходящие платежи (по разбивке). Назначение платежа формируется
-    // по правилам 1С с учётом части (первая/вторая/...) и НДС.
-    const invoiceNo = data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : String(number);
-    const invoiceDt = data.invoiceDate ? String(data.invoiceDate).slice(0, 10) : date;
+    // ★ Создаём исходящие платежи (по разбивке).
+    // payment_purpose оставляем пустым (null), чтобы при выгрузке в банк (1С)
+    // назначение всегда строилось по актуальному номеру/дате счёта и части —
+    // иначе при создании поставки без номера счёта в базу навсегда записывался
+    // внутренний номер ПО и позже вписанный номер счёта игнорировался.
+    const cleanInvoiceNo = data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null;
     for (let i = 0; i < paymentSplits.length; i++) {
       const splitAmount = paymentSplits[i];
       if (splitAmount <= 0) continue;
       const payNumber = await nextNumber("payment");
-      const total = paymentSplits.length;
-      const purpose = buildPurposeLines({
-        amount: splitAmount,
-        vatRate,
-        docNumber: invoiceNo,
-        docDate: invoiceDt,
-        docKind: "по счёту",
-        partIndex: total > 1 ? i : null,
-        partTotal: total > 1 ? total : null,
-        withoutVat: !(vatRate > 0),
-      });
       await db.from("bank_payments").insert({
         number: payNumber, date,
         direction: "outgoing", type: "regular",
         counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
         deal_ids: [], deal_numbers: [],
         receipt_ids: [receiptId], receipt_numbers: [number],
-        amount: splitAmount, invoice_number: data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null,
-        vat_rate: vatRate, vat_amount: purpose.vatCalculated,
+        amount: splitAmount, invoice_number: cleanInvoiceNo,
+        vat_rate: vatRate, vat_amount: includedVat(splitAmount, vatRate),
         is_paid: false, paid_at: null,
         exclude_from_balance: false,
         comment: `Оплата поставщику по приходному ордеру ПО-${number}${paymentSplits.length > 1 ? ` (часть ${i+1})` : ""}`,
-        payment_purpose: purpose.main,
+        payment_purpose: null,
         payment_priority: 5,
         payment_kind: "01",
       });
@@ -1878,7 +1871,44 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   // Обновляем counterparty_id на поступлении
   await db.from("warehouse_receipts").update({ counterparty_id: counterpartyId }).eq("id", id);
 
-  // ★ Синхронизация платежей
+  // ★ Синхронизация платежей (включая номер счёта и сброс устаревшего авто-назначения)
+  const cleanInvoiceNo = data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null;
+  const prevReceiptInvoice = existing.invoice_number
+    ? String(existing.invoice_number).trim() || null
+    : null;
+  const invoiceChangedOnReceipt = cleanInvoiceNo !== prevReceiptInvoice;
+
+  const paidSoloPayments = receiptPayments.filter((p: any) => {
+    if (p.is_paid !== true || p.direction !== "outgoing" || p.exclude_from_balance === true) {
+      return false;
+    }
+    const receiptLinks = (p.receipt_ids || []).length;
+    const dealLinks = (p.deal_ids || []).length;
+    return receiptLinks === 1 && dealLinks === 0;
+  });
+  if (!noPayment) {
+    for (const p of paidSoloPayments) {
+      const nextInv = invoiceChangedOnReceipt
+        ? cleanInvoiceNo
+        : (p.invoice_number || cleanInvoiceNo || null);
+      const clearAuto = isAutoPurposeForDocNumbers(p.payment_purpose, [
+        existing.number,
+        prevReceiptInvoice,
+        p.number,
+        p.invoice_number,
+      ]);
+      if (nextInv !== (p.invoice_number ?? null) || clearAuto) {
+        await db
+          .from("bank_payments")
+          .update({
+            invoice_number: nextInv,
+            ...(clearAuto ? { payment_purpose: null } : {}),
+          })
+          .eq("id", p.id);
+      }
+    }
+  }
+
   const unpaidSoloPayments = receiptPayments.filter((p: any) => {
     if (p.is_paid === true) return false;
     const receiptLinks = (p.receipt_ids || []).length;
@@ -1968,16 +1998,34 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   }
 
   if (targets.length > 0 && unpaidSoloPayments.length === targets.length) {
-    // Количество совпало — обновляем суммы, сохраняя номера
+    // Количество совпало — обновляем суммы, номер счёта и очищаем устаревшее авто-назначение
     for (let i = 0; i < unpaidSoloPayments.length; i++) {
+      const p = unpaidSoloPayments[i];
+      const nextInv = invoiceChangedOnReceipt
+        ? cleanInvoiceNo
+        : (p.invoice_number || cleanInvoiceNo || null);
+      const clearAuto = isAutoPurposeForDocNumbers(p.payment_purpose, [
+        existing.number,
+        prevReceiptInvoice,
+        p.number,
+        p.invoice_number,
+      ]);
       await db.from("bank_payments").update({
         counterparty: supplier, counterparty_id: counterpartyId,
-        amount: targets[i], vat_rate: vatRate,
+        amount: targets[i],
+        invoice_number: nextInv,
+        vat_rate: vatRate,
         vat_amount: includedVat(targets[i], vatRate),
-      }).eq("id", unpaidSoloPayments[i].id);
+        ...(clearAuto ? { payment_purpose: null } : {}),
+      }).eq("id", p.id);
     }
   } else {
     // Количество изменилось — удаляем старые неоплаченные и создаём новые
+    const inheritedInvoice = invoiceChangedOnReceipt
+      ? cleanInvoiceNo
+      : (cleanInvoiceNo ??
+          unpaidSoloPayments.map((p: any) => p.invoice_number).find(Boolean) ??
+          null);
     for (const p of unpaidSoloPayments) {
       await db.from("bank_payments").delete().eq("id", p.id);
     }
@@ -1990,11 +2038,14 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
         counterparty: supplier || "Поставщик", counterparty_id: counterpartyId,
         deal_ids: [], deal_numbers: [],
         receipt_ids: [id], receipt_numbers: [existing.number],
-        amount: targets[i], invoice_number: null,
+        amount: targets[i], invoice_number: inheritedInvoice,
         vat_rate: vatRate, vat_amount: includedVat(targets[i], vatRate),
         is_paid: false, paid_at: null,
         exclude_from_balance: false,
         comment: `Оплата поставщику по приходному ордеру ПО-${existing.number}${targets.length > 1 ? ` (часть ${i + 1})` : ""}`,
+        payment_purpose: null,
+        payment_priority: 5,
+        payment_kind: "01",
       });
     }
   }
@@ -2014,6 +2065,99 @@ export async function updateReceipt(id: string, data: any): Promise<void> {
   revalidateTag("warehouse-receipts", { expire: 0 });
   revalidateTag("warehouse-payments", { expire: 0 });
   revalidateTag("products", { expire: 0 });
+}
+
+/**
+ * Обновляет номер/дату счёта (и при передаче — банковские реквизиты поставщика)
+ * у поступления в ЛЮБОМ статусе (включая уже проведённые и частично принятые
+ * поставки), не затрагивая складские остатки и позиции, и синхронизирует
+ * исходящие платежи этой поставки.
+ */
+export async function updateReceiptInvoice(
+  id: string,
+  data: {
+    invoiceNumber?: string | null;
+    invoiceDate?: string | null;
+    bankAccount?: string | null;
+    bankName?: string | null;
+    bankCity?: string | null;
+    bik?: string | null;
+    correspondentAccount?: string | null;
+    inn?: string | null;
+    kpp?: string | null;
+  }
+): Promise<void> {
+  const db = getAdminDb();
+  const { data: existing, error: existErr } = await db
+    .from("warehouse_receipts")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (existErr || !existing) throw new Error("Поступление не найдено");
+
+  const cleanInvoiceNo =
+    data.invoiceNumber !== undefined
+      ? (data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null)
+      : (existing.invoice_number ?? null);
+  const cleanInvoiceDate =
+    data.invoiceDate !== undefined
+      ? (data.invoiceDate ? String(data.invoiceDate).slice(0, 10) : null)
+      : (existing.invoice_date ?? null);
+
+  const patch: Record<string, any> = {
+    invoice_number: cleanInvoiceNo,
+    invoice_date: cleanInvoiceDate,
+    updated_at: new Date().toISOString(),
+  };
+  if (data.bankAccount !== undefined) patch.bank_account = cleanText(data.bankAccount, 40) || null;
+  if (data.bankName !== undefined) patch.bank_name = cleanText(data.bankName, 200) || null;
+  if (data.bankCity !== undefined) patch.bank_city = cleanText(data.bankCity, 100) || null;
+  if (data.bik !== undefined) patch.bik = cleanText(data.bik, 20) || null;
+  if (data.correspondentAccount !== undefined) patch.correspondent_account = cleanText(data.correspondentAccount, 40) || null;
+  if (data.inn !== undefined) patch.inn = cleanText(data.inn, 20) || null;
+  if (data.kpp !== undefined) patch.kpp = cleanText(data.kpp, 20) || null;
+
+  const { error: updErr } = await db.from("warehouse_receipts").update(patch).eq("id", id);
+  if (updErr) throw updErr;
+
+  const prevReceiptInvoice = existing.invoice_number
+    ? String(existing.invoice_number).trim() || null
+    : null;
+  const invoiceChanged = cleanInvoiceNo !== prevReceiptInvoice;
+
+  const { data: existingPayments } = await db
+    .from("bank_payments")
+    .select("id,number,direction,exclude_from_balance,receipt_ids,deal_ids,invoice_number,payment_purpose")
+    .eq("direction", "outgoing");
+
+  for (const p of existingPayments || []) {
+    if (p.exclude_from_balance === true) continue;
+    const rids = Array.isArray(p.receipt_ids) ? p.receipt_ids : [];
+    const dids = Array.isArray(p.deal_ids) ? p.deal_ids : [];
+    if (rids.length !== 1 || String(rids[0]) !== String(id) || dids.length !== 0) continue;
+
+    const nextInv = invoiceChanged
+      ? cleanInvoiceNo
+      : (p.invoice_number || cleanInvoiceNo || null);
+    const clearAuto = isAutoPurposeForDocNumbers(p.payment_purpose, [
+      existing.number,
+      prevReceiptInvoice,
+      p.number,
+      p.invoice_number,
+    ]);
+    if (nextInv !== (p.invoice_number ?? null) || clearAuto) {
+      await db
+        .from("bank_payments")
+        .update({
+          invoice_number: nextInv,
+          ...(clearAuto ? { payment_purpose: null } : {}),
+        })
+        .eq("id", p.id);
+    }
+  }
+
+  revalidateTag("warehouse-receipts", { expire: 0 });
+  revalidateTag("warehouse-payments", { expire: 0 });
 }
 
 export async function deleteReceipt(id: string): Promise<void> {
@@ -3110,14 +3254,42 @@ export async function createPayment(data: any): Promise<{ id: string; number: nu
     });
   }
 
+  const cleanInvoice = data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null;
+  const receiptIdsList = Array.isArray(data.receiptIds) ? data.receiptIds : [];
+  const receiptNumbersList: number[] = [];
+  for (const rid of receiptIdsList) {
+    const { data: rec } = await db
+      .from("warehouse_receipts")
+      .select("id,number,invoice_number")
+      .eq("id", rid)
+      .maybeSingle();
+    if (rec) {
+      receiptNumbersList.push(Number(rec.number) || 0);
+      // Если поставка изначально была создана без номера счёта, а пользователь
+      // указал его при заведении платежа — записываем номер счёта и в поставку.
+      if (
+        data.direction === "outgoing" &&
+        receiptIdsList.length === 1 &&
+        cleanInvoice &&
+        !rec.invoice_number
+      ) {
+        await db
+          .from("warehouse_receipts")
+          .update({ invoice_number: cleanInvoice, updated_at: new Date().toISOString() })
+          .eq("id", rec.id);
+        revalidateTag("warehouse-receipts", { expire: 0 });
+      }
+    }
+  }
+
   const { data: result, error } = await db.from("bank_payments").insert({
     number, date: String(data.date || "").slice(0, 10),
     direction: data.direction, type: data.type || "regular",
     counterparty,
     counterparty_id: counterpartyId,
     deal_ids: data.dealIds || [], deal_numbers: [],
-    receipt_ids: data.receiptIds || [], receipt_numbers: [],
-    amount: Number(data.amount || 0), invoice_number: data.invoiceNumber ?? null,
+    receipt_ids: receiptIdsList, receipt_numbers: receiptNumbersList,
+    amount: Number(data.amount || 0), invoice_number: cleanInvoice,
     vat_rate: vatRate, vat_amount: vatAmount,
     is_paid: data.isPaid ?? false,
     // Наличка остаётся в кассе, а безнал на карту физлица сдаётся
@@ -3230,12 +3402,97 @@ export async function updatePayment(id: string, data: any): Promise<void> {
       payload.counterparty_id = null;
     }
   }
-  if (data.invoiceNumber !== undefined) payload.invoice_number = data.invoiceNumber;
+  if (data.invoiceNumber !== undefined) {
+    payload.invoice_number = data.invoiceNumber ? cleanText(data.invoiceNumber, 50) : null;
+  }
   if (data.dealIds !== undefined) payload.deal_ids = data.dealIds;
   if (data.receiptIds !== undefined) payload.receipt_ids = data.receiptIds;
   if (data.paymentPurpose !== undefined) payload.payment_purpose = data.paymentPurpose ? cleanText(data.paymentPurpose, 500) : null;
   if (data.paymentPriority !== undefined) payload.payment_priority = Number(data.paymentPriority) || 5;
   if (data.paymentKind !== undefined) payload.payment_kind = data.paymentKind ? String(data.paymentKind).slice(0, 10) : "01";
+
+  // Если менялся номер счёта (или привязка к поставке), синхронизируем
+  // устаревший авто-текст назначения платежа и (при пустом счёте в поставке)
+  // дописываем номер счёта в связанную поставку.
+  if (data.invoiceNumber !== undefined || data.receiptIds !== undefined) {
+    const { data: curPay } = await db
+      .from("bank_payments")
+      .select("number,direction,invoice_number,payment_purpose,receipt_ids,receipt_numbers")
+      .eq("id", id)
+      .maybeSingle();
+    if (curPay) {
+      const nextRids: string[] = Array.isArray(
+        data.receiptIds !== undefined ? data.receiptIds : curPay.receipt_ids
+      )
+        ? (data.receiptIds !== undefined ? data.receiptIds : curPay.receipt_ids)
+        : [];
+      let linkedRec: { id: string; number: number; invoice_number: string | null } | null = null;
+      if (nextRids.length === 1) {
+        const { data: rec } = await db
+          .from("warehouse_receipts")
+          .select("id,number,invoice_number")
+          .eq("id", nextRids[0])
+          .maybeSingle();
+        if (rec) linkedRec = rec as any;
+      }
+      if (data.receiptIds !== undefined && nextRids.length > 0) {
+        const nums: number[] = [];
+        for (const rid of nextRids) {
+          if (linkedRec && String(linkedRec.id) === String(rid)) {
+            nums.push(Number(linkedRec.number) || 0);
+          } else {
+            const { data: rec } = await db
+              .from("warehouse_receipts")
+              .select("number")
+              .eq("id", rid)
+              .maybeSingle();
+            if (rec) nums.push(Number(rec.number) || 0);
+          }
+        }
+        payload.receipt_numbers = nums;
+      }
+
+      const nextInvoice =
+        data.invoiceNumber !== undefined
+          ? (payload.invoice_number as string | null)
+          : (curPay.invoice_number ?? null);
+      const prevInvoice = curPay.invoice_number ?? null;
+      const incomingPurpose =
+        data.paymentPurpose !== undefined
+          ? (payload.payment_purpose as string | null)
+          : undefined;
+      const purposeUnchangedFromDb =
+        incomingPurpose === undefined ||
+        (incomingPurpose || null) === (curPay.payment_purpose || null);
+
+      if (
+        nextInvoice !== prevInvoice &&
+        purposeUnchangedFromDb &&
+        isAutoPurposeForDocNumbers(curPay.payment_purpose, [
+          curPay.number,
+          prevInvoice,
+          ...(Array.isArray(curPay.receipt_numbers) ? curPay.receipt_numbers : []),
+          linkedRec?.number,
+          linkedRec?.invoice_number,
+        ])
+      ) {
+        payload.payment_purpose = null;
+      }
+
+      if (
+        (curPay.direction === "outgoing" || data.direction === "outgoing") &&
+        nextInvoice &&
+        linkedRec &&
+        !linkedRec.invoice_number
+      ) {
+        await db
+          .from("warehouse_receipts")
+          .update({ invoice_number: nextInvoice, updated_at: new Date().toISOString() })
+          .eq("id", linkedRec.id);
+        revalidateTag("warehouse-receipts", { expire: 0 });
+      }
+    }
+  }
   if (data.vatRate !== undefined) {
     const rate = Number(data.vatRate) || 0;
     payload.vat_rate = rate;
@@ -4983,6 +5240,16 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     0
   );
   const currentStockQty = Number(product.stock_qty || 0);
+  const allAssemblies = await getWarehouseAssemblies().catch(() => []);
+  const assemblySummary = summarizeProductAssemblies(allAssemblies, productId);
+  const ownStockQty =
+    Math.round(
+      (currentStockQty +
+        shippedQty -
+        postedReceiptQty -
+        assemblySummary.netQty) *
+        1000
+    ) / 1000;
 
   return {
     productId,
@@ -4993,15 +5260,17 @@ async function fetchProductStockSummary(productId: string): Promise<ProductStock
     currentStockQty,
     receipts,
     deals,
+    assemblies: assemblySummary.events,
+    assembledInQty: assemblySummary.assembledInQty,
+    assembledOutQty: assemblySummary.assembledOutQty,
     postedReceiptQty,
     draftReceiptQty,
     orderedQty,
     shippedQty,
     pendingOrderQty,
     shortageQty: Math.max(0, pendingOrderQty - currentStockQty),
-    // Балансовая формула: остаток = наши остатки + поступления − отгрузки.
-    // Положительный хвост — товар занесли руками/он был до начала учёта.
-    ownStockQty: currentStockQty + shippedQty - postedReceiptQty,
+    // Балансовая формула: остаток = наши остатки + поступления + выпуск комплектаций − расход в комплектацию − отгрузки.
+    ownStockQty,
   };
 }
 
@@ -5015,7 +5284,7 @@ export async function getProductStockSummary(
     ["warehouse-product-stock-summary", productId],
     {
       revalidate: 60,
-      tags: ["products", "warehouse-receipts", "warehouse-deals"],
+      tags: ["products", "warehouse-receipts", "warehouse-deals", "warehouse-assemblies"],
     }
   )();
 }

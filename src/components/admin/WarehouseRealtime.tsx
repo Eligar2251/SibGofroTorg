@@ -12,6 +12,7 @@ export function WarehouseRealtime() {
     tables: [
       "customer_deals",
       "warehouse_receipts",
+      "warehouse_assemblies",
       "bank_payments",
       "bank_account_transfers",
       "products",

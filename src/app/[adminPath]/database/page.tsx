@@ -8,6 +8,7 @@ import { notFound, redirect } from "next/navigation";
 import { hasPermission, verifySession } from "@/lib/auth";
 import { canAccessDatabase } from "@/lib/admin-rbac";
 import { DatabaseBrowser } from "@/components/admin/DatabaseBrowser";
+import { DatabaseBackendSwitcher } from "@/components/admin/DatabaseBackendSwitcher";
 import { ADMIN_PATH } from "@/lib/admin-path";
 
 
@@ -39,6 +40,7 @@ export default async function AdminDatabasePage({
           <> Правки денежных правок владельца видит только роль «Владелец».</>
         )}
       </p>
+      <DatabaseBackendSwitcher />
       <DatabaseBrowser />
     </div>
   );

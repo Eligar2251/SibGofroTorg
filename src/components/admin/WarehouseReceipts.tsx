@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle,
+  Copy,
   Edit2,
   Plus,
   Trash2,
@@ -163,6 +164,9 @@ export function ReceiptForm({
   deals = [],
   payments = [],
   initialReceipt,
+  duplicateOf,
+  hidePrimaryTrigger = false,
+  compactCopyTrigger = false,
   autoOpen = false,
 }: {
   products: PickerProduct[];
@@ -170,11 +174,18 @@ export function ReceiptForm({
   deals?: any[];
   payments?: BankPayment[];
   initialReceipt?: EditableReceipt & { linkedDealIds?: string[] };
+  /** Поступление-образец для копирования: создаёт новую поставку с теми же позициями и поставщиком. */
+  duplicateOf?: EditableReceipt | null;
+  /** Скрыть основную кнопку («Изменить» / «Оформить поступление») и оставить только кнопку «Копировать». */
+  hidePrimaryTrigger?: boolean;
+  /** Компактная кнопка копирования для шапки свёрнутой карточки. */
+  compactCopyTrigger?: boolean;
   /** Открыть форму сразу при переходе с панели управления. */
   autoOpen?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(autoOpen);
+  const [copyOpen, setCopyOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [date, setDate] = useState(initialReceipt?.date || todayIso());
@@ -252,9 +263,10 @@ export function ReceiptForm({
     () => items.reduce((s, it) => s + (Number(it.lineTotal) || 0), 0),
     [items]
   );
-  // Закрытие только крестиком и Escape: клик по подложке не закрывает —
-  // иначе выделение текста с отпусканием мыши за окном закрывало окно.
-  useEscapeClose(() => setOpen(false), open);
+  useEscapeClose(() => {
+    setOpen(false);
+    setCopyOpen(false);
+  }, open || copyOpen);
 
   // Пересчитываем части при изменении итога, если суммы ещё не правили
   // вручную. Без этого выбор «2 платежа» до ввода позиций (или изменение
@@ -283,34 +295,62 @@ export function ReceiptForm({
     return parts.length > 0 ? parts : splitEvenly(total, paymentCount).map(Number);
   }
 
-  function resetForm() {
-    setDate(initialReceipt?.date || todayIso());
-    setSupplier(initialReceipt?.supplier || "");
-    setPhone(initialReceipt?.phone || "");
-    setEmail(initialReceipt?.email || "");
-    setInn(initialReceipt?.inn || "");
-    setKpp(initialReceipt?.kpp || "");
-    setAddress(initialReceipt?.address || "");
-    setContactName(initialReceipt?.contactName || "");
-    setComment(initialReceipt?.comment || "");
-    setBankAccount(initialReceipt?.bankAccount || "");
-    setBankName(initialReceipt?.bankName || "");
-    setBankCity(initialReceipt?.bankCity || "");
-    setBik(initialReceipt?.bik || "");
-    setCorrespondentAccount(initialReceipt?.correspondentAccount || "");
-    setInvoiceNumber(initialReceipt?.invoiceNumber || "");
-    setInvoiceDate(initialReceipt?.invoiceDate || "");
-    setVatRate(initialReceipt?.vatRate ?? VAT_RATE);
-    setItems(initialReceipt?.items || []);
-    setSelectedDeals(initialReceipt?.linkedDealIds || []);
+  function applyReceipt(
+    rec: (EditableReceipt & { linkedDealIds?: string[] }) | null | undefined,
+    copy = false
+  ) {
+    setDate(copy ? todayIso() : rec?.date || todayIso());
+    setSupplier(rec?.supplier || "");
+    setPhone(rec?.phone || "");
+    setEmail(rec?.email || "");
+    setInn(rec?.inn || "");
+    setKpp(rec?.kpp || "");
+    setAddress(rec?.address || "");
+    setContactName(rec?.contactName || "");
+    setComment(rec?.comment || "");
+    setBankAccount(rec?.bankAccount || "");
+    setBankName(rec?.bankName || "");
+    setBankCity(rec?.bankCity || "");
+    setBik(rec?.bik || "");
+    setCorrespondentAccount(rec?.correspondentAccount || "");
+    // При копировании новой поставки номер и дата счёта очищаются (новый счёт поставщика)
+    setInvoiceNumber(copy ? "" : rec?.invoiceNumber || "");
+    setInvoiceDate(copy ? "" : rec?.invoiceDate || "");
+    setVatRate(rec?.vatRate ?? VAT_RATE);
+    setItems((rec?.items || []).map((it) => ({ ...it })));
+    setSelectedDeals(copy ? [] : rec?.linkedDealIds || []);
     setSelectedPayments([]);
-    setNoPayment(initialNoPayment);
-    setNeedsTransport(Boolean(initialReceipt?.needsTransport));
-    setTransportPlannedDate(initialReceipt?.transportPlannedDate || "");
-    setPaymentCount(1);
-    setSplitAmounts([""]);
-    setSplitTouched(false);
+    setNoPayment(copy ? false : initialNoPayment);
+    setIsConsignment(Boolean(rec?.isConsignment));
+    setNeedsTransport(Boolean(rec?.needsTransport));
+    setTransportPlannedDate(copy ? "" : rec?.transportPlannedDate || "");
+    if (!copy && initialReceipt && existingUnpaid.length > 1) {
+      setPaymentCount(existingUnpaid.length);
+      setSplitAmounts(existingUnpaid.map((p) => String(p.amount)));
+      setSplitTouched(true);
+    } else {
+      setPaymentCount(1);
+      setSplitAmounts([""]);
+      setSplitTouched(false);
+    }
     setError("");
+  }
+
+  function resetForm() {
+    applyReceipt(initialReceipt, false);
+  }
+
+  function openForm() {
+    applyReceipt(initialReceipt, false);
+    setCopyOpen(false);
+    setOpen(true);
+  }
+
+  function openCopy(e?: React.MouseEvent) {
+    e?.stopPropagation();
+    applyReceipt(duplicateOf || null, true);
+    setOpen(false);
+    setCopyOpen(true);
   }
 
   function selectSupplier(value: string) {
@@ -507,12 +547,13 @@ export function ReceiptForm({
     }
     setSaving(true);
     try {
+      const isEditMode = Boolean(initialReceipt) && !copyOpen;
       const res = await fetch(
-        initialReceipt
+        isEditMode && initialReceipt
           ? `/api/admin/warehouse/receipts/${initialReceipt.id}`
           : "/api/admin/warehouse/receipts",
         {
-        method: initialReceipt ? "PUT" : "POST",
+        method: isEditMode ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date,
@@ -555,7 +596,10 @@ export function ReceiptForm({
         return;
       }
       setOpen(false);
-      resetForm();
+      setCopyOpen(false);
+      if (!initialReceipt || copyOpen) {
+        resetForm();
+      }
       router.refresh();
     } catch {
       setError("Ошибка сети");
@@ -565,33 +609,54 @@ export function ReceiptForm({
 
   return (
     <>
-      <button
-        type="button"
-        className={
-          initialReceipt
-            ? "admin-btn admin-btn--ghost admin-btn--sm"
-            : "admin-btn admin-btn--primary"
-        }
-        onClick={() => setOpen(true)}
-      >
-        {initialReceipt ? <Edit2 size={14} /> : <Plus size={15} />}
-        {initialReceipt ? "Изменить" : "Оформить поступление"}
-      </button>
+      {!hidePrimaryTrigger && (
+        <button
+          type="button"
+          className={
+            initialReceipt
+              ? "admin-btn admin-btn--ghost admin-btn--sm"
+              : "admin-btn admin-btn--primary"
+          }
+          onClick={openForm}
+        >
+          {initialReceipt ? <Edit2 size={14} /> : <Plus size={15} />}
+          {initialReceipt ? "Изменить" : "Оформить поступление"}
+        </button>
+      )}
+      {duplicateOf && (
+        <button
+          type="button"
+          className="admin-btn admin-btn--ghost admin-btn--sm"
+          onClick={openCopy}
+          onKeyDown={(e) => e.stopPropagation()}
+          title="Скопировать поставку: новое поступление с тем же поставщиком, реквизитами и списком товаров"
+        >
+          <Copy size={13} />
+          {compactCopyTrigger ? "" : " Копировать"}
+        </button>
+      )}
 
-      {open && (
+      {(open || copyOpen) && (
         <ModalPortal>
-        <div className="admin-modal-overlay">
+        <div className="admin-modal-overlay" data-admin="true">
           <div
             className="admin-modal wh-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="admin-modal__head">
               <h3 className="admin-modal__title">
-                {initialReceipt ? "Редактирование поступления" : "Новое поступление"}
+                {copyOpen
+                  ? "Копирование поставки"
+                  : initialReceipt
+                    ? "Редактирование поступления"
+                    : "Новое поступление"}
               </h3>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false);
+                  setCopyOpen(false);
+                }}
                 className="admin-modal__close"
                 aria-label="Закрыть"
               >
@@ -932,7 +997,10 @@ export function ReceiptForm({
                   <button
                     type="button"
                     className="admin-btn admin-btn--ghost"
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                      setOpen(false);
+                      setCopyOpen(false);
+                    }}
                     disabled={saving}
                   >
                     Отмена
@@ -943,7 +1011,11 @@ export function ReceiptForm({
                     disabled={saving || items.length === 0}
                   >
                     {saving && <Loader2 size={14} className="animate-spin" />}
-                    {initialReceipt ? "Сохранить изменения" : "Сохранить поступление"}
+                    {copyOpen
+                      ? "Создать копию поставки"
+                      : initialReceipt
+                        ? "Сохранить изменения"
+                        : "Сохранить поступление"}
                   </button>
                 </div>
               </div>
@@ -1042,6 +1114,11 @@ export function ReceiptCard({
         }}
       >
         <span className="admin-order__id">ПО-{r.number}</span>
+        {r.invoiceNumber && (
+          <span className="admin-badge admin-badge--muted" title="Номер счёта поставщика">
+            Счёт № {r.invoiceNumber}
+          </span>
+        )}
         <span
           className={`admin-badge ${
             isArchived
@@ -1094,6 +1171,46 @@ export function ReceiptCard({
         {/* Кнопка «Заберём сами» — как «В перевозку» в макулатуре:
             поставка встаёт в очередь раздела «Доставки». */}
         {!isArchived && <ReceiptTransportToggle receipt={r} />}
+        <span onClick={(e) => e.stopPropagation()}>
+          <ReceiptForm
+            products={products}
+            counterparties={counterparties}
+            deals={deals}
+            payments={payments}
+            hidePrimaryTrigger
+            compactCopyTrigger
+            duplicateOf={{
+              id: r.id,
+              date: r.date,
+              supplier: r.supplier,
+              phone: r.phone ?? null,
+              email: r.email ?? null,
+              inn: r.inn ?? null,
+              kpp: r.kpp ?? null,
+              address: r.address ?? null,
+              contactName: r.contactName ?? null,
+              comment: r.comment ?? null,
+              bankAccount: r.bankAccount ?? null,
+              bankName: r.bankName ?? null,
+              bankCity: r.bankCity ?? null,
+              bik: r.bik ?? null,
+              correspondentAccount: r.correspondentAccount ?? null,
+              invoiceNumber: r.invoiceNumber ?? null,
+              invoiceDate: r.invoiceDate ?? null,
+              items: r.items.map((item) => ({
+                productId: item.productId,
+                name: item.name,
+                sku: item.sku ?? null,
+                quantity: item.quantity,
+                lineTotal: item.lineTotal,
+              })),
+              vatRate: r.vatRate,
+              isConsignment: r.isConsignment,
+              needsTransport: r.needsTransport,
+              transportPlannedDate: r.transportPlannedDate,
+            }}
+          />
+        </span>
         <span className="receipt-head__chevron">
           {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </span>
@@ -1115,6 +1232,15 @@ export function ReceiptCard({
                   <span className="admin-order__meta-val">
                     {r.inn}
                     {r.kpp ? ` · КПП ${r.kpp}` : ""}
+                  </span>
+                </div>
+              )}
+              {(r.invoiceNumber || r.invoiceDate) && (
+                <div className="admin-order__meta">
+                  <span className="admin-order__meta-label wh-meta-label">Счёт:</span>
+                  <span className="admin-order__meta-val">
+                    {r.invoiceNumber ? `№ ${r.invoiceNumber}` : "без номера"}
+                    {r.invoiceDate ? ` от ${fmtDate(r.invoiceDate)}` : ""}
                   </span>
                 </div>
               )}
@@ -1210,45 +1336,79 @@ export function ReceiptCard({
           </div>
 
           <div className="admin-order__side">
-            {!hasReceived && (
-              <ReceiptForm
-                products={products}
-                counterparties={counterparties}
-                deals={deals}
-                payments={payments}
-                initialReceipt={{
-                  id: r.id,
-                  date: r.date,
-                  supplier: r.supplier,
-                  phone: r.phone ?? null,
-                  email: r.email ?? null,
-                  inn: r.inn ?? null,
-                  kpp: r.kpp ?? null,
-                  address: r.address ?? null,
-                  contactName: r.contactName ?? null,
-                  comment: r.comment ?? null,
-                  bankAccount: r.bankAccount ?? null,
-                  bankName: r.bankName ?? null,
-                  bankCity: r.bankCity ?? null,
-                  bik: r.bik ?? null,
-                  correspondentAccount: r.correspondentAccount ?? null,
-                  invoiceNumber: r.invoiceNumber ?? null,
-                  invoiceDate: r.invoiceDate ?? null,
-                  items: r.items.map((item) => ({
-                    productId: item.productId,
-                    name: item.name,
-                    sku: item.sku ?? null,
-                    quantity: item.quantity,
-                    lineTotal: item.lineTotal,
-                  })),
-                  vatRate: r.vatRate,
-                  isConsignment: r.isConsignment,
-                  needsTransport: r.needsTransport,
-                  transportPlannedDate: r.transportPlannedDate,
-                  linkedDealIds: r.linkedDealIds,
-                }}
-              />
-            )}
+            <ReceiptForm
+              products={products}
+              counterparties={counterparties}
+              deals={deals}
+              payments={payments}
+              hidePrimaryTrigger={hasReceived}
+              initialReceipt={
+                !hasReceived
+                  ? {
+                      id: r.id,
+                      date: r.date,
+                      supplier: r.supplier,
+                      phone: r.phone ?? null,
+                      email: r.email ?? null,
+                      inn: r.inn ?? null,
+                      kpp: r.kpp ?? null,
+                      address: r.address ?? null,
+                      contactName: r.contactName ?? null,
+                      comment: r.comment ?? null,
+                      bankAccount: r.bankAccount ?? null,
+                      bankName: r.bankName ?? null,
+                      bankCity: r.bankCity ?? null,
+                      bik: r.bik ?? null,
+                      correspondentAccount: r.correspondentAccount ?? null,
+                      invoiceNumber: r.invoiceNumber ?? null,
+                      invoiceDate: r.invoiceDate ?? null,
+                      items: r.items.map((item) => ({
+                        productId: item.productId,
+                        name: item.name,
+                        sku: item.sku ?? null,
+                        quantity: item.quantity,
+                        lineTotal: item.lineTotal,
+                      })),
+                      vatRate: r.vatRate,
+                      isConsignment: r.isConsignment,
+                      needsTransport: r.needsTransport,
+                      transportPlannedDate: r.transportPlannedDate,
+                      linkedDealIds: r.linkedDealIds,
+                    }
+                  : undefined
+              }
+              duplicateOf={{
+                id: r.id,
+                date: r.date,
+                supplier: r.supplier,
+                phone: r.phone ?? null,
+                email: r.email ?? null,
+                inn: r.inn ?? null,
+                kpp: r.kpp ?? null,
+                address: r.address ?? null,
+                contactName: r.contactName ?? null,
+                comment: r.comment ?? null,
+                bankAccount: r.bankAccount ?? null,
+                bankName: r.bankName ?? null,
+                bankCity: r.bankCity ?? null,
+                bik: r.bik ?? null,
+                correspondentAccount: r.correspondentAccount ?? null,
+                invoiceNumber: r.invoiceNumber ?? null,
+                invoiceDate: r.invoiceDate ?? null,
+                items: r.items.map((item) => ({
+                  productId: item.productId,
+                  name: item.name,
+                  sku: item.sku ?? null,
+                  quantity: item.quantity,
+                  lineTotal: item.lineTotal,
+                })),
+                vatRate: r.vatRate,
+                isConsignment: r.isConsignment,
+                needsTransport: r.needsTransport,
+                transportPlannedDate: r.transportPlannedDate,
+              }}
+            />
+            {hasReceived && <ReceiptInvoiceButton receipt={r} />}
             {/* «Принять ещё» позволяет внести фактический излишек; он попадёт в долги. */}
             <ReceiptPostButton receipt={r} paidEnough={isFullyPaid} />
             {hasReceived && shortageQty > 0.0009 && !r.transportFinishedAt && (
@@ -1801,6 +1961,194 @@ export function ReceiptCancelButton({
       )}
       {partial ? "Отменить приёмку" : "Отменить приход"}
     </button>
+  );
+}
+
+/**
+ * Быстрое редактирование номера/даты счёта (и реквизитов поставщика) для уже
+ * принятой или частично принятой поставки — без отмены прихода на склад.
+ */
+function ReceiptInvoiceButton({ receipt }: { receipt: WarehouseReceipt }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState(receipt.invoiceNumber || "");
+  const [invoiceDate, setInvoiceDate] = useState(receipt.invoiceDate || "");
+  const [bankAccount, setBankAccount] = useState(receipt.bankAccount || "");
+  const [bankName, setBankName] = useState(receipt.bankName || "");
+  const [bankCity, setBankCity] = useState(receipt.bankCity || "");
+  const [bik, setBik] = useState(receipt.bik || "");
+  const [correspondentAccount, setCorrespondentAccount] = useState(
+    receipt.correspondentAccount || ""
+  );
+  const [inn, setInn] = useState(receipt.inn || "");
+  const [kpp, setKpp] = useState(receipt.kpp || "");
+
+  useEscapeClose(() => setOpen(false), open);
+
+  function openModal() {
+    setInvoiceNumber(receipt.invoiceNumber || "");
+    setInvoiceDate(receipt.invoiceDate || "");
+    setBankAccount(receipt.bankAccount || "");
+    setBankName(receipt.bankName || "");
+    setBankCity(receipt.bankCity || "");
+    setBik(receipt.bik || "");
+    setCorrespondentAccount(receipt.correspondentAccount || "");
+    setInn(receipt.inn || "");
+    setKpp(receipt.kpp || "");
+    setError("");
+    setOpen(true);
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/warehouse/receipts/${receipt.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "invoice",
+          invoiceNumber: invoiceNumber.trim() || null,
+          invoiceDate: invoiceDate || null,
+          bankAccount: bankAccount.trim() || null,
+          bankName: bankName.trim() || null,
+          bankCity: bankCity.trim() || null,
+          bik: bik.trim() || null,
+          correspondentAccount: correspondentAccount.trim() || null,
+          inn: inn.trim() || null,
+          kpp: kpp.trim() || null,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body.error || "Не удалось сохранить номер счёта");
+        setSaving(false);
+        return;
+      }
+      setOpen(false);
+      router.refresh();
+    } catch {
+      setError("Ошибка сети");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="admin-btn admin-btn--ghost admin-btn--sm"
+        onClick={openModal}
+        title="Указать или изменить номер счёта и банковские реквизиты поставщика"
+      >
+        <Edit2 size={14} />
+        {receipt.invoiceNumber ? "Счёт / реквизиты" : "Указать № счёта"}
+      </button>
+
+      {open && (
+        <ModalPortal>
+          <div className="admin-modal-overlay">
+            <div
+              className="admin-modal"
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: 560, width: "100%" }}
+            >
+              <div className="admin-modal__head">
+                <h3 className="admin-modal__title">
+                  Счёт и реквизиты · ПО-{receipt.number}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="admin-modal__close"
+                  aria-label="Закрыть"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <form onSubmit={handleSave} className="admin-stack" style={{ paddingTop: 8 }}>
+                <div className="wh-form-grid">
+                  <div className="admin-field">
+                    <label className="admin-label">Номер счёта</label>
+                    <input
+                      className="admin-input"
+                      value={invoiceNumber}
+                      onChange={(e) => setInvoiceNumber(e.target.value)}
+                      placeholder="№ счёта от поставщика"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="admin-field">
+                    <label className="admin-label">Дата счёта</label>
+                    <input
+                      type="date"
+                      className="admin-input"
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <details className="wh-counterparty-details">
+                  <summary>Банковские реквизиты поставщика</summary>
+                  <div className="wh-form-grid">
+                    <div className="admin-field">
+                      <label className="admin-label">Расчётный счёт</label>
+                      <input className="admin-input" value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} />
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">Банк</label>
+                      <input className="admin-input" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">Город банка</label>
+                      <input className="admin-input" value={bankCity} onChange={(e) => setBankCity(e.target.value)} />
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">БИК</label>
+                      <input className="admin-input" value={bik} onChange={(e) => setBik(e.target.value)} />
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">Корр. счёт</label>
+                      <input className="admin-input" value={correspondentAccount} onChange={(e) => setCorrespondentAccount(e.target.value)} />
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">ИНН</label>
+                      <input className="admin-input" value={inn} onChange={(e) => setInn(e.target.value)} />
+                    </div>
+                    <div className="admin-field">
+                      <label className="admin-label">КПП</label>
+                      <input className="admin-input" value={kpp} onChange={(e) => setKpp(e.target.value)} />
+                    </div>
+                  </div>
+                </details>
+                {error && <div className="wh-form-error">{error}</div>}
+                <div className="admin-modal__actions">
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost"
+                    onClick={() => setOpen(false)}
+                    disabled={saving}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="admin-btn admin-btn--primary"
+                    disabled={saving}
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+                    Сохранить
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
+    </>
   );
 }
 

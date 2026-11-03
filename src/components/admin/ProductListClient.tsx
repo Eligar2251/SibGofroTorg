@@ -11,6 +11,7 @@ import {
   Trash2,
   Loader2,
   Edit2,
+  Copy,
   QrCode,
   RefreshCw,
   Printer,
@@ -676,6 +677,15 @@ export function ProductListClient({
                           title="Редактировать"
                         >
                           <Edit2 size={15} />
+                        </Link>
+                        <Link
+                          href={`/${adminPath}/products/new?copyFrom=${encodeURIComponent(product.id)}`}
+                          prefetch={false}
+                          className="admin-btn admin-btn--icon"
+                          title="Создать копию карточки товара"
+                          aria-label={`Копировать товар ${product.name}`}
+                        >
+                          <Copy size={15} />
                         </Link>
                         <Link
                           href={`/${adminPath}/scan/${(product as any).qrSlug || (product as any).barcode || product.id}`}

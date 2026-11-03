@@ -8,6 +8,7 @@ import {
   markReceiptOverdeliveryPaid,
   setReceiptTransport,
   updateReceipt,
+  updateReceiptInvoice,
 } from "@/lib/warehouse";
 import { requireAdminApi } from "@/lib/auth";
 
@@ -103,7 +104,21 @@ export async function PATCH(
     } else if (body.action === "finish-transport") {
       result = await finishReceiptTransport(id);
     } else if (body.action === "mark-overdelivery-paid") {
-      result = await markReceiptOverdeliveryPaid(id, String(body.productId || ""));
+      await markReceiptOverdeliveryPaid(id, String(body.productId || ""));
+    } else if (body.action === "invoice") {
+      await updateReceiptInvoice(id, {
+        invoiceNumber: body.invoiceNumber ?? null,
+        invoiceDate: body.invoiceDate ?? null,
+        ...(body.bankAccount !== undefined ? { bankAccount: body.bankAccount } : {}),
+        ...(body.bankName !== undefined ? { bankName: body.bankName } : {}),
+        ...(body.bankCity !== undefined ? { bankCity: body.bankCity } : {}),
+        ...(body.bik !== undefined ? { bik: body.bik } : {}),
+        ...(body.correspondentAccount !== undefined
+          ? { correspondentAccount: body.correspondentAccount }
+          : {}),
+        ...(body.inn !== undefined ? { inn: body.inn } : {}),
+        ...(body.kpp !== undefined ? { kpp: body.kpp } : {}),
+      });
     } else {
       return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
     }

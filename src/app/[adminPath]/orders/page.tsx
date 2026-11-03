@@ -3,6 +3,7 @@ import { getOrders, getWastepaperRequests } from "@/lib/supabase-queries";
 import Link from "next/link";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderIssueButton } from "@/components/admin/OrderIssueButton";
+import { OrderCopyButton } from "@/components/admin/OrderCopyButton";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
 import { OrdersSortControl } from "@/components/admin/OrdersSortControl";
 import { isOrderSortId, type OrderSortId } from "@/lib/orders-sort";
@@ -357,6 +358,7 @@ export default async function AdminOrdersPage({
                           status={order.status ?? "new"}
                         />
                       )}
+                      {!isWastepaper && <OrderCopyButton orderId={order.id} />}
                       <OrderDeleteButton orderId={order.id} endpoint={endpoint} />
                     </div>
                   </div>

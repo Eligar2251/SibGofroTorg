@@ -419,6 +419,9 @@ export function ClientBankExportButton() {
                               {row.receiptNumber ? (
                                 <span className="admin-badge admin-badge--muted">ПО-{row.receiptNumber}</span>
                               ) : null}
+                              {row.invoiceNumber ? (
+                                <span className="admin-badge admin-badge--muted">Счёт № {row.invoiceNumber}</span>
+                              ) : null}
                               {row.isPaid ? (
                                 <span className="admin-badge admin-badge--green">проведён</span>
                               ) : (

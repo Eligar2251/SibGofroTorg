@@ -5,12 +5,14 @@
 import {
   getAllCategories,
   getFeaturedProductOrderIds,
+  getProductByIdForAdmin,
   getProducts,
 } from "@/lib/supabase-queries";
 import { ProductFormClient } from "@/components/admin/ProductFormClient";
 import type { LinkableProductSummary } from "@/components/admin/LinkedProductsEditor";
 import { getDimensionProfiles } from "@/lib/dimension-profiles-db";
 import { collectProductTags } from "@/lib/home-tiles";
+import { prepareProductCopyDraft } from "@/lib/product-color-twin";
 import { notFound } from "next/navigation";
 import { ADMIN_PATH } from "@/lib/admin-path";
 
@@ -18,19 +20,32 @@ export const dynamic = "force-dynamic";
 
 export default async function NewProductPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ adminPath: string }>;
+  searchParams: Promise<{ copyFrom?: string }>;
 }) {
   const { adminPath } = await params;
   if (adminPath !== ADMIN_PATH) notFound();
+  const sp = await searchParams;
+  const copyFromId = typeof sp?.copyFrom === "string" ? sp.copyFrom.trim() : "";
 
-  const [categories, featuredOrderIds, allProducts, dimensionProfiles] =
+  const [categories, featuredOrderIds, allProducts, dimensionProfiles, rawCopySource] =
     await Promise.all([
       getAllCategories(),
       getFeaturedProductOrderIds(),
       getProducts({ includeHidden: true }),
       getDimensionProfiles(),
+      copyFromId ? getProductByIdForAdmin(copyFromId).catch(() => null) : Promise.resolve(null),
     ]);
+
+  const copiedDraft = rawCopySource
+    ? prepareProductCopyDraft({
+        ...rawCopySource,
+        createdAt: null,
+        updatedAt: null,
+      })
+    : undefined;
 
   const serializedCategories = categories.map((cat) => ({
     id: cat.id,
@@ -68,10 +83,22 @@ export default async function NewProductPage({
 
   return (
     <div>
-      <h1 className="admin-h1">Добавить товар</h1>
+      <h1 className="admin-h1">
+        {rawCopySource ? "Копирование товара" : "Добавить товар"}
+      </h1>
       <ProductFormClient
         categories={serializedCategories}
         dimensionProfiles={dimensionProfiles}
+        product={copiedDraft}
+        copySource={
+          rawCopySource
+            ? {
+                id: rawCopySource.id,
+                name: rawCopySource.name,
+                sku: rawCopySource.sku ?? null,
+              }
+            : undefined
+        }
         featuredOrderIds={featuredOrderIds}
         knownTags={collectProductTags(allProducts)}
         linkableProducts={linkableProducts}

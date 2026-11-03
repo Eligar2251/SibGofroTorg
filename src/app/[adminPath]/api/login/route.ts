@@ -10,7 +10,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createSession } from "@/lib/auth";
-import { getAdminDb } from "@/lib/supabase";
+import { getAdminDb, probeDatabaseBackend } from "@/lib/supabase";
+import { getDbFailoverState, getDbRuntimeConfig } from "@/lib/db-runtime-config";
 import { hashPassword, verifyPassword } from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { logActivity } from "@/lib/activity-log";
@@ -75,6 +76,27 @@ export async function POST(
     }
 
     if (!admin) {
+      // Если основная БД упала и переключилась на пустую локальную БД,
+      // не обманываем пользователя ошибкой «Неверный пароль», а предлагаем
+      // выбрать локальный файл БД для беспарольного входа!
+      const failover = getDbFailoverState();
+      const cfg = getDbRuntimeConfig();
+      if (failover.activeFallbackBackend === "local" || cfg.activeBackend !== "local") {
+        const primaryProbe = await probeDatabaseBackend("primary");
+        if (!primaryProbe.reachable) {
+          return noStoreJson(
+            {
+              error: "Основная база данных не отвечает",
+              code: "db_unavailable",
+              allowLocalFileLogin: true,
+              detail: primaryProbe.error || failover.lastError,
+              hint:
+                "Основная БД недоступна. Выберите локальный файл БД (.json) ниже, чтобы войти в админ-панель без пароля и продолжить работу автономно.",
+            },
+            503
+          );
+        }
+      }
       return NextResponse.json(
         { error: "Неверный логин или пароль" },
         { status: 401 }

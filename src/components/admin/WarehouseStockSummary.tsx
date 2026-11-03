@@ -108,10 +108,28 @@ export function ProductStockSummaryPanel({
       price: d.unitPrice || 0,
     }));
 
+  const assemblyEvents = (summary.assemblies || []).map((a) => ({
+    date: a.date,
+    docId: a.id,
+    docNumber: `КМП-${a.number}`,
+    docType: "assembly" as const,
+    partner: a.counterpartLabel,
+    qtyChange: a.qtyChange,
+    price: a.unitCost ?? 0,
+  }));
+
   // Объединяем и сортируем по дате (от старых к новым) для подсчёта остатка
-  const allEvents = [...postedReceiptEvents, ...shippedDealEvents].sort((a, b) => {
+  const allEvents = [
+    ...postedReceiptEvents,
+    ...assemblyEvents,
+    ...shippedDealEvents,
+  ].sort((a, b) => {
     const cmp = a.date.localeCompare(b.date);
     if (cmp !== 0) return cmp;
+    // Приход и комплектация на ту же дату идут перед отгрузкой, чтобы остаток не мигал в минус
+    const rank = (t: string) => (t === "receipt" ? 0 : t === "assembly" ? 1 : 2);
+    const rankDiff = rank(a.docType) - rank(b.docType);
+    if (rankDiff !== 0) return rankDiff;
     return a.docNumber.localeCompare(b.docNumber);
   });
 
@@ -130,16 +148,20 @@ export function ProductStockSummaryPanel({
     // Вычисляем маржу для продаж
     let marginStr = "—";
     if (ev.docType === "deal") {
-      // Ищем последнюю цену закупки, действовавшую на дату продажи или ранее.
-      // Если поставок по товару нет — берём общую закупочную цену
-      // из карточки товара (приблизительную).
+      // Ищем последнюю цену закупки (или себестоимость выпуска комплектации),
+      // действовавшую на дату продажи или ранее.
       const activeReceipts = summary.receipts
         .filter((r) => r.status === "posted" && r.date <= ev.date)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      const activeAssemblies = (summary.assemblies || [])
+        .filter((a) => a.role === "produced" && (a.unitCost ?? 0) > 0 && a.date <= ev.date)
         .sort((a, b) => b.date.localeCompare(a.date));
       const purchasePrice =
         activeReceipts.length > 0
           ? activeReceipts[0].unitPrice
-          : summary.purchasePrice ?? 0;
+          : activeAssemblies.length > 0
+            ? activeAssemblies[0].unitCost || 0
+            : summary.purchasePrice ?? 0;
 
       if (ev.price > 0 && purchasePrice > 0) {
         const margin = Math.round(((ev.price - purchasePrice) / ev.price) * 100);
@@ -240,15 +262,27 @@ export function ProductStockSummaryPanel({
         <small>
           {hasAccountingShortage ? (
             <>
-              Проверка: {fmt(summary.postedReceiptQty)} поступило −{" "}
-              {fmt(summary.shippedQty)} отгружено −{" "}
+              Проверка: {fmt(summary.postedReceiptQty)} поступило
+              {(summary.assembledInQty || 0) > 0
+                ? ` + ${fmt(summary.assembledInQty || 0)} скомплектовано`
+                : ""}
+              {(summary.assembledOutQty || 0) > 0
+                ? ` − ${fmt(summary.assembledOutQty || 0)} в комплектацию`
+                : ""}{" "}
+              − {fmt(summary.shippedQty)} отгружено −{" "}
               {fmt(Math.abs(summary.ownStockQty))} недостача ={" "}
               {fmt(summary.currentStockQty)} на складе.
             </>
           ) : (
             <>
-              Проверка: {fmt(summary.postedReceiptQty)} поступило −{" "}
-              {fmt(summary.shippedQty)} отгружено + {fmt(summary.ownStockQty)} наши
+              Проверка: {fmt(summary.postedReceiptQty)} поступило
+              {(summary.assembledInQty || 0) > 0
+                ? ` + ${fmt(summary.assembledInQty || 0)} скомплектовано`
+                : ""}
+              {(summary.assembledOutQty || 0) > 0
+                ? ` − ${fmt(summary.assembledOutQty || 0)} в комплектацию`
+                : ""}{" "}
+              − {fmt(summary.shippedQty)} отгружено + {fmt(summary.ownStockQty)} наши
               остатки = {fmt(summary.currentStockQty)} на складе.
             </>
           )}
@@ -312,7 +346,13 @@ export function ProductStockSummaryPanel({
                       <td>{fmtDate(ev.date)}</td>
                       <td>
                         <Link
-                          href={`/${adminPath}/warehouse?tab=${ev.docType === "receipt" ? "receipts" : "deals"}&${ev.docType === "receipt" ? "receipt" : "deal"}=${ev.docId}`}
+                          href={
+                            ev.docType === "receipt"
+                              ? `/${adminPath}/warehouse?tab=receipts&receipt=${ev.docId}`
+                              : ev.docType === "assembly"
+                                ? `/${adminPath}/warehouse?tab=assembly&assembly=${ev.docId}`
+                                : `/${adminPath}/warehouse?tab=deals&deal=${ev.docId}`
+                          }
                           prefetch={false}
                           className="stock-origin-link"
                         >
@@ -322,6 +362,10 @@ export function ProductStockSummaryPanel({
                       <td>
                         {ev.docType === "receipt" ? (
                           <span style={{ color: "var(--adm-pine-dark)" }}>📥 Поступление от <b>{ev.partner}</b></span>
+                        ) : ev.docType === "assembly" ? (
+                          <span style={{ color: ev.qtyChange >= 0 ? "var(--adm-pine-dark)" : "var(--adm-ochre-dark, #8a5a10)" }}>
+                            🔧 Комплектация <b>{ev.partner}</b>
+                          </span>
                         ) : (
                           <span style={{ color: "var(--adm-rust-dark)" }}>📤 Продажа клиенту <b>{ev.partner}</b></span>
                         )}

@@ -10,7 +10,7 @@
 // таблиц из миграций.
 // =========================================================
 
-import { getAdminDb } from "./supabase";
+import { getActiveDatabaseConnectionInfo, getAdminDb } from "./supabase";
 
 export interface DatabaseTableMeta {
   name: string;
@@ -56,7 +56,11 @@ const OWNER_ONLY_TABLES = new Set(["money_adjustments"]);
  * Правки денег владелец делает через свою панель в настройках — там они
  * логируются, а прямая правка ячейки журнала обошла бы этот контроль.
  */
-const READ_ONLY_TABLES = new Set(["money_adjustments", "activity_logs"]);
+const READ_ONLY_TABLES = new Set([
+  "money_adjustments",
+  "activity_logs",
+  "db_sync_runs",
+]);
 
 /**
  * Колонки, которые нельзя менять через «Базу Данных», даже если таблица
@@ -90,6 +94,7 @@ const TABLE_META: Record<string, TableMeta> = {
     pk: "username",
   },
   activity_logs: { label: "Журнал действий", group: "Пользователи" },
+  db_sync_runs: { label: "Журнал синхронизации БД", group: "Сайт" },
   money_adjustments: {
     label: "Правки денежных счетов (владелец)",
     group: "Пользователи",
@@ -113,6 +118,7 @@ const TABLE_META: Record<string, TableMeta> = {
   warehouse_stock: { label: "Остатки склада", group: "Склад и продажи" },
   warehouse_supply_plans: { label: "Планы поставок", group: "Склад и продажи" },
   warehouse_purchase_plans: { label: "Планы закупок", group: "Склад и продажи" },
+  warehouse_assemblies: { label: "Комплектация номенклатуры", group: "Склад и продажи" },
   purchase_payments: { label: "Оплаты закупок", group: "Склад и продажи" },
   transports: { label: "Перевозки", group: "Склад и продажи" },
   deliveries: { label: "Доставки", group: "Склад и продажи" },
@@ -201,16 +207,26 @@ type SchemaCache = {
 let schemaCache: SchemaCache | null = null;
 const SCHEMA_TTL_MS = 5 * 60 * 1000;
 
+export function invalidateDatabaseSchemaCache(): void {
+  schemaCache = null;
+}
+
 /**
  * Забираем описание схемы у PostgREST. Это единственный «сетевой»
  * источник списка таблиц: он отдаёт и таблицы, и представления, и типы
  * колонок — без SQL-доступа из приложения.
+ * В режиме локальной JSON-БД сетевой вызов не выполняется.
  */
 async function fetchRemoteSchema(): Promise<SchemaCache | null> {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const activeDb = getActiveDatabaseConnectionInfo();
+  if (activeDb.effectiveMode === "local") return null;
+
+  const url = activeDb.url;
+  const key = activeDb.serviceRoleKey;
   if (!url || !key) return null;
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4_000);
   try {
     const response = await fetch(`${url.replace(/\/$/, "")}/rest/v1/`, {
       headers: {
@@ -219,6 +235,7 @@ async function fetchRemoteSchema(): Promise<SchemaCache | null> {
         Accept: "application/openapi+json",
       },
       cache: "no-store",
+      signal: controller.signal,
     });
     if (!response.ok) return null;
     const spec: any = await response.json();
@@ -257,6 +274,8 @@ async function fetchRemoteSchema(): Promise<SchemaCache | null> {
   } catch (error) {
     console.warn("[db] Не удалось получить схему PostgREST:", (error as any)?.message || error);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

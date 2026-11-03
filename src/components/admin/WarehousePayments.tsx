@@ -39,6 +39,7 @@ import type { BankPaymentType, CashKind } from "@/lib/warehouse-shared";
 import { useEscapeClose } from "@/hooks/use-escape-close";
 import {
   buildPurposeLines,
+  isAutoPurposeForDocNumbers,
   PAYMENT_PRIORITIES,
   PAYMENT_KINDS,
   formatRuDate,
@@ -488,7 +489,7 @@ export function PaymentForm({
           purchasePlanId:
             direction === "outgoing" && purchasePlanId ? purchasePlanId : null,
           // Поля платёжного поручения
-          paymentPurpose: paymentPurpose.trim() || null,
+          paymentPurpose: purposeEdited ? paymentPurpose.trim() || null : null,
           paymentPriority,
           paymentKind,
           vatRate: paymentWithoutVat ? 0 : paymentVatRate,
@@ -974,13 +975,62 @@ export function PaymentControls({
   const [editReceiptIds, setEditReceiptIds] = useState<string[]>(
     edit.receiptIds || []
   );
-  const [editPurpose, setEditPurpose] = useState(edit.paymentPurpose || "");
-  const [editPurposeTouched, setEditPurposeTouched] = useState(Boolean(edit.paymentPurpose));
+  const firstEditReceiptId = edit.receiptIds?.[0];
+  const initialLinkedReceipt = firstEditReceiptId
+    ? receipts.find((r) => r.id === firstEditReceiptId) || null
+    : null;
+  const initialPurposeIsAuto = isAutoPurposeForDocNumbers(edit.paymentPurpose, [
+    edit.invoiceNumber,
+    initialLinkedReceipt?.invoiceNumber,
+    initialLinkedReceipt?.number,
+  ]);
+  const [editPurpose, setEditPurpose] = useState(
+    initialPurposeIsAuto ? "" : edit.paymentPurpose || ""
+  );
+  const [editPurposeTouched, setEditPurposeTouched] = useState(
+    Boolean(edit.paymentPurpose) && !initialPurposeIsAuto
+  );
   const [editPriority, setEditPriority] = useState<number>(edit.paymentPriority || 5);
   const [editPayKind, setEditPayKind] = useState<string>(edit.paymentKind || "01");
   const [editVatRate, setEditVatRate] = useState<number>(edit.vatRate ?? VAT_RATE);
   const [editWithoutVat, setEditWithoutVat] = useState<boolean>((edit.vatRate ?? VAT_RATE) <= 0);
   const [error, setError] = useState("");
+
+  function openEditModal() {
+    const rid = edit.receiptIds?.[0];
+    const linkedReceipt = rid
+      ? receipts.find((r) => r.id === rid) || null
+      : null;
+    const autoPurpose = isAutoPurposeForDocNumbers(edit.paymentPurpose, [
+      edit.invoiceNumber,
+      linkedReceipt?.invoiceNumber,
+      linkedReceipt?.number,
+    ]);
+    setEditDate(edit.date);
+    setEditType(edit.type || "regular");
+    setEditCashDestination(
+      edit.cashDestination === "vm_card"
+        ? "vm_card"
+        : edit.cashDestination === "card" || edit.type === "transfer"
+          ? "card"
+          : "cash"
+    );
+    setEditCounterparty(edit.counterparty);
+    setEditAmount(edit.amount > 0 ? String(edit.amount) : "");
+    setEditInvoiceNumber(edit.invoiceNumber || "");
+    setEditComment(edit.comment || "");
+    setEditExclude(excludeFromBalance);
+    setEditDealIds(edit.dealIds || []);
+    setEditReceiptIds(edit.receiptIds || []);
+    setEditPurpose(autoPurpose ? "" : edit.paymentPurpose || "");
+    setEditPurposeTouched(Boolean(edit.paymentPurpose) && !autoPurpose);
+    setEditPriority(edit.paymentPriority || 5);
+    setEditPayKind(edit.paymentKind || "01");
+    setEditVatRate(edit.vatRate ?? VAT_RATE);
+    setEditWithoutVat((edit.vatRate ?? VAT_RATE) <= 0);
+    setError("");
+    setShowEdit(true);
+  }
 
   const activeDeals = useMemo(
     () =>
@@ -1120,7 +1170,7 @@ export function PaymentControls({
           excludeFromBalance: editExclude,
           dealIds: editDealIds,
           receiptIds: editReceiptIds,
-          paymentPurpose: editPurpose.trim() || null,
+          paymentPurpose: editPurposeTouched ? editPurpose.trim() || null : null,
           paymentPriority: editPriority,
           paymentKind: editPayKind,
           vatRate: editWithoutVat ? 0 : editVatRate,
@@ -1198,7 +1248,7 @@ export function PaymentControls({
       )}
       <button
         type="button"
-        onClick={() => setShowEdit(true)}
+        onClick={openEditModal}
         disabled={saving}
         className="admin-status__btn admin-status__btn--edit"
         title="Редактировать платёж"
@@ -1350,7 +1400,17 @@ export function PaymentControls({
               <div className="wh-form-grid">
                 <div className="admin-field">
                   <label className="admin-label">Номер счёта</label>
-                  <input type="text" className="admin-input" value={editInvoiceNumber} onChange={(e) => setEditInvoiceNumber(e.target.value)} placeholder="№ счёта от поставщика" />
+                  <input
+                    type="text"
+                    className="admin-input"
+                    value={editInvoiceNumber}
+                    onChange={(e) => setEditInvoiceNumber(e.target.value)}
+                    placeholder={
+                      editPrimaryReceipt?.invoiceNumber
+                        ? `Из поставки: ${editPrimaryReceipt.invoiceNumber}`
+                        : "№ счёта от поставщика"
+                    }
+                  />
                 </div>
                 <div className="admin-field">
                   <label className="admin-label">Комментарий</label>

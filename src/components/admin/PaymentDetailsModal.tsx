@@ -172,7 +172,7 @@ export function PaymentDetailsModal({
               </div>
 
               <dl className="payment-details__meta">
-                <div><dt>Внешний номер / счёт</dt><dd>{payment.invoiceNumber || "—"}</dd></div>
+                <div><dt>Внешний номер / счёт</dt><dd>{payment.invoiceNumber || data.receipts[0]?.invoiceNumber || "—"}</dd></div>
                 <div><dt>НДС</dt><dd>{payment.vatRate}% · {fmt(payment.vatAmount)} ₽</dd></div>
                 <div><dt>Внутренний ID</dt><dd>{payment.id}</dd></div>
                 <div><dt>Баланс</dt><dd>{payment.excludeFromBalance ? "Вне текущего баланса" : "Учитывается"}</dd></div>

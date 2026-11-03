@@ -11,6 +11,11 @@ import {
   summarize,
   syncPartPhrase,
 } from "../src/lib/payment-export.ts";
+import {
+  isAutoPurposeForDocNumbers,
+  parseAutoPurpose,
+  shouldIgnoreSavedAutoPurpose,
+} from "../src/lib/payment-purpose.ts";
 
 /** Полный по реквизитам контрагент-поставщик. */
 const CP_OK = {
@@ -351,3 +356,143 @@ test("buildExportRows: сторонний расходник без постав
   // иначе в банк уехало бы бессмысленное «оплата.»
   assert.equal(rows[0].purpose, "Реклама Яндекс");
 });
+
+test("parseAutoPurpose / isAutoPurposeForDocNumbers / shouldIgnoreSavedAutoPurpose", () => {
+  assert.deepEqual(
+    parseAutoPurpose("оплата по счёту № 41 от 01 октября 2026. В том числе НДС 22%."),
+    { docNumber: "41" }
+  );
+  assert.deepEqual(
+    parseAutoPurpose("оплата второй части по счёту № СЧ-15/2 от 28 сентября 2026. Без НДС."),
+    { docNumber: "СЧ-15/2" }
+  );
+  assert.deepEqual(
+    parseAutoPurpose("оплата от 01 октября 2026. В том числе НДС 22%."),
+    { docNumber: null }
+  );
+  assert.equal(parseAutoPurpose("Оплата за тару по договору № 7"), null);
+  assert.equal(parseAutoPurpose("Реклама Яндекс Директ"), null);
+
+  assert.equal(
+    isAutoPurposeForDocNumbers(
+      "оплата по счёту № 41 от 01 октября 2026. В том числе НДС 22%.",
+      [41, 101]
+    ),
+    true
+  );
+  assert.equal(
+    isAutoPurposeForDocNumbers(
+      "оплата по счёту № 9 от 05 октября 2026. В том числе НДС 22%.",
+      [41, 101]
+    ),
+    false
+  );
+
+  // Документ создали без номера (записался внутренний № 41), а затем дополнили «СЧ-777».
+  assert.equal(
+    shouldIgnoreSavedAutoPurpose(
+      "оплата по счёту № 41 от 01 октября 2026. В том числе НДС 22%.",
+      "СЧ-777",
+      [41, 101]
+    ),
+    true
+  );
+  // Ручной номер № 9, отличный от внутренних 41/101, сохраняется.
+  assert.equal(
+    shouldIgnoreSavedAutoPurpose(
+      "оплата первой части по счёту № 9 от 05 октября 2026. В том числе НДС 22%.",
+      "СЧ-15",
+      [41, 102]
+    ),
+    false
+  );
+});
+
+test("регрессия: документ создан без номера счёта и дополнен позже (в поставке) — в выгрузке мой номер, а не номер заказа с сайта", () => {
+  const receiptUpdatedLater = {
+    ...RECEIPT,
+    number: 41,
+    invoice_number: "СЧ-777",
+    invoice_date: "2026-10-03",
+  };
+  const payCreatedWithoutInvoice = payment({
+    id: "p-1",
+    number: 101,
+    invoice_number: null,
+    // Старый авто-текст, сформированный при создании поставки без номера счёта:
+    payment_purpose: "оплата по счёту № 41 от 01 октября 2026. В том числе НДС 22%.",
+  });
+
+  const rows = buildExportRows([payCreatedWithoutInvoice], [CP_OK], [receiptUpdatedLater]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].invoiceNumber, "СЧ-777");
+  assert.equal(
+    rows[0].purpose,
+    "оплата по счёту № СЧ-777 от 03 октября 2026. В том числе НДС 22%."
+  );
+  assert.ok(!rows[0].purpose.includes("№ 41"), rows[0].purpose);
+});
+
+test("регрессия: поставка без номера счёта, номер счёта дополнен в самом платеже — пишется мой номер, а не ПО с сайта", () => {
+  const receiptWithoutInvoice = {
+    ...RECEIPT,
+    number: 41,
+    invoice_number: null,
+    invoice_date: null,
+  };
+  const first = payment({
+    id: "p-1",
+    number: 101,
+    amount: 4000,
+    invoice_number: "СЧ-888",
+    payment_purpose: "оплата первой части по счёту № 41 от 01 октября 2026. В том числе НДС 22%.",
+  });
+  const second = payment({
+    id: "p-2",
+    number: 102,
+    amount: 6000,
+    invoice_number: "СЧ-888",
+    payment_purpose: null,
+  });
+
+  const rows = buildExportRows([first, second], [CP_OK], [receiptWithoutInvoice]);
+  const r1 = rows.find((r) => r.id === "p-1");
+  const r2 = rows.find((r) => r.id === "p-2");
+  assert.ok(r1 && r2);
+  assert.equal(r1.invoiceNumber, "СЧ-888");
+  assert.equal(r2.invoiceNumber, "СЧ-888");
+  assert.equal(
+    r1.purpose,
+    "оплата первой части по счёту № СЧ-888 от 01 октября 2026. В том числе НДС 22%."
+  );
+  assert.equal(
+    r2.purpose,
+    "оплата второй части по счёту № СЧ-888 от 01 октября 2026. В том числе НДС 22%."
+  );
+});
+
+test("регрессия: платёж без поставки с дополненным номером счёта выгружает этот номер счёта, а не комментарий", () => {
+  const rows = buildExportRows(
+    [
+      payment({
+        id: "p-free",
+        number: 305,
+        date: "2026-10-09",
+        receipt_ids: [],
+        receipt_numbers: [],
+        invoice_number: "128/А",
+        payment_purpose: "оплата от 09 октября 2026. В том числе НДС 22%.",
+        comment: "Фура с завода",
+      }),
+    ],
+    [CP_OK],
+    []
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].invoiceNumber, "128/А");
+  assert.equal(
+    rows[0].purpose,
+    "оплата по счёту № 128/А от 09 октября 2026. В том числе НДС 22%."
+  );
+});
+
