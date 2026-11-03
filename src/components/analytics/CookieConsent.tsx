@@ -3,60 +3,78 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Script from "next/script";
+import { usePathname } from "next/navigation";
 import { Cookie } from "lucide-react";
 import {
   COOKIE_CONSENT_ATTR,
+  COOKIE_CONSENT_EVENT,
   COOKIE_CONSENT_STORAGE_KEY,
   COOKIE_POLICY_PATH,
   PRIVACY_POLICY_PATH,
 } from "@/lib/cookie-consent";
+import { CLIENT_ADMIN_PATH } from "@/lib/admin-path-client";
 
 const METRIKA_ID = process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID;
 
 type ConsentState = "accepted" | "declined" | null;
 
-/**
- * Cookie-баннер (152-ФЗ): трекеры (Яндекс.Метрика) не загружаются до тех
- * пор, пока пользователь не нажал «Принять». Решение сохраняется в
- * localStorage и действует при следующих визитах.
- *
- * ★ Баннер рендерится на сервере и присутствует в исходном HTML каждой
- *   страницы. Раньше он появлялся только после гидратации (`mounted`),
- *   и в HTML не было ни баннера, ни ссылки на политику cookie — из-за
- *   этого сканеры соответствия 152-ФЗ (SaitScan и аналоги) сообщали
- *   «Ссылка на политику использования cookie не найдена ни в баннере,
- *   ни на странице»: они не выполняют JS и видят только HTML.
- *
- *   Тем, кто уже сделал выбор, баннер не показываем: решение подхватывается
- *   из localStorage после гидратации, а до неё баннер прячет CSS по
- *   атрибуту data-cookie-consent на <html> (см. cookieConsentInitScript).
- */
-export function CookieConsent() {
+function readStoredConsent(): ConsentState {
+  try {
+    const attrVal = document.documentElement.getAttribute(COOKIE_CONSENT_ATTR);
+    if (attrVal === "accepted" || attrVal === "declined") return attrVal;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const stored = localStorage.getItem(COOKIE_CONSENT_STORAGE_KEY);
+    if (stored === "accepted" || stored === "declined") return stored;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const m = document.cookie.match(
+      new RegExp(`(?:^|;\\s*)${COOKIE_CONSENT_STORAGE_KEY}=(accepted|declined)(?:;|$)`)
+    );
+    if (m?.[1] === "accepted" || m?.[1] === "declined") return m[1];
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export function CookieConsent({ adminPath }: { adminPath?: string }) {
+  const pathname = usePathname() || "";
+  const effectiveAdminPath = adminPath || CLIENT_ADMIN_PATH;
+  const isAdminRoute =
+    pathname === `/${effectiveAdminPath}` ||
+    pathname.startsWith(`/${effectiveAdminPath}/`);
+
   const [consent, setConsent] = useState<ConsentState>(null);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    let value: ConsentState = null;
-    try {
-      const stored = localStorage.getItem(COOKIE_CONSENT_STORAGE_KEY);
-      if (stored === "accepted") value = "accepted";
-      else if (stored === "declined") value = "declined";
-    } catch {
-      /* localStorage недоступен — показываем баннер как есть */
-    }
-    setConsent(value);
+    setConsent(readStoredConsent());
     setHydrated(true);
+
+    const onInlineDecision = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (detail === "accepted" || detail === "declined") {
+        setConsent(detail);
+      } else {
+        setConsent(readStoredConsent());
+      }
+    };
+    window.addEventListener(COOKIE_CONSENT_EVENT, onInlineDecision);
+    return () => {
+      window.removeEventListener(COOKIE_CONSENT_EVENT, onInlineDecision);
+    };
   }, []);
 
-  // До гидратации считаем баннер видимым — так разметка сервера и клиента
-  // совпадают (иначе React ругается на hydration mismatch).
-  const bannerVisible = !hydrated || consent === null;
+  // На страницах админки (включая форму входа) клиентский cookie-баннер не показываем.
+  const bannerVisible = !isAdminRoute && (!hydrated || consent === null);
 
-  // Пока баннер висит, плавающую корзину (и попап над ней) поднимаем
-  // выше него — иначе баннер их перекрывает (жалоба тестировки).
   useEffect(() => {
     if (!bannerVisible) return;
-    // Решение уже принято (скрипт в <head> выставил атрибут) — баннер скрыт
     if (document.documentElement.hasAttribute(COOKIE_CONSENT_ATTR)) return;
     document.body.classList.add("cookie-banner-visible");
     return () => {
@@ -71,7 +89,13 @@ export function CookieConsent() {
       /* ignore */
     }
     try {
+      document.cookie = `${COOKIE_CONSENT_STORAGE_KEY}=${value}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    } catch {
+      /* ignore */
+    }
+    try {
       document.documentElement.setAttribute(COOKIE_CONSENT_ATTR, value);
+      document.body.classList.remove("cookie-banner-visible");
     } catch {
       /* ignore */
     }
@@ -82,8 +106,8 @@ export function CookieConsent() {
 
   return (
     <>
-      {/* Метрика загружается ТОЛЬКО после явного согласия */}
-      {consent === "accepted" && id && (
+      {/* Метрика загружается ТОЛЬКО после явного согласия и только вне админки */}
+      {!isAdminRoute && consent === "accepted" && id && (
         <>
           <Script
             id="yandex-metrika"
@@ -109,6 +133,7 @@ export function CookieConsent() {
           role="dialog"
           aria-live="polite"
           aria-label="Согласие на использование cookie"
+          style={{ pointerEvents: "auto" }}
         >
           <div className="cookie-banner__inner">
             <div className="cookie-banner__icon" aria-hidden="true">
@@ -132,18 +157,22 @@ export function CookieConsent() {
               </p>
             </div>
 
-            <div className="cookie-banner__actions">
+            <div className="cookie-banner__actions" style={{ pointerEvents: "auto" }}>
               <button
                 type="button"
+                data-cookie-action="declined"
                 className="cookie-banner__decline"
                 onClick={() => decide("declined")}
+                style={{ cursor: "pointer", pointerEvents: "auto" }}
               >
                 Отклонить
               </button>
               <button
                 type="button"
+                data-cookie-action="accepted"
                 className="cookie-banner__accept"
                 onClick={() => decide("accepted")}
+                style={{ cursor: "pointer", pointerEvents: "auto" }}
               >
                 Принять
               </button>

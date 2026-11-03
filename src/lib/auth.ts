@@ -7,7 +7,7 @@
 // layout нет» больше невозможно. Здесь только работа с cookie и React.
 // =========================================================
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import {
   hasAdminPermission,
@@ -47,8 +47,30 @@ export async function createSession(data: {
 
   const token = await signAdminSession(data);
 
+  // Определяем реальную схему запроса (HTTPS или HTTP), чтобы при локальном
+  // прод-запуске или аварийном доступе по HTTP-адресу браузер не отбрасывал
+  // cookie из-за флага `Secure`, а на боевом HTTPS всегда выставлял `Secure`.
+  let isHttps = process.env.NODE_ENV === "production";
+  try {
+    const hdrs = await headers();
+    const fwdProto = (hdrs.get("x-forwarded-proto") || "")
+      .split(",")[0]
+      .trim()
+      .toLowerCase();
+    const origin = (hdrs.get("origin") || hdrs.get("referer") || "")
+      .trim()
+      .toLowerCase();
+    if (fwdProto === "https" || origin.startsWith("https://")) {
+      isHttps = true;
+    } else if (fwdProto === "http" || origin.startsWith("http://")) {
+      isHttps = false;
+    }
+  } catch {
+    /* вне контекста запроса оставляем дефолт по NODE_ENV */
+  }
+
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE, token, adminSessionCookieOptions());
+  cookieStore.set(COOKIE, token, adminSessionCookieOptions(isHttps));
 }
 
 /**

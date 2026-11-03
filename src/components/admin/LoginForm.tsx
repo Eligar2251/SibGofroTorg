@@ -11,7 +11,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   CircleAlert,
@@ -31,7 +30,6 @@ export function LoginForm({
   adminPath: string;
   expired?: boolean;
 }) {
-  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [loading, setLoading] = useState(false);
@@ -204,8 +202,7 @@ export function LoginForm({
       }
 
       const role = parseAdminRole(data.role);
-      router.push(getAdminLandingPath(role, adminPath));
-      router.refresh();
+      window.location.assign(getAdminLandingPath(role, adminPath));
     } catch (err) {
       setEmergencyError(
         err instanceof Error
@@ -250,8 +247,7 @@ export function LoginForm({
       }
 
       const role = parseAdminRole(data.role);
-      router.push(getAdminLandingPath(role, adminPath));
-      router.refresh();
+      window.location.assign(getAdminLandingPath(role, adminPath));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Неверный логин или пароль"

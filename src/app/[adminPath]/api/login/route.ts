@@ -12,7 +12,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSession } from "@/lib/auth";
 import { getAdminDb, probeDatabaseBackend } from "@/lib/supabase";
 import { getDbFailoverState, getDbRuntimeConfig } from "@/lib/db-runtime-config";
-import { hashPassword, verifyPassword } from "@/lib/user-auth";
+import {
+  hashPassword,
+  verifyAdminStoredPassword,
+} from "@/lib/user-auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { logActivity } from "@/lib/activity-log";
 import { parseAdminRole } from "@/lib/admin-rbac";
@@ -52,12 +55,26 @@ export async function POST(
     }
 
     const db = getAdminDb();
-    const { data: admin, error } = await db
+    let { data: admin, error } = await db
       .from("admins")
       .select("*")
       .eq("username", username)
       .limit(1)
       .maybeSingle();
+
+    // Если логин в Supabase Table Editor ввели с заглавной буквы (напр. Eligar2251),
+    // а в форме написали строчными (или наоборот) — находим без учёта регистра.
+    if (!error && !admin && !/[%_]/.test(username)) {
+      const ciRes = await db
+        .from("admins")
+        .select("*")
+        .ilike("username", username)
+        .limit(1)
+        .maybeSingle();
+      if (!ciRes.error && ciRes.data) {
+        admin = ciRes.data;
+      }
+    }
 
     // Ошибка БД — это НЕ «неверный пароль»: показываем настоящую причину.
     if (error) {
@@ -112,11 +129,27 @@ export async function POST(
 
     let valid = false;
 
-    // Новый формат: passwordHash (scrypt salt:hash)
+    // Штатный scrypt-хэш (`salt:hash`) ИЛИ пароль, вписанный напрямую
+    // через визуальный интерфейс Supabase (Table Editor -> admins -> Insert row):
+    // при первом входе такой пароль автоматически зашифровывается в scrypt-хэш.
     if (admin.password_hash && typeof admin.password_hash === "string") {
-      valid = verifyPassword(password, admin.password_hash);
+      const check = verifyAdminStoredPassword(password, admin.password_hash);
+      valid = check.valid;
+      if (valid && check.needsRehash) {
+        try {
+          await db
+            .from("admins")
+            .update({
+              password_hash: hashPassword(password),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", admin.id);
+        } catch (e) {
+          console.error("Admin password auto-hash migration failed:", e);
+        }
+      }
     }
-    // Legacy: plaintext password — мигрируем в hash
+    // Legacy: колонка password — мигрируем в scrypt password_hash
     else if ((admin as any).password && typeof (admin as any).password === "string") {
       valid = (admin as any).password === password;
       if (valid) {
@@ -152,11 +185,13 @@ export async function POST(
       );
     }
 
+    const canonicalUsername = String(admin.username || username).trim();
+
     try {
       await createSession({
-        username,
+        username: canonicalUsername,
         role,
-        displayName: admin.display_name || username,
+        displayName: admin.display_name || canonicalUsername,
       });
     } catch (sessionError) {
       console.error("Admin session error:", sessionError);

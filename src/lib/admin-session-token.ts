@@ -142,10 +142,13 @@ export function adminSessionNeedsRenewal(session: AdminSessionToken): boolean {
 }
 
 /** Параметры cookie сессии — один набор на вход и на продление. */
-export function adminSessionCookieOptions() {
+export function adminSessionCookieOptions(isHttps?: boolean) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure:
+      typeof isHttps === "boolean"
+        ? isHttps
+        : process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     maxAge: ADMIN_SESSION_TTL_SEC,
     path: "/",

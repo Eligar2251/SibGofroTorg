@@ -122,9 +122,14 @@ export function hashPassword(password: string): string {
   return `${salt}:${hash}`;
 }
 
+export function isScryptPasswordHash(stored: string): boolean {
+  return /^[0-9a-f]{16,64}:[0-9a-f]{64,256}$/i.test(String(stored || "").trim());
+}
+
 export function verifyPassword(password: string, stored: string): boolean {
   try {
-    const [salt, hash] = stored.split(":");
+    const trimmed = String(stored || "").trim();
+    const [salt, hash] = trimmed.split(":");
     if (!salt || !hash) return false;
     const hashBuf = Buffer.from(hash, "hex");
     const test = scryptSync(password, salt, 64);
@@ -133,6 +138,46 @@ export function verifyPassword(password: string, stored: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Проверяет пароль сотрудника админки:
+ * 1) если в `password_hash` уже лежит scrypt-хэш (`saltHex:hashHex`) — проверяет scrypt;
+ * 2) если администратора/владельца добавили вручную прямо через интерфейс
+ *    Supabase Table Editor (вписав обычный пароль в колонку `password_hash`) —
+ *    безопасно сравнивает буферы и возвращает `{ valid: true, needsRehash: true }`,
+ *    чтобы маршрут входа сразу зашифровал пароль в scrypt-хэш в БД.
+ */
+export function verifyAdminStoredPassword(
+  password: string,
+  stored: string
+): { valid: boolean; needsRehash: boolean } {
+  const raw = String(stored ?? "");
+  const trimmed = raw.trim();
+  if (!trimmed) return { valid: false, needsRehash: false };
+
+  if (isScryptPasswordHash(trimmed)) {
+    return { valid: verifyPassword(password, trimmed), needsRehash: false };
+  }
+
+  // Защита от ошибочного сравнения с чужими bcrypt-строками как с открытым паролем
+  if (/^\$2[aby]\$\d{2}\$/.test(trimmed)) {
+    return { valid: false, needsRehash: false };
+  }
+
+  const a = Buffer.from(password, "utf8");
+  const b = Buffer.from(raw, "utf8");
+  if (a.length === b.length && timingSafeEqual(a, b)) {
+    return { valid: true, needsRehash: true };
+  }
+
+  // На случай случайного пробела при вставке пароля в ячейку Supabase Table Editor
+  const bTrim = Buffer.from(trimmed, "utf8");
+  if (a.length === bTrim.length && timingSafeEqual(a, bTrim)) {
+    return { valid: true, needsRehash: true };
+  }
+
+  return { valid: false, needsRehash: false };
 }
 
 export async function createUserSession(user: UserSession) {

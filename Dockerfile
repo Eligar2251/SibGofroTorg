@@ -32,6 +32,26 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --prefer-offline
 
 COPY . .
+
+# Пробрасываем публичные переменные окружения на этапе сборки клиентского бандла
+# (если хостинг передаёт их как build-arg в Docker / Timeweb Cloud Apps).
+ARG NEXT_PUBLIC_ADMIN_PATH
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_SITE_URL
+ARG NEXT_PUBLIC_EMERGENCY_BANNER
+ARG NEXT_PUBLIC_YANDEX_METRIKA_ID
+ARG NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+ENV NEXT_PUBLIC_ADMIN_PATH=$NEXT_PUBLIC_ADMIN_PATH \
+    NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
+    NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
+    NEXT_PUBLIC_EMERGENCY_BANNER=$NEXT_PUBLIC_EMERGENCY_BANNER \
+    NEXT_PUBLIC_YANDEX_METRIKA_ID=$NEXT_PUBLIC_YANDEX_METRIKA_ID \
+    NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=$NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+
 # Кэш .next/cache между сборками: инкрементальная компиляция webpack/turbopack
 # и tsbuildinfo — повторные деплои заметно быстрее.
 RUN --mount=type=cache,id=next-cache,target=/app/.next/cache \

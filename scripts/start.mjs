@@ -17,13 +17,50 @@
 // `pnpm start` падал с MODULE_NOT_FOUND и контейнер уходил в перезапуск.
 // =========================================================
 
-import { existsSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, symlinkSync } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const has = (p) => existsSync(path.join(root, p));
+
+function ensureStandaloneStaticAssets() {
+  if (!has(".next/standalone/server.js")) return;
+
+  if (has(".next/static") && !has(".next/standalone/.next/static")) {
+    try {
+      mkdirSync(path.join(root, ".next/standalone/.next"), { recursive: true });
+      symlinkSync(
+        path.join(root, ".next/static"),
+        path.join(root, ".next/standalone/.next/static"),
+        "junction"
+      );
+    } catch {
+      cpSync(
+        path.join(root, ".next/static"),
+        path.join(root, ".next/standalone/.next/static"),
+        { recursive: true }
+      );
+    }
+  }
+
+  if (has("public") && !has(".next/standalone/public")) {
+    try {
+      symlinkSync(
+        path.join(root, "public"),
+        path.join(root, ".next/standalone/public"),
+        "junction"
+      );
+    } catch {
+      cpSync(
+        path.join(root, "public"),
+        path.join(root, ".next/standalone/public"),
+        { recursive: true }
+      );
+    }
+  }
+}
 
 const port = process.env.PORT || "3000";
 // Standalone-сервер Next слушает HOSTNAME из env (0.0.0.0 = все интерфейсы,
@@ -45,6 +82,8 @@ function execNode(args) {
     process.exit(1);
   });
 }
+
+ensureStandaloneStaticAssets();
 
 if (has(".next/standalone/server.js") && has(".next/standalone/.next/static")) {
   // Standalone-сервер со скопированными статик-ассетами — канонический

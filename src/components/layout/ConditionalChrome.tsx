@@ -19,17 +19,23 @@ import { CLIENT_ADMIN_PATH } from "@/lib/admin-path-client";
 
 export function ConditionalChrome({
   children,
+  adminPath,
   popupCampaigns = [],
   categories = [],
 }: {
   children: ReactNode;
+  /** Серверный путь админки из RootLayout (совпадает с рантайм ADMIN_PATH даже в Docker без build-arg) */
+  adminPath?: string;
   /** Приходят из серверного layout — без клиентского fetch /api/popups */
   popupCampaigns?: PublicPopupCampaign[];
   /** Категории меню — тоже из серверного layout, без fetch /api/categories */
   categories?: HeaderCategory[];
 }) {
   const pathname = usePathname() || "";
-  const isAdmin = pathname === `/${CLIENT_ADMIN_PATH}` || pathname.startsWith(`/${CLIENT_ADMIN_PATH}/`);
+  const effectiveAdminPath = adminPath || CLIENT_ADMIN_PATH;
+  const isAdmin =
+    pathname === `/${effectiveAdminPath}` ||
+    pathname.startsWith(`/${effectiveAdminPath}/`);
 
   if (isAdmin) {
     return <>{children}</>;

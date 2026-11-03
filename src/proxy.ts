@@ -35,7 +35,17 @@ import {
   type AdminSessionToken,
 } from "@/lib/admin-session-token";
 
-function buildCsp(): string {
+function isHttpsRequest(request: NextRequest): boolean {
+  const fwdProto = (request.headers.get("x-forwarded-proto") || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  if (fwdProto === "https") return true;
+  if (fwdProto === "http") return false;
+  return request.nextUrl.protocol === "https:";
+}
+
+function buildCsp(isHttps: boolean): string {
   const isDev = process.env.NODE_ENV === "development";
 
   const scriptSrc = [
@@ -64,21 +74,21 @@ function buildCsp(): string {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'self'",
-    "upgrade-insecure-requests",
   ];
 
-  if (isDev) {
-    return directives
-      .filter((d) => d !== "upgrade-insecure-requests")
-      .join("; ");
+  // Включаем upgrade-insecure-requests ТОЛЬКО на реальном HTTPS:
+  // иначе при локальном/аварийном запуске по http:// браузер принудительно
+  // переписывает /_next/static/chunks/*.js на https:// и блокирует весь JS сайта!
+  if (!isDev && isHttps) {
+    directives.push("upgrade-insecure-requests");
   }
   return directives.join("; ");
 }
 
-function applySecurityHeaders(response: NextResponse) {
+function applySecurityHeaders(response: NextResponse, isHttps: boolean) {
   const isProd = process.env.NODE_ENV === "production";
 
-  response.headers.set("Content-Security-Policy", buildCsp());
+  response.headers.set("Content-Security-Policy", buildCsp(isHttps));
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -92,7 +102,7 @@ function applySecurityHeaders(response: NextResponse) {
   response.headers.set("X-DNS-Prefetch-Control", "on");
   response.headers.set("X-Permitted-Cross-Domain-Policies", "none");
 
-  if (isProd) {
+  if (isProd && isHttps) {
     response.headers.set(
       "Strict-Transport-Security",
       "max-age=63072000; includeSubDomains; preload"
@@ -123,6 +133,7 @@ function isPublicAdminAuthPath(pathname: string): boolean {
   return (
     pathname === `/${ADMIN_PATH}/login` ||
     pathname === `/${ADMIN_PATH}/api/login` ||
+    pathname === `/${ADMIN_PATH}/api/login/local-file` ||
     pathname === `/${ADMIN_PATH}/api/logout`
   );
 }
@@ -130,7 +141,8 @@ function isPublicAdminAuthPath(pathname: string): boolean {
 /** Продлить сессию: выдаём свежую cookie, если текущая «состарилась». */
 async function maybeRenewSession(
   response: NextResponse,
-  session: AdminSessionToken
+  session: AdminSessionToken,
+  isHttps: boolean
 ): Promise<void> {
   if (!adminSessionNeedsRenewal(session)) return;
   try {
@@ -139,7 +151,11 @@ async function maybeRenewSession(
       role: session.role,
       displayName: session.displayName,
     });
-    response.cookies.set(ADMIN_SESSION_COOKIE, token, adminSessionCookieOptions());
+    response.cookies.set(
+      ADMIN_SESSION_COOKIE,
+      token,
+      adminSessionCookieOptions(isHttps)
+    );
   } catch (error) {
     console.error("[proxy] не удалось продлить сессию:", error);
   }
@@ -147,6 +163,7 @@ async function maybeRenewSession(
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isHttps = isHttpsRequest(request);
 
   // ── Короткие QR-ссылки /q/{code} ──
   const shortQr = pathname.match(/^\/[Qq]\/(.+)$/);
@@ -154,7 +171,7 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = `/q/${shortQr[1]}`;
     const res = NextResponse.rewrite(url);
-    applySecurityHeaders(res);
+    applySecurityHeaders(res, isHttps);
     return res;
   }
 
@@ -173,7 +190,7 @@ export async function proxy(request: NextRequest) {
           },
           { status: 401 }
         );
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, isHttps);
         return res;
       }
       if (!canAccessAdminApi(session.role, pathname, request.method)) {
@@ -181,12 +198,12 @@ export async function proxy(request: NextRequest) {
           { error: "Недостаточно прав" },
           { status: 403 }
         );
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, isHttps);
         return res;
       }
       const res = NextResponse.next();
-      applySecurityHeaders(res);
-      await maybeRenewSession(res, session);
+      applySecurityHeaders(res, isHttps);
+      await maybeRenewSession(res, session, isHttps);
       return res;
     }
 
@@ -195,7 +212,7 @@ export async function proxy(request: NextRequest) {
         const loginUrl = new URL(`/${ADMIN_PATH}/login`, request.url);
         loginUrl.searchParams.set("expired", "1");
         const res = NextResponse.redirect(loginUrl);
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, isHttps);
         return res;
       }
       if (!canAccessAdminPage(session.role, pathname, ADMIN_PATH)) {
@@ -203,19 +220,19 @@ export async function proxy(request: NextRequest) {
         const res = NextResponse.redirect(
           new URL(getAdminLandingPath(session.role, ADMIN_PATH), request.url)
         );
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, isHttps);
         return res;
       }
     }
 
     const res = NextResponse.next();
-    applySecurityHeaders(res);
-    if (session) await maybeRenewSession(res, session);
+    applySecurityHeaders(res, isHttps);
+    if (session) await maybeRenewSession(res, session, isHttps);
     return res;
   }
 
   const response = NextResponse.next();
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, isHttps);
   return response;
 }
 
