@@ -289,3 +289,90 @@ test("GET ?list=1: сторонний расходник (реклама) вид
   assert.ok(text.includes("НазначениеПлатежа1=Реклама Яндекс Директ\r\n"), text);
   assert.ok(text.includes("НазначениеПлатежа3=Без НДС\r\n"));
 });
+
+test("регрессия API: если документ создан без номера счёта и потом дополнен (в поставке или в платеже), в файл выгружается пользовательский номер счёта", async () => {
+  resetStubDb({
+    bank_payments: [
+      // Сценарий 1: поставка была без номера (в payment_purpose застрял № 41), позже счёт дополнили в поставке.
+      payment({
+        id: "p-rec-inv",
+        number: 301,
+        date: "2026-10-09",
+        receipt_ids: ["rec-upd"],
+        receipt_numbers: [41],
+        invoice_number: null,
+        payment_purpose: "оплата по счёту № 41 от 01 октября 2026. В том числе НДС 22%.",
+      }),
+      // Сценарий 2: поставка осталась без номера, но пользователь вписал номер счёта в сам платёж.
+      payment({
+        id: "p-pay-inv",
+        number: 302,
+        date: "2026-10-09",
+        receipt_ids: ["rec-empty"],
+        receipt_numbers: [42],
+        invoice_number: "УТ-905",
+        payment_purpose: "оплата по счёту № 42 от 02 октября 2026. В том числе НДС 22%.",
+      }),
+    ],
+    counterparties: [CP],
+    warehouse_receipts: [
+      {
+        id: "rec-upd",
+        number: 41,
+        date: "2026-10-01",
+        supplier: "ООО «Гофра Опт»",
+        invoice_number: "СЧ-555",
+        invoice_date: "2026-10-04",
+      },
+      {
+        id: "rec-empty",
+        number: 42,
+        date: "2026-10-02",
+        supplier: "ООО «Гофра Опт»",
+        invoice_number: null,
+        invoice_date: null,
+      },
+    ],
+  });
+
+  const listRes = await GET(url("?list=1&from=2026-10-09&to=2026-10-09"));
+  assert.equal(listRes.status, 200);
+  const list = await listRes.json();
+  const byId = new Map(list.rows.map((r) => [r.id, r]));
+
+  assert.equal(byId.get("p-rec-inv")?.invoiceNumber, "СЧ-555");
+  assert.equal(
+    byId.get("p-rec-inv")?.purpose,
+    "оплата по счёту № СЧ-555 от 04 октября 2026. В том числе НДС 22%."
+  );
+  assert.equal(byId.get("p-pay-inv")?.invoiceNumber, "УТ-905");
+  assert.equal(
+    byId.get("p-pay-inv")?.purpose,
+    "оплата по счёту № УТ-905 от 02 октября 2026. В том числе НДС 22%."
+  );
+
+  const exportRes = await POST(
+    new Request("http://localhost/api/admin/warehouse/payments/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: ["p-rec-inv", "p-pay-inv"] }),
+    })
+  );
+  assert.equal(exportRes.status, 200);
+  const text = new TextDecoder("windows-1251").decode(await exportRes.arrayBuffer());
+  assert.ok(
+    text.includes(
+      "НазначениеПлатежа1=оплата по счёту № СЧ-555 от 04 октября 2026. В том числе НДС 22%.\r\n"
+    ),
+    text
+  );
+  assert.ok(
+    text.includes(
+      "НазначениеПлатежа1=оплата по счёту № УТ-905 от 02 октября 2026. В том числе НДС 22%.\r\n"
+    ),
+    text
+  );
+  assert.ok(!text.includes("по счёту № 41"), text);
+  assert.ok(!text.includes("по счёту № 42"), text);
+});
+

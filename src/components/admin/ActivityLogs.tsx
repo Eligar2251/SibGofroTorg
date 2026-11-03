@@ -59,6 +59,7 @@ const entityLabels: Record<string, string> = {
   deal: "Заказ учёта",
   payment: "Платёж",
   receipt: "Поступление",
+  assembly: "Комплектация",
   product: "Товар",
   transport: "Перевозка",
   delivery: "Доставка",
@@ -241,6 +242,7 @@ function getEntityHref(log: LogEntry, adminPath: string): string | null {
   if (log.entityType === "deal") return `/${adminPath}/warehouse?tab=deals&deal=${encodeURIComponent(id)}`;
   if (log.entityType === "payment") return `/${adminPath}/warehouse?tab=bank&payment=${encodeURIComponent(id)}`;
   if (log.entityType === "receipt") return `/${adminPath}/warehouse?tab=receipts&receipt=${encodeURIComponent(id)}`;
+  if (log.entityType === "assembly") return `/${adminPath}/warehouse?tab=assembly&assembly=${encodeURIComponent(id)}`;
   if (log.entityType === "product") return `/${adminPath}/products/${encodeURIComponent(id)}`;
   if (log.entityType === "delivery" || log.entityType === "transport") return `/${adminPath}/deliveries`;
   if (log.entityType === "counterparty") return `/${adminPath}/warehouse?tab=counterparties`;

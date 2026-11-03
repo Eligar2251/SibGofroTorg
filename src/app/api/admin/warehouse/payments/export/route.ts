@@ -65,7 +65,7 @@ async function loadExportData(): Promise<{
     db
       .from("bank_payments")
       .select(
-        "id,number,date,type,counterparty,counterparty_id,receipt_ids,receipt_numbers,amount,vat_rate,vat_amount,is_paid,exclude_from_balance,exported_at,payment_purpose,payment_priority,payment_kind,comment"
+        "id,number,date,type,counterparty,counterparty_id,receipt_ids,receipt_numbers,amount,invoice_number,vat_rate,vat_amount,is_paid,exclude_from_balance,exported_at,payment_purpose,payment_priority,payment_kind,comment"
       )
       .eq("direction", "outgoing"),
     // Вложенный select на контрагенте через .select не надёжен при

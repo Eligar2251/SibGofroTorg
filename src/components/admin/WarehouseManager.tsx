@@ -113,6 +113,11 @@ import type { WpTransportQueueDoc } from "@/lib/wastepaper-account-shared";
 import type { ReceiptTransportQueueDoc } from "@/lib/warehouse-shared";
 import type { SupplyPlan } from "@/lib/supply-plans-shared";
 import type { PurchasePlan } from "@/lib/purchase-plans-shared";
+import type { WarehouseAssembly } from "@/lib/warehouse-assembly";
+import {
+  WarehouseAssemblies,
+  QuickAssemblyButton,
+} from "@/components/admin/WarehouseAssemblies";
 import {
   DEAL_ACCOUNT_FILTERS,
   DEAL_ACCOUNT_LABELS,
@@ -327,7 +332,7 @@ const paymentTypeLabels: Record<string, string> = {
   monthly: "Ежемесячные платежи",
 };
 
-type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "plan" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
+type TabKey = "stock" | "assembly" | "receipts" | "plans" | "purchases" | "deals" | "plan" | "bank" | "salaries" | "counterparties" | "clients" | "deliveries" | "reports";
 
 /**
  * Вкладки склада. Список постоянный: иконки и подписи не зависят от
@@ -337,6 +342,7 @@ type TabKey = "stock" | "receipts" | "plans" | "purchases" | "deals" | "plan" | 
  */
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "stock", label: "Склад", icon: <Boxes size={13} /> },
+  { key: "assembly", label: "Комплектация", icon: <Scissors size={13} /> },
   { key: "receipts", label: "Поставки", icon: <Truck size={13} /> },
   { key: "plans", label: "Планы поставок", icon: <Lightbulb size={13} /> },
   { key: "purchases", label: "Закупки", icon: <Wallet size={13} /> },
@@ -429,6 +435,7 @@ interface WarehouseManagerProps {
   consignmentManual?: ConsignmentManualSale[];
   supplyPlans?: SupplyPlan[];
   purchasePlans?: PurchasePlan[];
+  assemblies?: WarehouseAssembly[];
   initialPlanProductId?: string | null;
   companyPhone?: string;
   companyAddress?: string;
@@ -470,6 +477,7 @@ export function WarehouseManager({
   consignmentManual = [],
   supplyPlans = [],
   purchasePlans = [],
+  assemblies = [],
   initialPlanProductId,
   companyPhone,
   companyAddress,
@@ -1752,6 +1760,12 @@ export function WarehouseManager({
         badge: attentionStock,
       },
       {
+        key: "assembly",
+        label: "Комплектация",
+        icon: tabIcon("assembly"),
+        stat: assemblies.length > 0 ? `${assemblies.length} док.` : "листы → коробки",
+      },
+      {
         key: "receipts",
         label: "Поставки",
         icon: tabIcon("receipts"),
@@ -1839,6 +1853,7 @@ export function WarehouseManager({
     activePurchasePlans,
     stock,
     zeroStock,
+    assemblies.length,
     supplyPlans,
     bankSummary,
     counterpartyRows,
@@ -2482,7 +2497,11 @@ export function WarehouseManager({
                     Сбросить
                   </button>
                 )}
-                {/* Ревизия: бланк для пересчёта + сверка фактических остатков */}
+                {/* Быстрая комплектация 1С (листы → коробки) + Ревизия склада */}
+                <QuickAssemblyButton
+                  products={pickerProducts}
+                  initialAssemblies={assemblies}
+                />
                 <StockRevision stock={stock} />
               </div>
 
@@ -3273,10 +3292,17 @@ export function WarehouseManager({
                   : "Точное время добавления не сохранено — используется дата заказа";
                 return (
                   <div key={d.id} id={`deal-${d.id}`} className="admin-order">
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       className="receipt-head"
                       onClick={() => setExpandedDealId(expanded ? null : d.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setExpandedDealId(expanded ? null : d.id);
+                        }
+                      }}
                       aria-expanded={expanded}
                     >
                       <span className="admin-order__id">ЗК-{d.number}</span>
@@ -3416,8 +3442,22 @@ export function WarehouseManager({
                         {fmtDate(d.date)}
                       </span>
                       <span className="receipt-head__total">{fmt(d.total)} ₽</span>
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <DealForm
+                          products={pickerProducts}
+                          counterparties={counterpartyOptions}
+                          payments={payments}
+                          deliveryPrice={deliveryPrice}
+                          freeDeliveryThreshold={freeDeliveryThreshold}
+                          reservedStockById={reservedTotalById}
+                          tierDiscounts={tierDiscounts}
+                          hidePrimaryTrigger
+                          compactCopyTrigger
+                          duplicateOf={editableDealById.get(String(d.id))}
+                        />
+                      </span>
                       <span className="receipt-head__chevron">{expanded ? "▲" : "▼"}</span>
-                    </button>
+                    </div>
 
                     {expanded && (
                       <div className="admin-order__row" style={{ paddingTop: 14 }}>
@@ -3750,6 +3790,15 @@ export function WarehouseManager({
           accountTransfers={accountTransfers}
           moneyAdjustments={moneyAdjustments}
           stock={stock}
+        />
+      )}
+
+      {/* ============ ВКЛАДКА: КОМПЛЕКТАЦИЯ НОМЕНКЛАТУРЫ (1С) ============ */}
+      {activeTab === "assembly" && (
+        <WarehouseAssemblies
+          assemblies={assemblies}
+          products={pickerProducts}
+          quickOpen={quickAction === "quick-assembly"}
         />
       )}
 

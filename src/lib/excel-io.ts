@@ -413,6 +413,8 @@ export async function buildExcelExport(mode: "full" | "template" = "full"): Prom
         }));
   addSheet(wb, "Сотрудники", empRows);
 
+  const receiptById = new Map(receipts.map((r) => [String(r.id), r]));
+
   // Поступления + позиции
   const receiptHeaders = mode === "template"
     ? [
@@ -422,6 +424,8 @@ export async function buildExcelExport(mode: "full" | "template" = "full"): Prom
           Дата: "23.07.2026",
           Поставщик: "ООО Ромашка",
           Статус: "черновик",
+          "Номер счёта": "",
+          "Дата счёта": "",
           Телефон: "",
           Email: "",
           ИНН: "",
@@ -436,6 +440,8 @@ export async function buildExcelExport(mode: "full" | "template" = "full"): Prom
         Дата: r.date,
         Поставщик: r.supplier,
         Статус: r.status === "posted" ? "проведено" : "черновик",
+        "Номер счёта": r.invoiceNumber || "",
+        "Дата счёта": r.invoiceDate || "",
         Телефон: r.phone || "",
         Email: r.email || "",
         ИНН: r.inn || "",
@@ -580,7 +586,11 @@ export async function buildExcelExport(mode: "full" | "template" = "full"): Prom
           "Связанные поступления": (p.receiptNumbers || [])
             .map((n) => `ПО-${n}`)
             .join(", "),
-          "Номер счёта": p.invoiceNumber || "",
+          "Номер счёта":
+            p.invoiceNumber ||
+            (p.receiptIds?.[0]
+              ? receiptById.get(String(p.receiptIds[0]))?.invoiceNumber || ""
+              : ""),
           "НДС %": p.vatRate,
           "Исключить из баланса": yn(p.excludeFromBalance),
           Комментарий: p.comment || "",
@@ -1120,9 +1130,13 @@ export async function importExcelWorkbook(buffer: Buffer): Promise<ImportReport>
           continue;
         }
         const statusRaw = cell(row, "Статус", "status").toLowerCase();
+        const invoiceNumberRaw = cell(row, "Номер счёта", "Номер счета", "invoiceNumber") || null;
+        const invoiceDateCell = cell(row, "Дата счёта", "Дата счета", "invoiceDate");
         const created = await createReceipt({
           date: parseDate(cell(row, "Дата", "date")),
           supplier,
+          invoiceNumber: invoiceNumberRaw,
+          invoiceDate: invoiceDateCell ? parseDate(invoiceDateCell) : null,
           phone: cell(row, "Телефон", "phone") || null,
           email: cell(row, "Email", "email") || null,
           inn: cell(row, "ИНН", "inn") || null,

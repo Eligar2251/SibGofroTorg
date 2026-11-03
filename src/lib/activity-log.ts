@@ -24,6 +24,7 @@ export type EntityType =
   | "deal"
   | "payment"
   | "receipt"
+  | "assembly"
   | "product"
   | "transport"
   | "delivery"

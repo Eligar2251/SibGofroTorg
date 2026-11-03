@@ -2,6 +2,12 @@
   "name": "nextjs-postgresql-template",
   "private": true,
   "packageManager": "pnpm@11.17.0",
+  "imports": {
+    "#db-server-engine": {
+      "browser": "./src/lib/supabase-browser-stub.ts",
+      "default": "./src/lib/supabase-server-engine.ts"
+    }
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "next build",
@@ -16,7 +22,12 @@
     "test:deal-archive": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/deal-archive.test.mjs",
     "test:export-api": "node --experimental-strip-types --import ./tests/api-register.mjs --test tests/api-payment-export.test.mjs",
     "test:media": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/media-url.test.mjs tests/media-route.test.mjs",
-    "test": "npm run test:links && npm run test:stock && npm run test:payments && npm run test:deal-archive && npm run test:export-api && npm run test:media && npm run test:pallet && npm run test:recovery && npm run test:price-calc && npm run test:prices && npm run test:price-list && npm run test:tax",
+    "test:assembly": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/warehouse-assembly.test.mjs",
+    "test:assembly-api": "node --experimental-strip-types --import ./tests/api-register.mjs --test tests/api-warehouse-assemblies.test.mjs",
+    "test:color-twin": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/product-color-twin.test.mjs",
+    "test:color-twin-api": "node --experimental-strip-types --import ./tests/api-prices-register.mjs --test tests/api-product-color-twin.test.mjs",
+    "test:local-db": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/local-json-db-and-switcher.test.mjs",
+    "test": "npm run test:links && npm run test:stock && npm run test:payments && npm run test:deal-archive && npm run test:export-api && npm run test:media && npm run test:pallet && npm run test:recovery && npm run test:price-calc && npm run test:prices && npm run test:price-list && npm run test:tax && npm run test:assembly && npm run test:assembly-api && npm run test:color-twin && npm run test:color-twin-api && npm run test:local-db",
     "test:recovery": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/admin-recovery.test.mjs",
     "test:price-calc": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/price-calc.test.mjs",
     "test:price-list": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/price-list.test.mjs",

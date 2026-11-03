@@ -121,3 +121,74 @@ export function buildPurposeLines(input: PurposeInput): {
 
   return { main, sumLine, vatLine, combined, vatCalculated: vatSum };
 }
+
+/**
+ * Шаблон автоматически сформированного назначения платежа (buildPurposeLines):
+ *   «оплата [первой части] [по счёту № XXX] [от DD месяца YYYY]. (В том числе НДС X%.|Без НДС.)»
+ *
+ * Возвращает извлечённый номер документа (`docNumber`, либо `null`, если
+ * авто-строка была собрана вообще без номера), либо `null`, если строка
+ * написана пользователем в свободной форме («Оплата за тару по договору № 7»).
+ */
+const AUTO_PURPOSE_RE =
+  /^оплата(?:\s+(?:первой|второй|третьей|четвертой|пятой|шестой|седьмой|восьмой|девятой|десятой|\d+-й)\s+части)?(?:\s+по\s+сч[её]ту\s+№\s*(.+?))?(?:\s+от\s+\d{1,2}\s+[а-яё]+\s+\d{4}(?:\s*г\.?)?)?\.\s*(?:В том числе НДС\s+[\d.,]+%|Без НДС)\.?$/iu;
+
+export function parseAutoPurpose(
+  text: string | null | undefined
+): { docNumber: string | null } | null {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return null;
+  const match = AUTO_PURPOSE_RE.exec(trimmed);
+  if (!match) return null;
+  const docNumber = match[1] ? match[1].trim() : null;
+  return { docNumber: docNumber || null };
+}
+
+/**
+ * Проверяет, является ли сохранённый `payment_purpose` авто-сгенерированным
+ * текстом для одного из переданных номеров документа (или вообще без номера).
+ * Используется при редактировании поставки/платежа, чтобы авто-текст со
+ * старым внутренним номером ПО/ПЛ не блокировал новый номер счёта.
+ */
+export function isAutoPurposeForDocNumbers(
+  savedPurpose: string | null | undefined,
+  candidateDocNumbers: Iterable<string | number | null | undefined>
+): boolean {
+  const parsed = parseAutoPurpose(savedPurpose);
+  if (!parsed) return false;
+  if (!parsed.docNumber) return true;
+  for (const candidate of candidateDocNumbers) {
+    if (candidate == null) continue;
+    const norm = String(candidate).trim();
+    if (norm && norm === parsed.docNumber) return true;
+  }
+  return false;
+}
+
+/**
+ * Нужно ли при выгрузке игнорировать сохранённый `payment_purpose` и пересобрать
+ * назначение по актуальному `invoiceNumber`:
+ *   • `actualInvoiceNumber` задан пользователем;
+ *   • а в `payment_purpose` лежит старая авто-строка без номера счёта
+ *     (с внутренним номером ПО/ПЛ с сайта или вовсе без «№ …»).
+ * Произвольный ручной текст (или свой номер счёта, не равный ПО/ПЛ) сохраняется.
+ */
+export function shouldIgnoreSavedAutoPurpose(
+  savedPurpose: string | null | undefined,
+  actualInvoiceNumber: string | null | undefined,
+  fallbackSiteNumbers: Iterable<string | number | null | undefined>
+): boolean {
+  const inv = (actualInvoiceNumber || "").trim();
+  if (!inv) return false;
+  const parsed = parseAutoPurpose(savedPurpose);
+  if (!parsed) return false;
+  if (!parsed.docNumber) return true;
+  if (parsed.docNumber === inv) return false;
+  for (const fb of fallbackSiteNumbers) {
+    if (fb == null) continue;
+    const norm = String(fb).trim();
+    if (norm && norm === parsed.docNumber) return true;
+  }
+  return false;
+}
+

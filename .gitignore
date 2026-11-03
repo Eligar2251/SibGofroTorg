@@ -15,3 +15,7 @@
 node_modules
 .vercel
 *.tsbuildinfo
+
+# Local JSON database & runtime DB switcher config (contains live data / keys)
+.sgt-data/
+

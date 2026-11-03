@@ -714,6 +714,19 @@ export interface ProductStockSummary {
   currentStockQty: number;
   receipts: ProductStockReceiptHistory[];
   deals: ProductStockDealHistory[];
+  assemblies?: Array<{
+    id: string;
+    number: number;
+    date: string;
+    kind: "assembly" | "disassembly";
+    role: "spent" | "produced";
+    qtyChange: number;
+    unitCost: number | null;
+    counterpartLabel: string;
+    comment: string | null;
+  }>;
+  assembledInQty?: number;
+  assembledOutQty?: number;
   postedReceiptQty: number;
   draftReceiptQty: number;
   orderedQty: number;

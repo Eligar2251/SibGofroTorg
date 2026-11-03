@@ -9,9 +9,16 @@
 const STUBS = {
   "@/lib/auth": new URL("./stub-auth.ts", import.meta.url).href,
   "@/lib/supabase": new URL("./stub-supabase.ts", import.meta.url).href,
+  "next/cache": new URL("./next-cache-stub.ts", import.meta.url).href,
 };
 
 export async function resolve(specifier, context, nextResolve) {
   if (STUBS[specifier]) return nextResolve(STUBS[specifier], context);
+  if (
+    (specifier === "./supabase" || specifier === "./supabase.ts") &&
+    context.parentURL?.includes("/src/lib/")
+  ) {
+    return nextResolve(STUBS["@/lib/supabase"], context);
+  }
   return nextResolve(specifier, context);
 }

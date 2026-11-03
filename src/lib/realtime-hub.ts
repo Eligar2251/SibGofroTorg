@@ -22,6 +22,8 @@
 // =========================================================
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { getActiveDatabaseConnectionInfo } from "./supabase";
+import { setLocalDbMutationHook } from "./local-json-db";
 
 /** Таблицы, за которыми следим. */
 export const REALTIME_TABLES = [
@@ -30,6 +32,7 @@ export const REALTIME_TABLES = [
   "client_requests",
   "customer_deals",
   "warehouse_receipts",
+  "warehouse_assemblies",
   "bank_payments",
   "bank_account_transfers",
   "salaries",
@@ -247,8 +250,17 @@ function connect() {
   const hub = getHub();
   if (hub.status === "connecting" || hub.status === "connected") return;
 
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const activeDb = getActiveDatabaseConnectionInfo();
+  if (activeDb.effectiveMode === "local") {
+    // В автономном режиме локальной JSON-БД события приходят мгновенно
+    // напрямую из этого же процесса через publishLocalChange.
+    hub.lastError = null;
+    setStatus("connected");
+    return;
+  }
+
+  const url = activeDb.url;
+  const key = activeDb.serviceRoleKey;
   if (!url || !key) {
     hub.lastError = "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY не заданы";
     setStatus("error");
@@ -453,3 +465,24 @@ export function publishLocalChange(input: {
     preview: buildPreview(table, input.record),
   });
 }
+
+/**
+ * Переподключает Realtime-хаб при переключении активного сервера БД в админке.
+ */
+export function reconnectRealtimeHub(): void {
+  const hub = getHub();
+  teardown();
+  if (hub.listeners.size > 0) {
+    connect();
+  }
+}
+
+// Подключаем мгновенные SSE-уведомления от локальной JSON-БД
+setLocalDbMutationHook(({ table, type, record }) => {
+  publishLocalChange({
+    table,
+    type,
+    id: record?.id != null ? String(record.id) : null,
+    record: record ?? null,
+  });
+});

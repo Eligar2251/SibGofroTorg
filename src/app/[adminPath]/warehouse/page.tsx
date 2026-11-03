@@ -39,6 +39,7 @@ import { getMoneyAdjustments } from "@/lib/money-accounts";
 import { redactMoneyAdjustments } from "@/lib/money-accounts-shared";
 import { getSupplyPlans } from "@/lib/supply-plans";
 import { getPurchasePlans } from "@/lib/purchase-plans";
+import { getWarehouseAssemblies } from "@/lib/warehouse-assembly-store";
 import type { PickerProduct } from "@/components/admin/ProductPicker";
 import type {
   CounterpartyDocument,
@@ -110,6 +111,7 @@ export default async function AdminWarehousePage({
     sub?: string;
     product?: string;
     receipt?: string;
+    assembly?: string;
     deal?: string;
     payment?: string;
     transport?: string;
@@ -140,7 +142,8 @@ export default async function AdminWarehousePage({
   // Раньше при открытии «Склад» читались сразу поставки, заказы, банк,
   // зарплаты, клиенты и контрагенты. Теперь каждая верхняя вкладка тянет
   // только необходимые ей коллекции.
-  const needStock = ["stock", "deals", "plan", "plans", "purchases", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
+  const needStock = ["stock", "assembly", "deals", "plan", "plans", "purchases", "supplies", "receipts", "deliveries", "reports"].includes(initialTab) || !!sp.product;
+  const needAssemblies = initialTab === "assembly" || initialTab === "stock" || !!sp.assembly;
   // На вкладке заказов поступления нужны для пометки «в поставке»: связь
   // хранится на приходном ордере в linked_deal_ids.
   // На вкладке «Доставки» перевозки строятся в том числе по поставкам
@@ -185,6 +188,7 @@ export default async function AdminWarehousePage({
     consignmentManual,
     supplyPlans,
     purchasePlans,
+    assemblies,
     wpIntakes,
     wpShipments,
     wpProducts,
@@ -206,6 +210,7 @@ export default async function AdminWarehousePage({
     needConsignmentManual ? getConsignmentManualSales() : Promise.resolve([]),
     initialTab === "plans" ? getSupplyPlans() : Promise.resolve([]),
     initialTab === "purchases" ? getPurchasePlans() : Promise.resolve([]),
+    needAssemblies ? getWarehouseAssemblies().catch(() => []) : Promise.resolve([]),
     // Очередь макулатуры для тех же рейсов — только вкладке перевозок.
     needTransports ? getWpIntakes(500).catch(() => []) : Promise.resolve([]),
     needTransports ? getWpShipments(300).catch(() => []) : Promise.resolve([]),
@@ -410,6 +415,7 @@ export default async function AdminWarehousePage({
       consignmentManual={consignmentManual}
       supplyPlans={supplyPlans}
       purchasePlans={purchasePlans}
+      assemblies={assemblies}
       initialPlanProductId={sp.planProduct || null}
       companyPhone={settings.phone || undefined}
       companyAddress={settings.address || undefined}

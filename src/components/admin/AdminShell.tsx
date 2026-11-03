@@ -21,6 +21,8 @@ import { AdminNotifications } from "./AdminNotifications";
 import { AdminRequestAlerts } from "./AdminRequestAlerts";
 import { AdminSupplyPlans } from "./AdminSupplyPlans";
 import { RealtimeStatusIndicator } from "./RealtimeStatusIndicator";
+import { AdminDbQuickBadge } from "./AdminDbQuickBadge";
+import { AdminPcAutoBackupRunner } from "./AdminPcAutoBackupRunner";
 import { type AdminRole } from "@/lib/admin-rbac";
 import {
   buildAccessibleNav,
@@ -251,6 +253,9 @@ export function AdminShell({
         </nav>
 
         <div className="admin-sidebar__footer">
+          {(role === "owner" || role === "admin") && (
+            <AdminDbQuickBadge adminPath={adminPath} />
+          )}
           <AdminNavCustomizeButton className="admin-sidebar__footer-link" />
           <Link
             href="/"
@@ -383,6 +388,7 @@ export function AdminShell({
         {/* Индикатор состояния realtime-канала: зелёный = данные живые,
             красный = realtime недоступен, обновляем по таймеру. */}
         {role && <RealtimeStatusIndicator />}
+        {(role === "owner" || role === "admin") && <AdminPcAutoBackupRunner />}
 
         {/* Три кружка справа сверху: планы поставок · новые заявки ·
             срочные уведомления. Макулатурщику и юристу недоступны. */}

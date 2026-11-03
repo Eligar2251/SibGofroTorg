@@ -47,6 +47,7 @@ import {
 import { ORDER_SORT_OPTIONS, type OrderSortId } from "@/lib/orders-sort";
 import { OrderStatusUpdater } from "@/components/admin/OrderStatusUpdater";
 import { OrderIssueButton } from "@/components/admin/OrderIssueButton";
+import { OrderCopyButton } from "@/components/admin/OrderCopyButton";
 import { OrderDeleteButton } from "@/components/admin/OrderDeleteButton";
 import styles from "./OrdersMobile.module.css";
 
@@ -477,6 +478,7 @@ function OrderCard({
             {!isWastepaper && (
               <OrderIssueButton orderId={order.id} status={order.status ?? "new"} />
             )}
+            {!isWastepaper && <OrderCopyButton orderId={order.id} />}
             <OrderDeleteButton orderId={order.id} endpoint={endpoint} />
           </div>
         </div>

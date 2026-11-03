@@ -18,7 +18,10 @@
 // (exclude_from_balance = true) — реального платежа по ним нет.
 // =========================================================
 
-import { buildPurposeLines } from "./payment-purpose";
+import {
+  buildPurposeLines,
+  shouldIgnoreSavedAutoPurpose,
+} from "./payment-purpose";
 
 /**
  * Типы ИСХОДЯЩИХ платежей, которые вообще можно отправить платёжным
@@ -56,6 +59,7 @@ export interface ExportPaymentDbRow {
   receipt_ids?: string[] | null;
   receipt_numbers?: Array<number | string> | null;
   amount?: number | string | null;
+  invoice_number?: string | null;
   vat_rate?: number | string | null;
   vat_amount?: number | string | null;
   is_paid?: boolean | null;
@@ -311,27 +315,55 @@ export function buildExportRows(
       "Поставщик";
 
     const vatRate = toNum(p.vat_rate, 22);
-    const invoiceNumber = receipt?.invoice_number
-      ? String(receipt.invoice_number)
-      : null;
+    const paymentInvoice = toText(p.invoice_number).trim();
+    const receiptInvoice = toText(receipt?.invoice_number).trim();
+    const invoiceNumber = paymentInvoice || receiptInvoice || null;
     const partLabel = partLabelForIndex(indexInGroup, partTotal);
     const comment = toText(p.comment);
+    // Если документ изначально создали без номера счёта, в payment_purpose
+    // мог сохраниться авто-текст с внутренним номером ПО/ПЛ с сайта. Когда
+    // пользователь позже дополнил свой номер счёта (в поставке или в платеже),
+    // устаревший авто-текст с внутренним номером отбрасываем и строим заново
+    // по пользовательскому номеру счёта.
+    const rawPurpose = toText(p.payment_purpose);
+    const fallbackSiteNumbers: Array<string | number | null | undefined> = [
+      receipt?.number,
+      ...receiptNumbers,
+      p.number,
+    ];
+    const effectivePurpose = shouldIgnoreSavedAutoPurpose(
+      rawPurpose,
+      invoiceNumber,
+      fallbackSiteNumbers
+    )
+      ? ""
+      : rawPurpose;
     // Основание платежа:
     //   1. свой текст из карточки платежа (фраза про часть синхронизируется
     //      с фактическим количеством частей поставки);
-    //   2. для платежа БЕЗ поставки (сторонний расходник: реклама, сайт,
-    //      коммуналка…) — комментарий, иначе в банк уехало бы пустое
-    //      «оплата.»;
+    //   2. для платежа БЕЗ поставки и БЕЗ номера счёта (сторонний расходник:
+    //      реклама, сайт, коммуналка…) — комментарий, иначе в банк уехало бы
+    //      пустое «оплата.»;
     //   3. иначе строка строится автоматически по счёту/ПО и НДС.
     const baseText =
-      syncPartPhrase(toText(p.payment_purpose), partLabel) ||
-      (!receipt && comment ? comment : "");
+      syncPartPhrase(effectivePurpose, partLabel) ||
+      (!receipt && !invoiceNumber && comment ? comment : "");
+    const fallbackReceiptNo = receipt
+      ? String(receipt.number)
+      : receiptNumbers[0] != null
+        ? String(receiptNumbers[0])
+        : null;
     const purpose = buildPurposeLines({
       amount: toNum(p.amount),
       vatRate,
       vatAmount: toNum(p.vat_amount),
-      docNumber: invoiceNumber || (receipt ? String(receipt.number) : null),
-      docDate: isoDay(receipt?.invoice_date || receipt?.date) || null,
+      docNumber: invoiceNumber || fallbackReceiptNo,
+      docDate:
+        isoDay(
+          receipt?.invoice_date ||
+            receipt?.date ||
+            (invoiceNumber ? p.date : null)
+        ) || null,
       docKind: "по счёту",
       partIndex: partTotal > 1 ? indexInGroup : null,
       partTotal: partTotal > 1 ? partTotal : null,

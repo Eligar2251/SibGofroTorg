@@ -20,6 +20,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronDown,
+  Copy,
   Edit2,
   Eye,
   EyeOff,
@@ -357,6 +358,14 @@ function ProductCard({
         >
           <Edit2 size={16} />
           <span>Изменить</span>
+        </Link>
+        <Link
+          href={`/${adminPath}/products/new?copyFrom=${encodeURIComponent(product.id)}`}
+          prefetch={false}
+          className={styles.action}
+        >
+          <Copy size={16} />
+          <span>Копия</span>
         </Link>
         <Link
           href={`/${adminPath}/scan/${(product as any).qrSlug || (product as any).barcode || product.id}`}

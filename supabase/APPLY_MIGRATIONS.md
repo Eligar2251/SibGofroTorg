@@ -1,5 +1,16 @@
 # Миграции ветки (что применить на боевой базе)
 
+## Вариант 1 — Полное развёртывание / обновление всей БД одним файлом
+- **`supabase/FULL_DATABASE_MIGRATION.sql`** — единый консолидированный скрипт (58 таблиц + `die_calc_job_stats`, все RPC, триггеры, RLS и публикации Realtime), который включает `schema.sql` и **все 73 файла `migration_*.sql`** (включая связки карточек `migration_product_links.sql` из прошлого мержа PR #146 и все новые миграции текущей ветки). Полностью идемпотентен: можно запускать как на чистом проекте Supabase, так и поверх рабочей базы.
+
+## Вариант 2 — Новые отдельные файлы миграций этой ветки (`arena/953bcfd6-sibgofrotorg`)
+1. **`supabase/migration_warehouse_assemblies.sql`** — таблица комплектации номенклатуры `warehouse_assemblies` (`КМП-…` с привязкой к авто-поставке `ПО-…` от «СибГофроТорг»), счётчик `warehouse_assembly`, RLS и Realtime.
+2. **`supabase/migration_local_db_sync_and_emergency_auth.sql`** — таблица аудита синхронизации локальной БД и аварийного входа по файлу `db_sync_runs` (`supabase_to_local`, `local_to_supabase`, `bidirectional`, `emergency_file_login` + фиксация полного пути локального файла `local_file_path`), RLS и Realtime.
+
+---
+
+# Миграции ветки (что применить на боевой базе)
+
 > **Ветка `arena/58567d0b-sibgofrotorg` (выгрузка в 1С/Альфа-Банк)** —
 > миграция `supabase/migration_1c_client_bank.sql`. Добавляет:
 >   - `counterparties.bank_city` (город банка получателя),

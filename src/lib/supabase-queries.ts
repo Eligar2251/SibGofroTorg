@@ -1048,7 +1048,24 @@ export async function getRelatedProducts(
 
 export async function createProduct(data: Record<string, any>): Promise<{ id: string }> {
   const db = getAdminDb();
-  const slug = data.slug || slugify(data.name || "product");
+  const baseSlug = (data.slug || slugify(data.name || "product")) || "product";
+  let slug = baseSlug;
+  try {
+    const { data: sameSlugs } = await db
+      .from("products")
+      .select("slug")
+      .ilike("slug", `${baseSlug}%`);
+    if (Array.isArray(sameSlugs) && sameSlugs.length > 0) {
+      const taken = new Set(sameSlugs.map((r: any) => String(r.slug || "")));
+      if (taken.has(slug)) {
+        let suffix = 2;
+        while (taken.has(`${baseSlug}-${suffix}`)) suffix += 1;
+        slug = `${baseSlug}-${suffix}`;
+      }
+    }
+  } catch {
+    /* если БД не поддерживает ilike в тестовом стабе — оставляем baseSlug */
+  }
   const calculatedVolume = calculateBoxVolumeLiters(
     data.dimensionLength,
     data.dimensionWidth,

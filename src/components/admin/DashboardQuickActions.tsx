@@ -6,6 +6,7 @@ import {
   ArrowDownLeft,
   ArrowUpLeft,
   Banknote,
+  Boxes,
   CreditCard,
   FilePlus2,
   Landmark,
@@ -45,6 +46,14 @@ const SGT_ACTIONS: QuickAction[] = [
     icon: PackagePlus,
     tone: "amber",
     href: (path) => `/${path}/warehouse?tab=receipts&action=quick-receipt`,
+  },
+  {
+    id: "assembly",
+    title: "Комплектация (1С)",
+    description: "Превратить гофролисты или заготовки в коробки без ручного списания",
+    icon: Boxes,
+    tone: "green",
+    href: (path) => `/${path}/warehouse?tab=assembly&action=quick-assembly`,
   },
   {
     id: "salary",

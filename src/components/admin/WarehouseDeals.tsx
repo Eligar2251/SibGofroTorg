@@ -185,6 +185,8 @@ export function DealForm({
   payments = [],
   initialDeal,
   duplicateOf,
+  hidePrimaryTrigger = false,
+  compactCopyTrigger = false,
   deliveryPrice = 800,
   freeDeliveryThreshold = 30000,
   reservedStockById,
@@ -198,6 +200,10 @@ export function DealForm({
   /** Заказ-образец для копирования: рядом с «Изменить» появляется кнопка «Копировать»,
       открывающая форму нового заказа, предзаполненную данными образца. */
   duplicateOf?: EditableDeal | null;
+  /** Скрыть основную кнопку («Изменить» / «Новый заказ») и показать только кнопку копирования. */
+  hidePrimaryTrigger?: boolean;
+  /** Компактная иконка копирования для свёрнутой строки заказа. */
+  compactCopyTrigger?: boolean;
   /** Тариф курьера из настроек (₽) */
   deliveryPrice?: number;
   /** Порог бесплатной доставки из настроек (₽) */
@@ -371,7 +377,7 @@ export function DealForm({
     setAddress(deal?.address || "");
     setContactName(deal?.contactName || "");
     setComment(deal?.comment || "");
-    setItems(deal?.items || []);
+    setItems((deal?.items || []).map((it) => ({ ...it })));
     setSelectedPayments(copy ? [] : (deal?.linkedPaymentIds || []));
     setVatRate(deal?.vatRate ?? VAT_RATE);
     setHasDelivery(Boolean(deal?.hasDelivery));
@@ -390,7 +396,7 @@ export function DealForm({
     setPaymentCount(1);
     setSplitAmounts([""]);
     setSplitTouched(false);
-    setPaymentMethod(copy ? "regular" : normalizeDealPaymentMethod(deal?.paymentMethod));
+    setPaymentMethod(normalizeDealPaymentMethod(deal?.paymentMethod));
     setIsReserved(copy ? false : Boolean(deal?.isReserved));
     setIsInternal(Boolean(deal?.isInternal));
   }
@@ -399,8 +405,10 @@ export function DealForm({
     applyDeal(initialDeal, false);
   }
 
-  function openCopy() {
+  function openCopy(e?: React.MouseEvent) {
+    e?.stopPropagation();
     applyDeal(duplicateOf || null, true);
+    setOpen(false);
     setCopyOpen(true);
   }
 
@@ -671,26 +679,30 @@ export function DealForm({
   return (
     <>
       <div className="deal-form-triggers">
-        <button
-          type="button"
-          className={
-            initialDeal
-              ? "admin-btn admin-btn--ghost admin-btn--sm"
-              : "admin-btn admin-btn--primary"
-          }
-          onClick={() => setOpen(true)}
-        >
-          {initialDeal ? <Edit2 size={14} /> : <Plus size={15} />}
-          {initialDeal ? "Изменить" : "Новый заказ"}
-        </button>
+        {!hidePrimaryTrigger && (
+          <button
+            type="button"
+            className={
+              initialDeal
+                ? "admin-btn admin-btn--ghost admin-btn--sm"
+                : "admin-btn admin-btn--primary"
+            }
+            onClick={() => setOpen(true)}
+          >
+            {initialDeal ? <Edit2 size={14} /> : <Plus size={15} />}
+            {initialDeal ? "Изменить" : "Новый заказ"}
+          </button>
+        )}
         {duplicateOf && (
           <button
             type="button"
             className="admin-btn admin-btn--ghost admin-btn--sm"
             onClick={openCopy}
+            onKeyDown={(e) => e.stopPropagation()}
             title="Скопировать заказ: новый заказ с теми же позициями и реквизитами"
           >
-            <Copy size={14} /> Копировать
+            <Copy size={13} />
+            {compactCopyTrigger ? "" : " Копировать"}
           </button>
         )}
       </div>

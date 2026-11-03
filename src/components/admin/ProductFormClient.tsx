@@ -5,6 +5,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Save,
@@ -18,6 +19,9 @@ import {
   Link2,
   Quote,
   RefreshCw,
+  Copy,
+  Check,
+  Palette,
   X,
 } from "lucide-react";
 import { ImageUploader } from "./ImageUploader";
@@ -30,6 +34,13 @@ import {
   NEW_PRODUCT_LINK_TOKEN,
   type ProductLinkUpdateInput,
 } from "@/lib/product-links";
+import {
+  buildColorTwinName,
+  buildColorTwinSku,
+  detectCardboardColor,
+  ensureColorInName,
+  resolveColorTwinMeta,
+} from "@/lib/product-color-twin";
 import {
   calculateBoxVolumeLiters,
   DEFAULT_PRODUCT_LABEL_COLOR,
@@ -137,6 +148,7 @@ function normalizeFeaturedOrderIds(
 export function ProductFormClient({
   categories,
   product,
+  copySource,
   featuredOrderIds = [],
   knownTags = [],
   dimensionProfiles = [],
@@ -146,6 +158,8 @@ export function ProductFormClient({
   /** Типы размеров (Коробки / Скотч / …) — набор полей зависит от категории. */
   dimensionProfiles?: DimensionProfile[];
   product?: ProductData;
+  /** Исходный товар, если форма открыта через «Копировать карточку». */
+  copySource?: { id: string; name: string; sku: string | null };
   featuredOrderIds?: string[];
   /** Метки, уже использованные на сайте — подсказки при вводе. */
   knownTags?: string[];
@@ -158,6 +172,34 @@ export function ProductFormClient({
   const [error, setError] = useState("");
   const [draftName, setDraftName] = useState(product?.name || "");
   const [draftSku, setDraftSku] = useState(product?.sku || "");
+  const [draftMaterial, setDraftMaterial] = useState(product?.material || "");
+  const [linkWithCopySource, setLinkWithCopySource] = useState(false);
+
+  // ── Автосоздание связанной парной карточки другого цвета («бурый ↔ белый») ──
+  const [colorTwinEnabled, setColorTwinEnabled] = useState(false);
+  const [twinNameOverride, setTwinNameOverride] = useState<string | null>(null);
+  const [twinSkuOverride, setTwinSkuOverride] = useState<string | null>(null);
+  const [twinPriceOverride, setTwinPriceOverride] = useState<string>("");
+  const [creatingExistingTwin, setCreatingExistingTwin] = useState(false);
+  const [createdExistingTwin, setCreatedExistingTwin] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const twinMeta = resolveColorTwinMeta(draftName, draftMaterial);
+  const previewPrimaryName =
+    detectCardboardColor(draftName, null) === null
+      ? ensureColorInName(draftName, twinMeta.sourceColor)
+      : draftName.trim();
+  const computedTwinName = buildColorTwinName(
+    previewPrimaryName || draftName,
+    twinMeta.targetColor,
+  );
+  const computedTwinSku = buildColorTwinSku(draftSku, twinMeta.targetColor) || "";
+  const effectiveTwinName =
+    twinNameOverride !== null ? twinNameOverride : computedTwinName;
+  const effectiveTwinSku =
+    twinSkuOverride !== null ? twinSkuOverride : computedTwinSku;
   const [draftPrice, setDraftPrice] = useState<string>(
     product?.price != null ? String(product.price) : ""
   );
@@ -433,7 +475,25 @@ export function ProductFormClient({
       // product.imageUrl: иначе удалить последнее фото у товара
       // стало бы невозможно (старое «воскресало» при сохранении).
       imageUrl: images[0]?.url || null,
-      productLinks,
+      productLinks:
+        !isEdit && copySource && linkWithCopySource && productLinks.linkedProductIds.length < 2
+          ? {
+              linkedProductIds: [copySource.id, NEW_PRODUCT_LINK_TOKEN],
+              primaryProductId: copySource.id,
+              labels: {},
+              groupTitle: null,
+            }
+          : productLinks,
+      ...(!isEdit && colorTwinEnabled
+        ? {
+            createColorTwin: {
+              enabled: true,
+              twinName: effectiveTwinName.trim() || undefined,
+              twinSku: twinSkuOverride !== null ? effectiveTwinSku : undefined,
+              twinPrice: twinPriceOverride.trim() !== "" ? Number(twinPriceOverride) : undefined,
+            },
+          }
+        : {}),
     };
 
     try {
@@ -514,8 +574,110 @@ export function ProductFormClient({
     }
   }
 
+  async function handleCreateExistingColorTwin() {
+    if (!product?.id) return;
+    setCreatingExistingTwin(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/products/${product.id}/color-twin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Не удалось создать парный вариант");
+      }
+      setCreatedExistingTwin({ id: data.twinId, name: data.twinName });
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка создания парного варианта");
+    } finally {
+      setCreatingExistingTwin(false);
+    }
+  }
+
   return (
     <form onSubmit={handleSubmit} className="admin-form admin-form--wide admin-stack--lg">
+      {copySource && !isEdit && (
+        <div
+          className="admin-card"
+          style={{
+            borderColor: "rgba(44, 94, 79, 0.35)",
+            background: "rgba(44, 94, 79, 0.04)",
+          }}
+        >
+          <div className="admin-card__pad" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+              <Copy size={16} />
+              <span>
+                Копия карточки «{copySource.name}»
+                {copySource.sku ? ` (арт. оригинала: ${copySource.sku})` : ""}
+              </span>
+            </div>
+            <div style={{ fontSize: 13, color: "var(--adm-muted, #555)" }}>
+              Все характеристики, размеры, цены и фото уже подставлены (складской остаток обнулён, штрихкод присвоится новый). Измените только нужные поля и нажмите «Создать товар».
+            </div>
+            <label className="admin-check" style={{ marginTop: 2 }}>
+              <input
+                type="checkbox"
+                checked={linkWithCopySource}
+                onChange={(e) => setLinkWithCopySource(e.target.checked)}
+              />
+              <span>
+                Сразу связать новую карточку с «{copySource.name}» в единую карточку на сайте (как на Ozon)
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
+
+      {isEdit && product?.id && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          <Link
+            href={`/${CLIENT_ADMIN_PATH}/products/new?copyFrom=${encodeURIComponent(product.id)}`}
+            prefetch={false}
+            className="admin-btn admin-btn--outline"
+            title="Открыть форму нового товара со всеми заполненными данными этой карточки"
+          >
+            <Copy size={15} />
+            Создать копию карточки
+          </Link>
+          <button
+            type="button"
+            className="admin-btn admin-btn--outline"
+            onClick={handleCreateExistingColorTwin}
+            disabled={creatingExistingTwin}
+            title={`Автоматически создать связанную карточку «${computedTwinName}» и объединить их по цвету`}
+          >
+            {creatingExistingTwin ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Palette size={15} />
+            )}
+            {twinMeta.buttonLabel} (создать связанный дубликат)
+          </button>
+          {createdExistingTwin && (
+            <span className="admin-badge admin-badge--green" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Check size={12} /> Создана и связана:{" "}
+              <Link
+                href={`/${CLIENT_ADMIN_PATH}/products/${createdExistingTwin.id}`}
+                style={{ color: "inherit", textDecoration: "underline", fontWeight: 700 }}
+              >
+                {createdExistingTwin.name} →
+              </Link>
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="admin-card">
         <div className="admin-card__pad">
           <h2 className="admin-h2">Фотографии товара</h2>
@@ -552,6 +714,111 @@ export function ProductFormClient({
               />
             </div>
           </div>
+
+          {!isEdit && (
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: 10,
+                border: colorTwinEnabled
+                  ? "1.5px solid var(--adm-pine, #2c5e4f)"
+                  : "1px dashed var(--adm-border, rgba(0,0,0,0.18))",
+                background: colorTwinEnabled
+                  ? "rgba(44, 94, 79, 0.06)"
+                  : "rgba(0, 0, 0, 0.015)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>
+                    Парный вариант другого цвета (связанная карточка)
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--adm-muted, #666)" }}>
+                    Нажмите кнопку — и вместе с этой карточкой сразу создастся и привяжется карточка противоположного цвета (бурый ↔ белый).
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setColorTwinEnabled((v) => !v)}
+                  className={
+                    colorTwinEnabled
+                      ? "admin-btn admin-btn--primary"
+                      : "admin-btn admin-btn--outline"
+                  }
+                >
+                  {colorTwinEnabled ? <Check size={15} /> : <Palette size={15} />}
+                  {twinMeta.buttonLabel}
+                </button>
+              </div>
+
+              {colorTwinEnabled && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 10,
+                    paddingTop: 8,
+                    borderTop: "1px solid rgba(44, 94, 79, 0.16)",
+                  }}
+                >
+                  <div className="admin-field" style={{ margin: 0 }}>
+                    <label className="admin-label" style={{ fontSize: 12 }}>
+                      Название связанного дубликата ({twinMeta.targetLabel.toLowerCase()})
+                    </label>
+                    <input
+                      type="text"
+                      className="admin-input"
+                      value={effectiveTwinName}
+                      onChange={(e) => setTwinNameOverride(e.target.value)}
+                      placeholder={computedTwinName}
+                    />
+                    {detectCardboardColor(draftName, null) === null && draftName.trim() && (
+                      <span className="admin-hint">
+                        Основная сохранится как «{previewPrimaryName}», а парная — «{effectiveTwinName}».
+                      </span>
+                    )}
+                  </div>
+                  <div className="admin-field" style={{ margin: 0 }}>
+                    <label className="admin-label" style={{ fontSize: 12 }}>
+                      Цена {twinMeta.targetLabel === "Белый" ? "белого" : "бурого"} варианта (₽)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="admin-input"
+                      value={twinPriceOverride}
+                      onChange={(e) => setTwinPriceOverride(e.target.value)}
+                      placeholder="Оставьте пустым — будет та же цена"
+                    />
+                  </div>
+                  <div className="admin-field" style={{ margin: 0 }}>
+                    <label className="admin-label" style={{ fontSize: 12 }}>
+                      Артикул 2-й карточки
+                    </label>
+                    <input
+                      type="text"
+                      className="admin-input"
+                      value={effectiveTwinSku}
+                      onChange={(e) => setTwinSkuOverride(e.target.value)}
+                      placeholder="Необязательно"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="admin-field">
             <label className="admin-label">Штрихкод (EAN-13)</label>
@@ -913,6 +1180,7 @@ export function ProductFormClient({
                 name="material"
                 type="text"
                 defaultValue={product?.material || ""}
+                onChange={(e) => setDraftMaterial(e.target.value)}
                 placeholder="Т23К, микрогофра..."
                 className="admin-input"
               />
@@ -1273,7 +1541,12 @@ export function ProductFormClient({
               </>
             ) : (
               <>
-                <Save size={16} /> {isEdit ? "Сохранить" : "Создать товар"}
+                <Save size={16} />{" "}
+                {isEdit
+                  ? "Сохранить"
+                  : colorTwinEnabled
+                    ? `Создать 2 связанные карточки (${twinMeta.sourceLabel.toLowerCase()} + ${twinMeta.targetLabel.toLowerCase()})`
+                    : "Создать товар"}
               </>
             )}
           </button>
