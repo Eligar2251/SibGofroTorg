@@ -7,6 +7,7 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Header, type HeaderCategory } from "@/components/layout/Header";
+import { BegetEmergencyBanner } from "@/components/layout/BegetEmergencyBanner";
 import { Footer } from "@/components/layout/Footer";
 import { MessengerFloatingBanner } from "@/components/layout/MessengerFloatingBanner";
 import { FloatingCart } from "@/components/layout/FloatingCart";
@@ -36,6 +37,7 @@ export function ConditionalChrome({
 
   return (
     <>
+      <BegetEmergencyBanner />
       <Header initialCategories={categories} />
       <main style={{ minHeight: "60vh" }}>{children}</main>
       <Footer />

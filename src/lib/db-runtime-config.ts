@@ -111,9 +111,15 @@ function defaultConfig(): DbRuntimeConfig {
     secondary: {
       label: "Supabase #2 (Облачный / Резервный)",
       url: String(process.env.SUPABASE_SECONDARY_URL || "").trim(),
-      anonKey: String(process.env.SUPABASE_SECONDARY_ANON_KEY || "").trim(),
+      anonKey: String(
+        process.env.SUPABASE_SECONDARY_PUBLISHABLE_KEY ||
+          process.env.SUPABASE_SECONDARY_ANON_KEY ||
+          ""
+      ).trim(),
       serviceRoleKey: String(
-        process.env.SUPABASE_SECONDARY_SERVICE_ROLE_KEY || ""
+        process.env.SUPABASE_SECONDARY_SECRET_KEY ||
+          process.env.SUPABASE_SECONDARY_SERVICE_ROLE_KEY ||
+          ""
       ).trim(),
     },
     updatedAt: null,
@@ -355,10 +361,16 @@ export function resolveSupabaseCredentials(target: "primary" | "secondary"): {
       .trim()
       .replace(/\/+$/, "");
     const envAnon = String(
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+        process.env.SUPABASE_PUBLISHABLE_KEY ||
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        ""
     ).trim();
     const envService = String(
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+      process.env.SUPABASE_SECRET_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        ""
     ).trim();
 
     const url = cfg.primary.url || envUrl;

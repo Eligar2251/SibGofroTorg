@@ -172,7 +172,7 @@ async function main() {
     fail("логин должен содержать 3–64 символа: латиницу, цифры, точку, _ или -");
   }
   if (!ROLES.has(role)) {
-    fail("роль должна быть admin, manager или lawyer");
+    fail("роль должна быть owner, admin, manager, lawyer или wastepaper");
   }
   if (!displayName || displayName.length > 100) {
     fail("отображаемое имя должно содержать от 1 до 100 символов");

@@ -1012,7 +1012,7 @@ export function DatabaseBackendSwitcher({
                     <b>{config.primary.url || "не задан в .env / настройках"}</b>
                   </div>
                   <div>
-                    Ключ service_role:{" "}
+                    Ключ Secret / service_role:{" "}
                     {config.primary.hasServiceRoleKey
                       ? config.primary.serviceRoleKeyMasked
                       : "не задан"}
@@ -1138,7 +1138,7 @@ export function DatabaseBackendSwitcher({
                     </b>
                   </div>
                   <div>
-                    Ключ service_role:{" "}
+                    Ключ Secret / service_role:{" "}
                     {config.secondary.hasServiceRoleKey
                       ? config.secondary.serviceRoleKeyMasked
                       : "не задан"}
@@ -1564,7 +1564,7 @@ export function DatabaseBackendSwitcher({
 
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>
-                Service Role Key (секретный серверный ключ)
+                Secret Key (sb_secret_… или классический service_role)
               </span>
               <input
                 type="password"
@@ -1572,7 +1572,7 @@ export function DatabaseBackendSwitcher({
                 placeholder={
                   config[editingTarget].hasServiceRoleKey
                     ? `Оставьте пустым, чтобы сохранить (${config[editingTarget].serviceRoleKeyMasked})`
-                    : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    : "sb_secret_... или eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 }
                 value={formServiceKey}
                 onChange={(e) => setFormServiceKey(e.target.value)}
@@ -1581,7 +1581,7 @@ export function DatabaseBackendSwitcher({
 
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>
-                Anon Public Key (необязательно)
+                Publishable Key (sb_publishable_… или классический anon, необязательно)
               </span>
               <input
                 type="password"
@@ -1589,7 +1589,7 @@ export function DatabaseBackendSwitcher({
                 placeholder={
                   config[editingTarget].hasAnonKey
                     ? `Оставьте пустым, чтобы сохранить (${config[editingTarget].anonKeyMasked})`
-                    : "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    : "sb_publishable_... или eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 }
                 value={formAnonKey}
                 onChange={(e) => setFormAnonKey(e.target.value)}

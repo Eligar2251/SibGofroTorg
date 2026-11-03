@@ -103,9 +103,10 @@ const ORDERED_MIGRATIONS = [
   "migration_wp_transport_link.sql",
   "migration_wp_transport_done.sql",
 
-  // 9. Безопасность RLS и публикация Realtime
+  // 9. Безопасность RLS, Security Invoker для вьюх и публикация Realtime
   "migration_rls_public_tables.sql",
   "migration_rls_users_orders.sql",
+  "migration_fix_die_calc_view_security_invoker.sql",
   "migration_realtime_admin.sql",
 ];
 
@@ -178,13 +179,13 @@ chunks.push(`-- ================================================================
 --   Полное развёртывание ИЛИ обновление схемы БД в 1 запуск для переезда
 --   на облачный Supabase (Supabase Cloud) или любой self-hosted Supabase.
 --
--- Включает абсолютно ВСЕ миграции проекта (schema.sql + все 72 файла
+-- Включает абсолютно ВСЕ миграции проекта (schema.sql + все ${ORDERED_MIGRATIONS.length} файла
 -- migration_*.sql, включая прошлые и текущие пул-реквесты/мержи):
 --   • Все 58 таблиц проекта (каталог, связки карточек product_link_groups,
 --     заказы, склад, поставки, КМП-комплектации warehouse_assemblies,
 --     перевозки, банк, касса, зарплаты, табели, штанцформы, аренда,
 --     макулатура, журнал синхронизации локальной БД db_sync_runs и др.)
---   • Все представления (die_calc_job_stats), индексы и GIN-индексы
+--   • Все представления с security_invoker = true (die_calc_job_stats), индексы и GIN-индексы
 --   • Все функции и RPC (fn_next_counter, increment_review_helpful,
 --     sync_product_in_stock, calculate_product_box_volume, fn_update_product_rating,
 --     fn_increment_view_count, update_updated_at_column)
@@ -268,6 +269,7 @@ CREATE OR REPLACE FUNCTION increment_review_helpful(review_id_param UUID)
 RETURNS INT
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   new_count INT;

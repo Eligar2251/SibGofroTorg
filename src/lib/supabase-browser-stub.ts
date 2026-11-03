@@ -27,7 +27,11 @@ export function getAdminDb(): SupabaseClient {
 
 export function getPublicDb(): SupabaseClient {
   const url = String(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
-  const key = String(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "");
+  const key = String(
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      ""
+  );
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -38,7 +42,11 @@ export function getSupabaseUrl_pub(): string {
 }
 
 export function getSupabaseAnonKey_pub(): string {
-  return String(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "");
+  return String(
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      ""
+  );
 }
 
 export function getActiveDatabaseConnectionInfo(): {

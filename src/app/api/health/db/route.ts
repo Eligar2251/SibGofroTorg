@@ -5,12 +5,17 @@ import { getAdminDb } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const supabaseUrl =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseSecret =
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseSecret) {
     return Response.json(
       {
         ok: false,
         error:
-          "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY не заданы в переменных окружения контейнера",
+          "SUPABASE_URL и SUPABASE_SECRET_KEY (или SUPABASE_SERVICE_ROLE_KEY) не заданы в переменных окружения",
       },
       { status: 503 }
     );

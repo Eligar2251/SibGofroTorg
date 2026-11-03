@@ -37,6 +37,7 @@ const {
   getDbFailoverState,
   getDbRuntimeConfig,
   resetDbRuntimeConfigCache,
+  resolveSupabaseCredentials,
   saveDbRuntimeConfig,
   toPublicDbConfigView,
 } = await import("../src/lib/db-runtime-config.ts");
@@ -567,4 +568,72 @@ test("Аварийный беспарольный вход по локально
   const tamperedCheck = verifyLocalDbEmergencyDocument(tamperedSig);
   assert.equal(tamperedCheck.valid, false);
 });
+
+test("Новые ключи Supabase (Publishable key sb_publishable_… и Secret key sb_secret_…) поддерживаются наравне с legacy", () => {
+  const prevUrl = process.env.SUPABASE_URL;
+  const prevPub = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const prevSec = process.env.SUPABASE_SECRET_KEY;
+  const prevLegacyAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const prevLegacyService = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  try {
+    saveDbRuntimeConfig({
+      primary: { url: "", anonKey: "", serviceRoleKey: "" },
+    });
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_URL = "https://new-cloud-project.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test_key_12345";
+    process.env.SUPABASE_SECRET_KEY = "sb_secret_test_key_67890";
+    resetDbRuntimeConfigCache();
+
+    const resolved = resolveSupabaseCredentials("primary");
+    assert.equal(resolved.configured, true);
+    assert.equal(resolved.url, "https://new-cloud-project.supabase.co");
+    assert.equal(resolved.anonKey, "sb_publishable_test_key_12345");
+    assert.equal(resolved.serviceRoleKey, "sb_secret_test_key_67890");
+  } finally {
+    if (prevUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = prevUrl;
+    if (prevPub === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = prevPub;
+    if (prevSec === undefined) delete process.env.SUPABASE_SECRET_KEY;
+    else process.env.SUPABASE_SECRET_KEY = prevSec;
+    if (prevLegacyAnon === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = prevLegacyAnon;
+    if (prevLegacyService === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = prevLegacyService;
+    resetDbRuntimeConfigCache();
+  }
+});
+
+test("Вьюха die_calc_job_stats использует security_invoker = true, а аварийный баннер Beget подключён в макет", () => {
+  const fixSql = fs.readFileSync(
+    path.join(process.cwd(), "supabase", "migration_fix_die_calc_view_security_invoker.sql"),
+    "utf8"
+  );
+  const fullSql = fs.readFileSync(
+    path.join(process.cwd(), "supabase", "FULL_DATABASE_MIGRATION.sql"),
+    "utf8"
+  );
+
+  assert.match(fixSql, /security_invoker\s*=\s*true/i);
+  assert.match(fullSql, /CREATE OR REPLACE VIEW (?:public\.)?die_calc_job_stats\s+WITH\s*\(\s*security_invoker\s*=\s*true\s*\)/i);
+  assert.doesNotMatch(fullSql, /CREATE OR REPLACE VIEW (?:public\.)?die_calc_job_stats\s+AS\b/i);
+  assert.match(fullSql, /ALTER FUNCTION public\.fn_next_counter\(TEXT\) SET search_path = public/i);
+
+  const bannerSrc = fs.readFileSync(
+    path.join(process.cwd(), "src", "components", "layout", "BegetEmergencyBanner.tsx"),
+    "utf8"
+  );
+  const chromeSrc = fs.readFileSync(
+    path.join(process.cwd(), "src", "components", "layout", "ConditionalChrome.tsx"),
+    "utf8"
+  );
+  assert.match(bannerSrc, /Beget/i);
+  assert.match(bannerSrc, /\+7 913 915 81 46/);
+  assert.match(bannerSrc, /sk2-tdstm@mail\.ru/);
+  assert.match(chromeSrc, /<BegetEmergencyBanner\s*\/>/);
+});
+
 
