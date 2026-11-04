@@ -15,6 +15,8 @@
 //   3. Выполняет ротацию папки `snapshots/`, оставляя последние N копий.
 // =========================================================
 
+import { beginLegacyDbSync, endLegacyDbSync } from "./full-backup";
+import { readFullBackupSettings } from "./full-backup-settings";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -285,11 +287,12 @@ export async function runServerAutoBackupNow(options?: {
     // 1. Если сейчас активен внешний Supabase (#1 или #2), сначала освежаем снимок из него
     if (
       !options?.skipRemoteSync &&
+      !readFullBackupSettings().enabled &&
       !getDbFailoverState().activeFallbackBackend &&
       (cfg.activeBackend === "primary" || cfg.activeBackend === "secondary")
     ) {
       const creds = resolveSupabaseCredentials(cfg.activeBackend);
-      if (creds.configured) {
+      if (creds.configured && beginLegacyDbSync()) {
         try {
           const remoteClient = createDirectSupabaseClient(
             creds.url,
@@ -302,7 +305,7 @@ export async function runServerAutoBackupNow(options?: {
           // Если сервер БД упал — НЕ прерываем сохранение локального резерва на диск!
           syncWarning = syncErr?.message || String(syncErr);
           sourceLabel = "Локальная JSON-БД (внешний сервер недоступен)";
-        }
+        } finally { endLegacyDbSync(); }
       }
     }
 

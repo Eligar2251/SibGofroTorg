@@ -10,6 +10,8 @@
 // Доступ: только владелец (owner) и администратор (admin).
 // =========================================================
 
+import { beginLegacyDbSync, endLegacyDbSync, invalidateFullReplicaReadiness, isFullBackupRunning, isFullReplicaReady } from "@/lib/full-backup";
+import { readFullBackupSettings } from "@/lib/full-backup-settings";
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermission, requireAdminApi } from "@/lib/auth";
 import { canAccessDatabase } from "@/lib/admin-rbac";
@@ -95,6 +97,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
+    if (isFullBackupRunning()) return NextResponse.json({ error: "Дождитесь завершения полного копирования." }, { status: 409 });
 
     let activeBackend: DbBackendMode | undefined;
     if (body?.activeBackend !== undefined) {
@@ -111,7 +114,13 @@ export async function PUT(request: NextRequest) {
       activeBackend = body.activeBackend;
     }
 
+    if (activeBackend && isFullBackupRunning()) {
+      return NextResponse.json({ error: "Дождитесь завершения полного копирования перед переключением базы." }, { status: 409 });
+    }
     if (activeBackend && (activeBackend !== getDbRuntimeConfig().activeBackend || getDbFailoverState().activeFallbackBackend)) {
+      if (!isFullReplicaReady(activeBackend)) {
+        return NextResponse.json({ error: "Сначала успешно скопируйте текущую рабочую базу в выбранный резерв. Переключение на неподтверждённую копию остановлено." }, { status: 409 });
+      }
       if (activeBackend !== "local" && getLocalDbSummary().pendingMutationsCount > 0) {
         return NextResponse.json({ error: "В локальной БД есть несинхронизированные изменения. Сначала выполните синхронизацию с нужной базой и проверьте результат." }, { status: 409 });
       }
@@ -137,6 +146,10 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // The connectivity probe above is asynchronous; a snapshot may have
+    // started while it was in flight.
+    if (isFullBackupRunning()) return NextResponse.json({ error: "Дождитесь завершения полного копирования." }, { status: 409 });
+    if (activeBackend && !isFullReplicaReady(activeBackend)) return NextResponse.json({ error: "Копия больше не подтверждена; повторите синхронизацию." }, { status: 409 });
     const updated = saveDbRuntimeConfig({
       activeBackend,
       autoFailover:
@@ -173,6 +186,8 @@ export async function PUT(request: NextRequest) {
           : undefined,
       updatedBy: auth.displayName || auth.username || "Администратор",
     });
+
+    if (activeBackend || body?.primary || body?.secondary) invalidateFullReplicaReadiness();
 
     // Перезапускаем планировщик автобэкапа с новым интервалом / путём диска
     restartAutoBackupScheduler();
@@ -232,9 +247,18 @@ export async function POST(request: NextRequest) {
   const auth = await checkAccess();
   if (auth instanceof NextResponse) return auth;
 
+  let legacyLock = false;
   try {
     const body = await request.json();
     const action = String(body?.action || "").trim();
+    if ((isFullBackupRunning() || readFullBackupSettings().enabled) && ["sync_bidirectional", "sync_to_local", "push_to_remote", "replay_pending", "restore_disk_snapshot"].includes(action)) {
+      return NextResponse.json({ error: "Сначала остановите полное автокопирование и дождитесь завершения операции." }, { status: 409 });
+    }
+
+    if (["sync_bidirectional", "sync_to_local", "push_to_remote", "replay_pending", "restore_disk_snapshot"].includes(action)) {
+      if (!beginLegacyDbSync()) return NextResponse.json({ error: "Сначала остановите полное автокопирование и дождитесь завершения операции." }, { status: 409 });
+      legacyLock = true;
+    }
 
     if (action === "probe") {
       const [primary, secondary, local] = await Promise.all([
@@ -524,5 +548,7 @@ export async function POST(request: NextRequest) {
       { error: e?.message || "Ошибка выполнения операции БД" },
       { status: 500 }
     );
+  } finally {
+    if (legacyLock) endLegacyDbSync();
   }
 }

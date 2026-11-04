@@ -11,6 +11,8 @@
 // Доступ: только владелец (owner) и администратор (admin).
 // =========================================================
 
+import { beginLegacyDbSync, endLegacyDbSync, isFullBackupRunning } from "@/lib/full-backup";
+import { readFullBackupSettings } from "@/lib/full-backup-settings";
 import fs from "node:fs";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
@@ -86,6 +88,7 @@ export async function GET(request: NextRequest) {
   if (syncMode === "auto") {
     const cfg = getDbRuntimeConfig();
     if (
+      !readFullBackupSettings().enabled &&
       !getDbFailoverState().activeFallbackBackend &&
       (cfg.activeBackend === "primary" || cfg.activeBackend === "secondary")
     ) {
@@ -95,7 +98,7 @@ export async function GET(request: NextRequest) {
         : 0;
       if (!lastSyncMs || Date.now() - lastSyncMs > 45_000) {
         const creds = resolveSupabaseCredentials(cfg.activeBackend);
-        if (creds.configured) {
+        if (creds.configured && beginLegacyDbSync()) {
           try {
             const remoteClient = createDirectSupabaseClient(
               creds.url,
@@ -105,7 +108,7 @@ export async function GET(request: NextRequest) {
             await syncRemoteSupabaseToLocal(remoteClient, creds.label);
           } catch {
             // Если внешний сервер недоступен — отдаём текущую локальную JSON-БД
-          }
+          } finally { endLegacyDbSync(); }
         }
       }
     }
@@ -135,7 +138,9 @@ export async function POST(request: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
+    if (isFullBackupRunning()) return NextResponse.json({ error: "Дождитесь завершения полного копирования" }, { status: 409 });
     const body = await request.json();
+    if (isFullBackupRunning() || readFullBackupSettings().enabled) return NextResponse.json({ error: "Сначала остановите полное автокопирование и дождитесь завершения операции" }, { status: 409 });
     const mode: "replace" | "merge" =
       body?.mode === "merge" ? "merge" : "replace";
     const snapshot = body?.snapshot ?? body;

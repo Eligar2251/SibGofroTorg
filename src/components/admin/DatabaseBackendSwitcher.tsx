@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FullBackupPanel } from "./FullBackupPanel";
 import {
   Activity,
   AlertTriangle,
@@ -264,7 +265,7 @@ export function DatabaseBackendSwitcher({
   }
 
   async function switchBackend(nextMode: DbBackendMode) {
-    if (!window.confirm("Переключение не копирует данные между базами. Убедитесь, что выбранная база актуальна и нужные изменения синхронизированы. Продолжить?")) return;
+    if (!window.confirm("Переключение не копирует данные между базами. Изменения после последнего снимка могут отсутствовать. Перед переключением завершите синхронизацию и убедитесь, что никто не вносит новые изменения. Продолжить?")) return;
     setBusyAction(`switch_${nextMode}`);
     setError("");
     setNotice("");
@@ -958,6 +959,8 @@ export function DatabaseBackendSwitcher({
         </div>
       )}
 
+      <FullBackupPanel />
+
       {/* Три карточки выбора источника БД */}
       <div
         style={{
@@ -1359,7 +1362,7 @@ export function DatabaseBackendSwitcher({
               }}
             >
               <ArrowLeftRight size={16} style={{ color: "#2563eb" }} />
-              Синхронизация Supabase ↔ Локальная БД (экспорт и импорт без простоев)
+              Старые операции с локальным JSON (могут быть неполными)
             </div>
             <div
               style={{
@@ -1368,9 +1371,8 @@ export function DatabaseBackendSwitcher({
                 marginTop: 2,
               }}
             >
-              При падении основной БД все операции админки сохраняются в локальной
-              базе и очереди изменений, а при восстановлении синхронизируются с
-              Supabase без потери данных.
+              Эти операции используют список известных таблиц и не заменяют полный
+              бэкап выше. Результат может быть частичным; проверяйте ошибки и очередь изменений.
             </div>
           </div>
 
@@ -2261,10 +2263,10 @@ export function DatabaseBackendSwitcher({
             href="/api/admin/database/backup?format=json"
             className="admin-btn admin-btn--outline admin-btn--sm"
             style={{ textDecoration: "none" }}
-            title="Скачать полную резервную копию базы данных на компьютер (.json)"
+            title="Скачать текущую локальную копию (может быть неполной или устаревшей)"
           >
             <Download size={14} />
-            Скачать JSON-бэкап
+            Скачать текущий локальный JSON (не полный)
           </a>
 
           <select

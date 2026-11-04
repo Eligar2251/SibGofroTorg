@@ -254,7 +254,7 @@ function normalizeStore(raw: any): LocalDbFileEnvelope {
 
   for (const [tableName, rows] of Object.entries(srcTables)) {
     if (
-      tableName === "version" ||
+      srcTables === raw && (tableName === "version" ||
       tableName === "app" ||
       tableName === "updatedAt" ||
       tableName === "lastSyncedAt" ||
@@ -265,7 +265,7 @@ function normalizeStore(raw: any): LocalDbFileEnvelope {
       tableName === "fileFullPath" ||
       tableName === "sgtEmergencyAuth" ||
       tableName === "pendingMutations" ||
-      tableName === "totalRows"
+      tableName === "totalRows")
     ) {
       continue;
     }

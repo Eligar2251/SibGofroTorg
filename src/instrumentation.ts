@@ -15,5 +15,7 @@ export async function register() {
       "./lib/auto-backup-scheduler"
     );
     ensureAutoBackupSchedulerStarted();
+    const { ensureFullBackupSchedulerStarted } = await import("./lib/full-backup");
+    ensureFullBackupSchedulerStarted();
   }
 }

@@ -8,6 +8,7 @@
 //   • Фоновое зеркалирование изменений в локальную JSON-БД
 // =========================================================
 
+import { readFullBackupSettings } from "./full-backup-settings";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   clearDbFailoverState,
@@ -377,7 +378,7 @@ class SmartQueryProxy implements PromiseLike<any> {
         const altTarget: "primary" | "secondary" =
           activeTarget === "primary" ? "secondary" : "primary";
         const altCreds = resolveSupabaseCredentials(altTarget);
-        if (altCreds.configured && altCreds.url !== creds.url) {
+        if (!readFullBackupSettings().enabled && altCreds.configured && altCreds.url !== creds.url) {
           try {
             const altClient = createDirectSupabaseClient(
               altCreds.url,
@@ -408,7 +409,7 @@ class SmartQueryProxy implements PromiseLike<any> {
       const altTarget: "primary" | "secondary" =
         activeTarget === "primary" ? "secondary" : "primary";
       const altCreds = resolveSupabaseCredentials(altTarget);
-      if (altCreds.configured) {
+      if (!readFullBackupSettings().enabled && altCreds.configured) {
         try {
           const altClient = createDirectSupabaseClient(
             altCreds.url,
@@ -515,7 +516,7 @@ class SmartAdminSupabaseClient {
         const altTarget: "primary" | "secondary" =
           activeTarget === "primary" ? "secondary" : "primary";
         const altCreds = resolveSupabaseCredentials(altTarget);
-        if (altCreds.configured && altCreds.url !== creds.url) {
+        if (!readFullBackupSettings().enabled && altCreds.configured && altCreds.url !== creds.url) {
           try {
             const altClient = createDirectSupabaseClient(
               altCreds.url,

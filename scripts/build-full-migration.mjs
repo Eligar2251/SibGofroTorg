@@ -107,6 +107,7 @@ const ORDERED_MIGRATIONS = [
   "migration_rls_public_tables.sql",
   "migration_rls_users_orders.sql",
   "migration_fix_die_calc_view_security_invoker.sql",
+  "migration_complete_app_backup.sql",
   "migration_realtime_admin.sql",
 ];
 
