@@ -103,13 +103,13 @@ function defaultConfig(): DbRuntimeConfig {
     lastEmergencyDbFilePath: "",
     lastEmergencyLoginAt: null,
     primary: {
-      label: "Supabase Cloud (Европа)",
+      label: "Supabase #1 (основной)",
       url: "",
       anonKey: "",
       serviceRoleKey: "",
     },
     secondary: {
-      label: "Supabase на VPS",
+      label: "Supabase #2 (резервный)",
       url: "",
       anonKey: "",
       serviceRoleKey: "",
@@ -386,7 +386,7 @@ export function resolveSupabaseCredentials(target: "primary" | "secondary"): {
   const anonKey = envUrl ? envAnon : cfg.secondary.anonKey;
   const serviceRoleKey = envUrl ? envService : cfg.secondary.serviceRoleKey;
   return {
-    label: cfg.secondary.label || "Supabase на VPS",
+    label: cfg.secondary.label || "Supabase #2 (резервный)",
     url,
     anonKey,
     serviceRoleKey,

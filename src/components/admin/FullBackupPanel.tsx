@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 type Mode = "primary" | "secondary" | "local";
 type Config = { enabled: boolean; intervalSec: number; targets: Record<Mode, boolean> };
 type Status = { running: boolean; source: Mode; lastRunAt: string | null; error: string | null; settings: Config; targets: Partial<Record<Mode, { state: string; at: string; message: string }>> };
-const labels: Record<Mode, string> = { primary: "Supabase Cloud", secondary: "Supabase VPS", local: "Локальная JSON-БД" };
+const labels: Record<Mode, string> = { primary: "Supabase #1", secondary: "Supabase #2", local: "Локальная JSON-БД" };
 const modes: Mode[] = ["primary", "secondary"];
 
 export function FullBackupPanel() {

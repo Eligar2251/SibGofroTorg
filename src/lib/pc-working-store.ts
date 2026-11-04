@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { stable, validatePublicBackup, type PublicBackup } from "./merge-public-snapshots";
+import { validateTrackedBackup, type PcTracking } from "./pc-incremental";
 
 export type PcOrigin = { source: "primary" | "secondary"; instanceId: string | null };
 export type PcWorkingStore = {
@@ -19,6 +20,8 @@ export type PcWorkingStore = {
   currentHash: string;
   base: PublicBackup;
   current: PublicBackup;
+  tracking?: PcTracking;
+  trackingHash?: string;
 };
 const name = "sgt-working-db.json";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -51,6 +54,10 @@ function validateStore(raw: unknown, computerId: string): PcWorkingStore {
   validateOrigin(s.origin);
   validateSnapshot(s.base); validateSnapshot(s.current);
   if (s.baseHash !== digest(s.base) || s.currentHash !== digest(s.current)) throw new Error("Контрольная сумма рабочей БД не совпадает; файл не будет изменён.");
+  if (s.tracking || s.trackingHash) {
+    if (!s.tracking || s.trackingHash !== digest(s.tracking) || s.origin.instanceId !== s.tracking.instance) throw new Error("Метаданные обновления повреждены; автоматическая запись остановлена.");
+    validateTrackedBackup({...s.current,pcTracking:s.tracking});
+  }
   if (stable(s.base.columns) !== stable(s.current.columns)) throw new Error("Схема рабочей БД не совпадает с исходным снимком.");
   return s;
 }
@@ -132,5 +139,23 @@ export function updatePcWorkingStore(root: string, computerId: string, expectedR
     const updated = { ...current, revision:current.revision + 1, current:nextSnapshot, currentHash:hash };
     writeAtomic(file, updated);
     return clone(updated);
+  });
+}
+
+/** Replace a clean read-only baseline atomically; local edits are never overwritten. */
+export function replacePcCleanBaseline(root:string, computerId:string, expectedRevision:number, tracked:unknown):PcWorkingStore {
+  const next = validateTrackedBackup(tracked);
+  const file = location(root,computerId);
+  const clean = clone(validateSnapshot(next));
+  const tracking = clone(next.pcTracking);
+  assertWorkingDirectory(file);
+  return withLock(file,()=>{
+    const old = readExisting(file,computerId);
+    if (old.revision !== expectedRevision) throw new Error("Рабочая БД изменилась во время обновления; повторите попытку.");
+    if (old.baseHash !== old.currentHash) throw new Error("В локальной БД есть независимые изменения; автоматическая замена запрещена.");
+    if (old.origin.instanceId && old.origin.instanceId !== tracking.instance) throw new Error("Идентификатор источника изменился; автоматическая замена запрещена.");
+    if (old.revision === Number.MAX_SAFE_INTEGER) throw new Error("Исчерпан диапазон версий рабочей БД.");
+    const nextStore:PcWorkingStore={...old,revision:old.revision+1,origin:{...old.origin,instanceId:tracking.instance},base:clean,current:clone(clean),baseHash:digest(clean),currentHash:digest(clean),tracking,trackingHash:digest(tracking)};
+    writeAtomic(file,nextStore); return clone(nextStore);
   });
 }

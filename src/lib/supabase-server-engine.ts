@@ -74,6 +74,9 @@ function remoteUnavailable(message: string) {
 
 // A timeout or dropped connection does not prove the first database rolled
 // back. Replaying a write or an RPC elsewhere could create it twice.
+function unconfirmedFailoverWrite() {
+  return {data:null,error:{code:"DB_FAILOVER_READ_ONLY",message:"Резервная БД выбрана автоматически только для чтения. Проверьте актуальность и явно переключите источник перед записью."}};
+}
 function uncertainWrite() {
   return { data: null, error: { code: "DB_WRITE_OUTCOME_UNKNOWN", message: "Связь прервалась во время записи. Она могла сохраниться в исходной БД; проверьте результат перед повтором или переключением. Автоматический повтор в другой БД отменён." } };
 }
@@ -279,6 +282,7 @@ class SmartQueryProxy implements PromiseLike<any> {
       const fastFallback = getActiveCircuitFallback();
       if (fastFallback === "local") return localServerUnavailable();
       if (fastFallback === "primary" || fastFallback === "secondary") {
+        if (this.mutationOp) return unconfirmedFailoverWrite();
         const fbCreds = resolveSupabaseCredentials(fastFallback);
         if (fbCreds.configured) {
           try {
@@ -417,17 +421,7 @@ class SmartAdminSupabaseClient {
     if (cfg.autoFailover) {
       const fallback = getActiveCircuitFallback();
       if (fallback === "local") return localServerUnavailable();
-      if (fallback === "primary" || fallback === "secondary") {
-        const fb = resolveSupabaseCredentials(fallback);
-        if (fb.configured) {
-          try {
-            const res = await createDirectSupabaseClient(fb.url, fb.serviceRoleKey).rpc(fnName, args);
-            if (res?.error && isRemoteServerFailure(res.error)) return uncertainWrite();
-            return res;
-          } catch { return uncertainWrite(); }
-        }
-        return remoteUnavailable("Резервный Supabase недоступен; запись в серверный JSON отключена.");
-      }
+      if (fallback === "primary" || fallback === "secondary") return unconfirmedFailoverWrite();
     }
 
     const activeTarget = cfg.activeBackend;

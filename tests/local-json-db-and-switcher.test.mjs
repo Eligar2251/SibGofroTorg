@@ -653,7 +653,7 @@ test("timeout still applies when Supabase supplies an AbortSignal", async () => 
   }
 });
 
-test("remote failover stays active across cooldown and process state reload, including RPC", async () => {
+test("remote failover is read-only until explicitly promoted, including RPC", async () => {
   const { recordDbFailover, clearDbFailoverState } = await import("../src/lib/db-runtime-config.ts");
   const names = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECONDARY_URL"];
   const previous = names.map((n) => process.env[n]);
@@ -675,8 +675,10 @@ test("remote failover stays active across cooldown and process state reload, inc
     const rows = await getAdminDb().from("products").select("*");
     const rpc = await getAdminDb().rpc("some_test_function");
     assert.equal(rows.error, null);
-    assert.equal(rpc.error, null);
-    assert.equal(requests.length, 2);
+    assert.equal(rpc.error.code, "DB_FAILOVER_READ_ONLY");
+    const mutation = await getAdminDb().from("products").update({name:"x"}).eq("id","secondary");
+    assert.equal(mutation.error.code, "DB_FAILOVER_READ_ONLY");
+    assert.equal(requests.length, 1);
     assert.ok(requests.every((url) => url.startsWith("https://secondary.example/")));
   } finally {
     clearDbFailoverState();

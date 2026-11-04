@@ -909,7 +909,7 @@ export function DatabaseBackendSwitcher({
             <strong>
               Сработала автоматическая защита от падения сервера БД!
             </strong>{" "}
-            Причина: {config.failover.lastError || "нет ответа"}. Текущее записанное состояние: {" "}
+            Автоматически выбранный резерв доступен только для чтения. Перед записью проверьте его актуальность и явно выберите его рабочей базой. Причина: {config.failover.lastError || "нет ответа"}. Текущее записанное состояние: {" "}
             <b>
               {config.failover.activeFallbackBackend === "local"
                 ? "старый серверный JSON (только чтение; автоматический переход на него отключён)"
@@ -1251,7 +1251,7 @@ export function DatabaseBackendSwitcher({
               <input
                 type="text"
                 className="admin-input"
-                placeholder="Напр. Supabase Cloud (Основной)"
+                placeholder="Напр. Supabase Beget (Основной)"
                 value={formLabel}
                 onChange={(e) => setFormLabel(e.target.value)}
               />

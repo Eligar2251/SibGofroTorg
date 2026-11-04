@@ -6,5 +6,9 @@ export async function register() {
   ) {
     const { ensureFullBackupSchedulerStarted } = await import("./lib/full-backup");
     ensureFullBackupSchedulerStarted();
+    if (process.env.SGT_PC_LOCAL_SERVER === "1") {
+      const { ensurePcArchiveSchedulerStarted } = await import("./lib/pc-archive-scheduler");
+      ensurePcArchiveSchedulerStarted();
+    }
   }
 }

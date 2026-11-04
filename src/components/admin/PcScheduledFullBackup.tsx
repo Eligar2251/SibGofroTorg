@@ -64,12 +64,12 @@ export function PcScheduledFullBackupPanel({ username }: { username: string }) {
     </div>
     <div style={{ fontSize: 12 }}>Папка: {config.folderName || "не выбрана"}{config.computerId ? ` / pc-${config.computerId}` : ""}. Настройки хранятся для вашей учётной записи в этом профиле браузера.</div>
     <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-      {(["primary", "secondary"] as const).map(source => <label key={source}><input type="checkbox" checked={config.sources[source]} onChange={e => set({ sources: { ...config.sources, [source]: e.target.checked } })} /> {source === "primary" ? "Supabase Cloud" : "Supabase VPS"}</label>)}
+      {(["primary", "secondary"] as const).map(source => <label key={source}><input type="checkbox" checked={config.sources[source]} onChange={e => set({ sources: { ...config.sources, [source]: e.target.checked } })} /> {source === "primary" ? "Supabase #1" : "Supabase #2"}</label>)}
       <label><input type="checkbox" checked={config.enabled} disabled={!config.folderName || !config.computerId} onChange={e => set({ enabled: e.target.checked })} /> Включить расписание на этом ПК</label>
       <label><input type="checkbox" checked={config.liveEnabled} disabled={!config.folderName || !config.computerId} onChange={e => { if (e.target.checked && !window.confirm("Будет создан и обновляться файл sgt-live-current.json в отдельной папке этого ПК для каждого выбранного Supabase. Это резервная копия, не рабочая JSON-БД. Продолжить?")) return; set({ liveEnabled: e.target.checked }); }} /> Автообновление текущей копии на этом ПК</label>
     </div>
     <div style={{ fontSize: 12 }}>Последний архив: {status.last || "ещё нет"}. Если время пропущено более чем на 10 минут, автоматический архив за него не создаётся.</div>
-    {(["primary", "secondary"] as const).filter(source => config.sources[source]).map(source => <div key={source} style={{ fontSize: 12 }}>{source === "primary" ? "Supabase Cloud" : "Supabase VPS"}: {status.live?.[source]?.error || (status.live?.[source]?.last ? `текущий файл обновлён ${new Date(status.live[source]!.last!).toLocaleString("ru-RU")}` : "текущий файл ещё не обновлялся")}</div>)}
+    {(["primary", "secondary"] as const).filter(source => config.sources[source]).map(source => <div key={source} style={{ fontSize: 12 }}>{source === "primary" ? "Supabase #1" : "Supabase #2"}: {status.live?.[source]?.error || (status.live?.[source]?.last ? `текущий файл обновлён ${new Date(status.live[source]!.last!).toLocaleString("ru-RU")}` : "текущий файл ещё не обновлялся")}</div>)}
     {status.error && <div className="admin-error" role="alert">{status.error}</div>}
     {message && <div role="status" style={{ fontSize: 12 }}>{message}</div>}
   </section>;
