@@ -108,6 +108,7 @@ const ORDERED_MIGRATIONS = [
   "migration_rls_users_orders.sql",
   "migration_fix_die_calc_view_security_invoker.sql",
   "migration_complete_app_backup.sql",
+  "migration_pc_incremental_backup.sql",
   "migration_realtime_admin.sql",
 ];
 
@@ -353,7 +354,7 @@ fs.writeFileSync(OUTPUT_PATH, finalSql, "utf8");
 const createdTables = new Set(
   [
     ...finalSql.matchAll(
-      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z0-9_]+)/gi
+      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?([a-z0-9_]+)\s*\(/gi
     ),
   ].map((m) => m[1].toLowerCase())
 );

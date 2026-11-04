@@ -167,6 +167,10 @@ BEGIN
       END IF;
     END LOOP;
   END LOOP;
+  -- Notify browser-side copies atomically when the optional incremental migration is installed.
+  IF to_regprocedure('public.sgt_pc_backup_mark_reset()') IS NOT NULL THEN
+    EXECUTE 'SELECT public.sgt_pc_backup_mark_reset()';
+  END IF;
   RETURN jsonb_build_object('tables', cardinality(names), 'rows', total);
 END;
 $$;

@@ -3,7 +3,7 @@
  * browser. A true common ancestor is required. No database is modified.
  * Concurrent changes in the same table or sequence stop the merge.
  */
-type Backup = {
+export type PublicBackup = {
   app: string;
   backupFormat: string;
   version: number;
@@ -14,7 +14,7 @@ type Backup = {
   sequences: Record<string, Record<string, unknown>>;
 };
 
-function stable(value: unknown): string {
+export function stable(value: unknown): string {
   if (typeof value === "number" && (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER)) throw new Error("Недопустимое или слишком большое число в файле; используйте штатный бэкап PostgreSQL.");
   if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
@@ -22,7 +22,7 @@ function stable(value: unknown): string {
   throw new Error("Некорректное значение в JSON-бэкапе.");
 }
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
-function validate(value: unknown): Backup {
+export function validatePublicBackup(value: unknown): PublicBackup {
   if (!object(value) || value.app !== "SibGofroTorg" || value.backupFormat !== "sgt-public-v1" || value.version !== 1 ||
       !object(value.tables) || !object(value.columns) || !object(value.sequences)) throw new Error("Для объединения нужны три полных файла формата sgt-public-v1.");
   const names = Object.keys(value.tables).sort();
@@ -41,7 +41,7 @@ function validate(value: unknown): Backup {
     total += rows.length;
   }
   if (value.totalRows !== total) throw new Error("Количество строк в файле не совпадает с содержимым.");
-  return value as Backup;
+  return value as PublicBackup;
 }
 function tableContents(rows: Record<string, unknown>[]): string {
   // A PostgreSQL aggregate has no promised row order. Sorting the serialized
@@ -55,13 +55,13 @@ function changedValue(base: unknown, left: unknown, right: unknown): { value?: u
   if (a === c) return { value: left, conflict: false };
   return { conflict: true };
 }
-export function mergePublicSnapshots(baseInput: unknown, leftInput: unknown, rightInput: unknown): Backup {
-  const base = validate(baseInput), left = validate(leftInput), right = validate(rightInput);
+export function mergePublicSnapshots(baseInput: unknown, leftInput: unknown, rightInput: unknown): PublicBackup {
+  const base = validatePublicBackup(baseInput), left = validatePublicBackup(leftInput), right = validatePublicBackup(rightInput);
   if (stable(base.columns) !== stable(left.columns) || stable(base.columns) !== stable(right.columns)) throw new Error("Схемы файлов отличаются. Объединение остановлено.");
   const names = Object.keys(base.tables).sort();
   if (stable(names) !== stable(Object.keys(left.tables).sort()) || stable(names) !== stable(Object.keys(right.tables).sort())) throw new Error("Списки таблиц отличаются. Объединение остановлено.");
-  const tables: Backup["tables"] = Object.create(null);
-  const sequences: Backup["sequences"] = Object.create(null);
+  const tables: PublicBackup["tables"] = Object.create(null);
+  const sequences: PublicBackup["sequences"] = Object.create(null);
   const conflicts: string[] = [];
   for (const name of names) {
     const a = tableContents(base.tables[name]), b = tableContents(left.tables[name]), c = tableContents(right.tables[name]);

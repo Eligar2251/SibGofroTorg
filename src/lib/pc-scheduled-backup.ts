@@ -1,31 +1,31 @@
 // Scheduled browser backups are separate from the server's local JSON database.
 // Opt in per browser profile. Files from different profiles never share a path.
 export type PcSource = "primary" | "secondary";
-export type PcScheduleSettings = { enabled: boolean; sources: Record<PcSource, boolean>; folderName: string; computerId: string };
+export type PcScheduleSettings = { enabled: boolean; liveEnabled: boolean; sources: Record<PcSource, boolean>; folderName: string; computerId: string };
 const SETTINGS = "sgt-pc-full-schedule-v1:";
 const STATUS = "sgt-pc-full-schedule-status-v1:";
 const EVENT = "sgt:pc-full-schedule";
 const STORE = "handles";
 const DB = "sgt-pc-full-schedule";
 export const PC_SCHEDULE_EVENT = EVENT;
-const empty: PcScheduleSettings = { enabled: false, sources: { primary: true, secondary: false }, folderName: "", computerId: "" };
+const empty: PcScheduleSettings = { enabled: false, liveEnabled: false, sources: { primary: true, secondary: false }, folderName: "", computerId: "" };
 export function getPcScheduleSettings(username: string): PcScheduleSettings {
   try {
     const stored = localStorage.getItem(SETTINGS + username);
     if (!stored) return structuredClone(empty);
     const x = JSON.parse(stored);
-    return { enabled: x.enabled === true, sources: { primary: x.sources?.primary === true, secondary: x.sources?.secondary === true }, folderName: typeof x.folderName === "string" ? x.folderName : "", computerId: typeof x.computerId === "string" && /^[a-f0-9-]{36}$/.test(x.computerId) ? x.computerId : "" };
+    return { enabled: x.enabled === true, liveEnabled: x.liveEnabled === true, sources: { primary: x.sources?.primary === true, secondary: x.sources?.secondary === true }, folderName: typeof x.folderName === "string" ? x.folderName : "", computerId: typeof x.computerId === "string" && /^[a-f0-9-]{36}$/.test(x.computerId) ? x.computerId : "" };
   } catch { return structuredClone(empty); }
 }
 export function savePcScheduleSettings(username: string, value: PcScheduleSettings) {
   localStorage.setItem(SETTINGS + username, JSON.stringify(value));
   window.dispatchEvent(new Event(EVENT));
 }
-export type PcScheduleStatus = { last?: string; error?: string; completed?: Record<string, string> };
+export type PcScheduleStatus = { last?: string; error?: string; completed?: Record<string, string>; live?: Partial<Record<PcSource, { last?: string; error?: string }>> };
 export function getPcScheduleStatus(username: string): PcScheduleStatus {
   try { return JSON.parse(localStorage.getItem(STATUS + username) || "{}"); } catch { return {}; }
 }
-function saveStatus(username: string, status: PcScheduleStatus) { localStorage.setItem(STATUS + username, JSON.stringify(status)); window.dispatchEvent(new Event(EVENT)); }
+export function savePcScheduleStatus(username: string, status: PcScheduleStatus) { localStorage.setItem(STATUS + username, JSON.stringify(status)); window.dispatchEvent(new Event(EVENT)); }
 function handlesDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB, 1);
@@ -46,15 +46,26 @@ async function directory(username: string, mode: "get" | "put", handle?: unknown
     });
   } finally { db.close(); }
 }
+
+export async function getPcScheduleDirectory(username: string): Promise<any> { return directory(username, "get"); }
 export async function choosePcScheduleDirectory(username: string): Promise<PcScheduleSettings> {
   const picker = (window as any).showDirectoryPicker;
   if (!picker || !navigator.locks) throw new Error("Нужен Chrome или Edge с поддержкой доступа к папкам и блокировки вкладок; используйте HTTPS.");
   const handle = await picker({ id: "sgt-full-scheduled", mode: "readwrite" });
-  await directory(username, "put", handle);
-  const current = getPcScheduleSettings(username);
-  const settings = { ...current, folderName: handle.name, computerId: current.computerId || crypto.randomUUID() };
-  savePcScheduleSettings(username, settings);
-  return settings;
+  const update = async () => {
+    const current = getPcScheduleSettings(username);
+    const previous = await directory(username, "get");
+    let sameFolder = false;
+    try { sameFolder = !!previous && typeof handle.isSameEntry === "function" && await handle.isSameEntry(previous); } catch { /* treat uncertain handle as a different folder */ }
+    await directory(username, "put", handle);
+    const computerId = sameFolder && current.computerId ? current.computerId : crypto.randomUUID();
+    const settings = { ...current, folderName: handle.name, computerId };
+    if (!sameFolder) savePcScheduleStatus(username, {});
+    savePcScheduleSettings(username, settings);
+    return settings;
+  };
+  if (!navigator.locks) return update();
+  return navigator.locks.request(`sgt-pc-scheduled-full-backup:${username}`, {}, update);
 }
 export async function confirmPcSchedulePermission(username: string): Promise<boolean> {
   const handle = await directory(username, "get");
@@ -69,7 +80,7 @@ export function novosibirskSlot(now: Date): { date: string; time: "18-00" | "23-
   if ((hour !== 18 && hour !== 23) || minute > 10) return null;
   return { date: `${part("year")}-${part("month")}-${part("day")}`, time: hour === 18 ? "18-00" : "23-00" };
 }
-async function writeFile(dir: any, name: string, text: string) {
+export async function writePcFile(dir: any, name: string, text: string) {
   const file = await dir.getFileHandle(name, { create: true });
   const stream = await file.createWritable();
   try { await stream.write(text); await stream.close(); }
@@ -87,7 +98,7 @@ export async function runPcScheduledBackups(username: string, now = new Date()):
     if (!settings.enabled || !settings.computerId) return;
     const handle = await directory(username, "get");
     if (!handle || await handle.queryPermission({ mode: "readwrite" }) !== "granted") {
-      saveStatus(username, { ...getPcScheduleStatus(username), error: "Нет доступа к папке: подтвердите разрешение в настройках бэкапа." }); return;
+      savePcScheduleStatus(username, { ...getPcScheduleStatus(username), error: "Нет доступа к папке: подтвердите разрешение в настройках бэкапа." }); return;
     }
     const errors: string[] = [];
     for (const source of ["primary", "secondary"] as const) {
@@ -106,14 +117,14 @@ export async function runPcScheduledBackups(username: string, now = new Date()):
         const sourceDir = await computer.getDirectoryHandle(source, { create: true });
         const archives = await sourceDir.getDirectoryHandle("scheduled", { create: true });
         const filename = `sgt-full-${slot.date}-${slot.time}.json`;
-        await writeFile(archives, filename, text);
+        await writePcFile(archives, filename, text);
         const current = getPcScheduleStatus(username);
-        saveStatus(username, { ...current, last: `${source}: ${slot.date} ${slot.time.replace("-", ":")} (Новосибирск), ${new Date().toLocaleString("ru-RU")}`, completed: { ...current.completed, [source]: key } });
+        savePcScheduleStatus(username, { ...current, last: `${source}: ${slot.date} ${slot.time.replace("-", ":")} (Новосибирск), ${new Date().toLocaleString("ru-RU")}`, completed: { ...current.completed, [source]: key } });
       } catch (e) {
         errors.push(`${source}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    saveStatus(username, { ...getPcScheduleStatus(username), error: errors.join("; ") });
+    savePcScheduleStatus(username, { ...getPcScheduleStatus(username), error: errors.join("; ") });
   });
 }
 
@@ -140,12 +151,12 @@ export async function savePcCurrentBackups(username: string): Promise<string[]> 
         if (!current.sources[source] || current.computerId !== settings.computerId) throw new Error("Настройки изменились; повторите сохранение.");
         const computer = await root.getDirectoryHandle(`pc-${settings.computerId}`, { create: true });
         const dir = await computer.getDirectoryHandle(source, { create: true });
-        await writeFile(dir, "sgt-full-current.json", text);
+        await writePcFile(dir, "sgt-full-current.json", text);
         messages.push(`${source}: сохранено`);
       } catch (e) { errors.push(`${source}: ${e instanceof Error ? e.message : String(e)}`); }
     }
     const status = getPcScheduleStatus(username);
-    saveStatus(username, { ...status, error: errors.join("; "), ...(messages.length ? { last: `Вручную: ${messages.join(", ")} · ${new Date().toLocaleString("ru-RU")}` } : {}) });
+    savePcScheduleStatus(username, { ...status, error: errors.join("; "), ...(messages.length ? { last: `Вручную: ${messages.join(", ")} · ${new Date().toLocaleString("ru-RU")}` } : {}) });
     return [...messages, ...errors];
   });
 }
