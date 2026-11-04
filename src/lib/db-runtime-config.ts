@@ -93,8 +93,8 @@ function defaultConfig(): DbRuntimeConfig {
   return {
     activeBackend: "primary",
     autoFailover: true,
-    mirrorWritesToLocal: true,
-    autoBackupEnabled: true,
+    mirrorWritesToLocal: false,
+    autoBackupEnabled: false,
     autoBackupIntervalSec: clampIntervalSec(
       process.env.SGT_AUTO_BACKUP_INTERVAL_SEC
     ),

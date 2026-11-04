@@ -131,10 +131,10 @@ export async function POST(
             {
               error: "Основная база данных не отвечает",
               code: "db_unavailable",
-              allowLocalFileLogin: true,
+              allowLocalFileLogin: false,
               detail: primaryProbe.error || failover.lastError,
               hint:
-                "Основная БД недоступна. Выберите локальный файл БД (.json) ниже, чтобы войти в админ-панель без пароля и продолжить работу автономно.",
+                "Основная БД недоступна. Проверьте подключение Supabase.",
             },
             503, "database"
           );

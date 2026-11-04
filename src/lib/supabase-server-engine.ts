@@ -19,10 +19,8 @@ import {
   type DbBackendMode,
 } from "./db-runtime-config";
 import {
-  cacheRowsIntoLocalDb,
   getLocalDbSummary,
   getLocalJsonDbClient,
-  replayPendingMutationsToRemoteSupabase,
   type LocalJsonSupabaseClient,
 } from "./local-json-db";
 
@@ -61,6 +59,15 @@ function fetchWithTimeout(
       : controller.signal;
     return fetch(input, { ...init, signal }).finally(() => clearTimeout(timer));
   };
+}
+
+
+function localServerUnavailable() {
+  return { data: null, error: { code: "LOCAL_SERVER_DISABLED", message: "Серверная JSON-БД переведена в режим чтения для сохранения старых данных; рабочая БД на ПК ещё не подключена." } };
+}
+
+function remoteUnavailable(message: string) {
+  return { data: null, error: { code: "DB_UNAVAILABLE", message } };
 }
 
 const clientCache = new Map<string, SupabaseClient>();
@@ -244,68 +251,19 @@ class SmartQueryProxy implements PromiseLike<any> {
     return q;
   }
 
-  private mirrorToLocal(remoteResult: any): void {
-    try {
-      const localClient = getLocalJsonDbClient();
-
-      if (!this.mutationOp) {
-        if (this.table === "admins" && remoteResult?.data) {
-          const rows = Array.isArray(remoteResult.data)
-            ? remoteResult.data
-            : [remoteResult.data];
-          cacheRowsIntoLocalDb("admins", rows);
-        }
-        return;
-      }
-
-      if (this.mutationOp === "insert" || this.mutationOp === "upsert") {
-        const payloadArr = Array.isArray(this.mutationPayload)
-          ? this.mutationPayload
-          : this.mutationPayload
-            ? [this.mutationPayload]
-            : [];
-        const returnedArr = Array.isArray(remoteResult?.data)
-          ? remoteResult.data
-          : remoteResult?.data && typeof remoteResult.data === "object"
-            ? [remoteResult.data]
-            : [];
-
-        if (returnedArr.length > 0) {
-          const merged = returnedArr.map((retRow: any, idx: number) => ({
-            ...(payloadArr[idx] || {}),
-            ...retRow,
-          }));
-          cacheRowsIntoLocalDb(this.table, merged);
-          return;
-        }
-      }
-
-      const localQuery = this.replayOn(localClient, false);
-      if (localQuery && typeof localQuery.executeSync === "function") {
-        if (typeof localQuery.markMirrorReplay === "function") {
-          localQuery.markMirrorReplay();
-        }
-        localQuery.executeSync();
-      }
-    } catch {
-      /* ignore mirror errors */
-    }
-  }
-
   private async execute(): Promise<any> {
     const cfg = getDbRuntimeConfig();
 
     if (cfg.activeBackend === "local") {
-      return await this.replayOn(getLocalJsonDbClient(), false);
+      if (this.mutationOp) return localServerUnavailable();
+      return await this.replayOn(getLocalJsonDbClient(), false); // legacy recovery, read-only
     }
 
     // Если основная БД недавно упала — в течение 20 сек мгновенно направляем
     // запросы в резерв (без задержек и зависаний страниц админки!)
     if (cfg.autoFailover) {
       const fastFallback = getActiveCircuitFallback();
-      if (fastFallback === "local") {
-        return await this.replayOn(getLocalJsonDbClient(), false);
-      }
+      if (fastFallback === "local") return localServerUnavailable();
       if (fastFallback === "primary" || fastFallback === "secondary") {
         const fbCreds = resolveSupabaseCredentials(fastFallback);
         if (fbCreds.configured) {
@@ -314,19 +272,13 @@ class SmartQueryProxy implements PromiseLike<any> {
               fbCreds.url,
               fbCreds.serviceRoleKey
             );
-            const fbRes = await this.replayOn(fbClient, cfg.mirrorWritesToLocal);
-            if (!fbRes?.error) {
-              if (!fbRes?.error && cfg.mirrorWritesToLocal) {
-                this.mirrorToLocal(fbRes);
-              }
-              return fbRes;
-            }
+            const fbRes = await this.replayOn(fbClient, false);
+            if (!fbRes?.error) return fbRes;
           } catch {
             /* fallback to local */
           }
         }
-        recordDbFailover("local", "Резервный сервер БД недоступен");
-        return await this.replayOn(getLocalJsonDbClient(), false);
+        return remoteUnavailable("Резервный Supabase недоступен; запись в серверный JSON отключена.");
       }
     }
 
@@ -340,25 +292,13 @@ class SmartQueryProxy implements PromiseLike<any> {
           creds.serviceRoleKey
         );
 
-        // Если после падения основной сервер снова ответил, но в локалке накопились
-        // офлайн-правки — сначала досылаем их в Supabase, чтобы ничего не пропало!
-        if (
-          getDbFailoverState().activeFallbackBackend === "local" &&
-          getLocalDbSummary().pendingMutationsCount > 0
-        ) {
-          await replayPendingMutationsToRemoteSupabase(client);
-        }
-
-        const res = await this.replayOn(client, cfg.mirrorWritesToLocal);
+        const res = await this.replayOn(client, false);
         if (res?.error && isRemoteServerFailure(res.error)) {
           throw new Error(res.error.message || "Supabase server unavailable");
         }
         if (!res?.error) {
           if (getDbFailoverState().activeFallbackBackend) {
             clearDbFailoverState();
-          }
-          if (cfg.mirrorWritesToLocal || this.table === "admins") {
-            this.mirrorToLocal(res);
           }
         }
         return res;
@@ -386,13 +326,10 @@ class SmartQueryProxy implements PromiseLike<any> {
             );
             const altRes = await this.replayOn(
               altClient,
-              cfg.mirrorWritesToLocal
+              false
             );
             if (!altRes?.error) {
               recordDbFailover(altTarget, errMsg);
-              if (!altRes?.error && cfg.mirrorWritesToLocal) {
-                this.mirrorToLocal(altRes);
-              }
               return altRes;
             }
           } catch {
@@ -400,8 +337,7 @@ class SmartQueryProxy implements PromiseLike<any> {
           }
         }
 
-        recordDbFailover("local", errMsg);
-        return await this.replayOn(getLocalJsonDbClient(), false);
+        return remoteUnavailable(errMsg);
       }
     }
 
@@ -415,7 +351,7 @@ class SmartQueryProxy implements PromiseLike<any> {
             altCreds.url,
             altCreds.serviceRoleKey
           );
-          const altRes = await this.replayOn(altClient, cfg.mirrorWritesToLocal);
+          const altRes = await this.replayOn(altClient, false);
           if (!altRes?.error) {
             recordDbFailover(
               altTarget,
@@ -427,11 +363,7 @@ class SmartQueryProxy implements PromiseLike<any> {
           /* fallback to local */
         }
       }
-      recordDbFailover(
-        "local",
-        `${creds.label}: не заданы параметры подключения`
-      );
-      return await this.replayOn(getLocalJsonDbClient(), false);
+      return remoteUnavailable(`${creds.label}: не заданы параметры подключения`);
     }
 
     return {
@@ -459,12 +391,12 @@ class SmartAdminSupabaseClient {
   async rpc(fnName: string, args?: Record<string, any>): Promise<any> {
     const cfg = getDbRuntimeConfig();
     if (cfg.activeBackend === "local") {
-      return getLocalJsonDbClient().rpc(fnName, args);
+      return localServerUnavailable();
     }
 
     if (cfg.autoFailover) {
       const fallback = getActiveCircuitFallback();
-      if (fallback === "local") return getLocalJsonDbClient().rpc(fnName, args);
+      if (fallback === "local") return localServerUnavailable();
       if (fallback === "primary" || fallback === "secondary") {
         const fb = resolveSupabaseCredentials(fallback);
         if (fb.configured) {
@@ -473,8 +405,7 @@ class SmartAdminSupabaseClient {
             if (!res?.error) return res;
           } catch { /* fallback to local */ }
         }
-        recordDbFailover("local", "Резервный сервер БД недоступен");
-        return getLocalJsonDbClient().rpc(fnName, args);
+        return remoteUnavailable("Резервный Supabase недоступен; запись в серверный JSON отключена.");
       }
     }
 
@@ -490,17 +421,6 @@ class SmartAdminSupabaseClient {
         const res = await client.rpc(fnName, args);
         if (res?.error && isRemoteServerFailure(res.error)) {
           throw new Error(res.error.message || "RPC unavailable");
-        }
-        if (
-          !res?.error &&
-          cfg.mirrorWritesToLocal &&
-          fnName === "fn_next_counter" &&
-          args?.p_key &&
-          Number.isFinite(Number(res.data))
-        ) {
-          cacheRowsIntoLocalDb("doc_counters", [
-            { key: String(args.p_key), value: Number(res.data) },
-          ]);
         }
         return res;
       } catch (err: any) {
@@ -531,17 +451,12 @@ class SmartAdminSupabaseClient {
             /* fallback to local */
           }
         }
-        recordDbFailover("local", err?.message || String(err));
-        return getLocalJsonDbClient().rpc(fnName, args);
+        return remoteUnavailable(err?.message || String(err));
       }
     }
 
     if (cfg.autoFailover) {
-      recordDbFailover(
-        "local",
-        `${creds.label}: не заданы параметры подключения`
-      );
-      return getLocalJsonDbClient().rpc(fnName, args);
+      return remoteUnavailable(`${creds.label}: не заданы параметры подключения`);
     }
 
     return {
@@ -563,7 +478,7 @@ export function getAdminDb(): SupabaseClient {
 export function getPublicDb(): SupabaseClient {
   const cfg = getDbRuntimeConfig();
   if (cfg.activeBackend === "local") {
-    return getLocalJsonDbClient() as unknown as SupabaseClient;
+    return smartAdminClient as unknown as SupabaseClient;
   }
   if (cfg.autoFailover) {
     return smartAdminClient as unknown as SupabaseClient;
@@ -575,7 +490,7 @@ export function getPublicDb(): SupabaseClient {
       creds.anonKey || creds.serviceRoleKey
     );
   }
-  return getLocalJsonDbClient() as unknown as SupabaseClient;
+  return smartAdminClient as unknown as SupabaseClient;
 }
 
 export function getSupabaseUrl_pub(): string {

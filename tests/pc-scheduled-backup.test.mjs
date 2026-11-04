@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { novosibirskSlot, choosePcScheduleDirectory, getPcScheduleSettings, getPcScheduleStatus, runPcScheduledBackups, savePcScheduleSettings } from '../src/lib/pc-scheduled-backup.ts';
+import { novosibirskSlot, choosePcScheduleDirectory, getPcScheduleSettings, getPcScheduleStatus, runPcScheduledBackups, savePcCurrentBackups, savePcScheduleSettings } from '../src/lib/pc-scheduled-backup.ts';
 
 test('schedule uses Novosibirsk civil time, not browser timezone', () => {
   assert.deepEqual(novosibirskSlot(new Date('2026-11-04T11:00:00Z')), { date:'2026-11-04', time:'18-00' });
@@ -49,9 +49,21 @@ test('independent accounts and sources, retry failures without recording false s
     assert.ok([...files.keys()].every(x=>x.includes(`pc-${settings.computerId}`) && x.includes('/scheduled/')));
     await runPcScheduledBackups('owner',when);
     assert.equal(fetches.length,3);
+    const manual = await savePcCurrentBackups('owner');
+    assert.deepEqual(manual, ['primary: сохранено', 'secondary: сохранено']);
+    assert.equal(files.size,4);
+    const currentKey = [...files.keys()].find(x => x.endsWith('/primary/sgt-full-current.json'));
+    const currentFile = files.get(currentKey);
+    const secondaryKey = [...files.keys()].find(x => x.endsWith('/secondary/sgt-full-current.json'));
+    const secondaryFile = files.get(secondaryKey);
+    secondaryFails = true;
+    const result = await savePcCurrentBackups('owner');
+    assert.match(result[1], /secondary: unavailable/);
+    assert.equal(files.get(currentKey), currentFile);
+    assert.equal(files.get(secondaryKey), secondaryFile);
     permitted=false;
     await runPcScheduledBackups('owner',new Date('2026-11-04T16:00:00Z'));
     assert.match(getPcScheduleStatus('owner').error, /Нет доступа/);
-    assert.equal(files.size,2);
+    assert.equal(files.size,4);
   } finally { for (const [key, desc] of Object.entries(old)) desc ? Object.defineProperty(globalThis,key,desc) : delete globalThis[key]; }
 });

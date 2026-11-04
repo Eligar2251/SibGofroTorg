@@ -10,7 +10,7 @@ process.env.SGT_DATA_DIR = temp;
 const { validateFullSnapshot, captureFullSnapshot, restoreFullSnapshot, runFullReplication, fullBackupStatus } = await import('../src/lib/full-backup.ts');
 const { saveFullBackupSettings, readFullBackupSettings } = await import('../src/lib/full-backup-settings.ts');
 const { saveDbRuntimeConfig } = await import('../src/lib/db-runtime-config.ts');
-const { getLocalJsonDbClient, getLocalDbSummary } = await import('../src/lib/local-json-db.ts');
+const { getLocalJsonDbClient, getLocalDbSummary, importLocalDbSnapshot } = await import('../src/lib/local-json-db.ts');
 test.after(() => fs.rmSync(temp, { recursive: true, force: true }));
 
 test('Postgres snapshot discovers tables and restore is atomic, preserves triggers and protects permissions', async () => {
@@ -61,29 +61,26 @@ test('Postgres snapshot discovers tables and restore is atomic, preserves trigge
   } finally { await db.close(); }
 });
 
-test('local full snapshot refuses missing schemas and protects unsynced writes', async () => {
+test('server local snapshot and restore are disabled while old data is retained', async () => {
   assert.equal(readFullBackupSettings().enabled, false);
   saveDbRuntimeConfig({ activeBackend: 'local', autoBackupEnabled: false });
-  const snapshot = { app:'SibGofroTorg', backupFormat:'sgt-public-v1', version:1, exportedAt:'2026-01-01T00:00:00Z', totalRows:2,
-    tables:{ products:[{ id:'p1', name:'box', updated_at:'2026-01-01T00:00:00Z', stock_qty:0, in_stock:false }], app:[{id:'reserved-name'}] },
-    columns:{ products:[{name:'id',type:'text',generated:'',identity:''},{name:'name',type:'text',generated:'',identity:''},{name:'updated_at',type:'timestamp with time zone',generated:'',identity:''},{name:'stock_qty',type:'numeric',generated:'',identity:''},{name:'in_stock',type:'boolean',generated:'',identity:''}], app:[{name:'id',type:'text',generated:'',identity:''}] },
-    sequences:{products:{},app:{}} };
-  await assert.rejects(captureFullSnapshot('local'), /сначала создайте/i);
-  await restoreFullSnapshot(snapshot, 'local', true);
-  assert.equal((await captureFullSnapshot('local')).totalRows, 2);
-  assert.equal((await captureFullSnapshot('local')).tables.app[0].id, 'reserved-name');
-  const db = getLocalJsonDbClient();
-  await db.from('products').update({name:'new'}).eq('id','p1');
+  const snapshot = { app:'SibGofroTorg', backupFormat:'sgt-public-v1', version:1, exportedAt:'2026-01-01T00:00:00Z', totalRows:1,
+    tables:{ products:[{id:'p1',name:'box'}] },
+    columns:{ products:[{name:'id',type:'text',generated:'',identity:''},{name:'name',type:'text',generated:'',identity:''}] },
+    sequences:{products:{}} };
+  importLocalDbSnapshot(snapshot, 'replace');
+  const local = getLocalJsonDbClient();
+  await local.from('products').update({name:'old data'}).eq('id','p1');
+  const prior = fs.readFileSync(path.join(temp, 'local-db.json'), 'utf8');
+  await assert.rejects(captureFullSnapshot('local'), /отключена/);
+  await assert.rejects(restoreFullSnapshot(snapshot, 'local', true), /отключено/);
+  saveFullBackupSettings({ enabled:true, intervalSec:150, targets:{local:true,primary:false,secondary:false} });
+  assert.equal(readFullBackupSettings().targets.local, false);
+  await assert.rejects(runFullReplication(), /Серверная JSON-БД не используется/);
+  assert.equal(fs.readFileSync(path.join(temp, 'local-db.json'), 'utf8'), prior);
   assert.ok(getLocalDbSummary().pendingMutationsCount > 0);
-  await assert.rejects(restoreFullSnapshot(snapshot, 'local'), /неотправленные изменения/);
-  assert.equal((await captureFullSnapshot('local')).tables.products[0].name, 'new');
   const bad = structuredClone(snapshot); delete bad.tables.products[0].name;
   assert.throws(() => validateFullSnapshot(bad), /неполные строки/);
-  saveFullBackupSettings({ enabled:true, intervalSec:150, targets:{local:false,primary:false,secondary:false} });
-  const status = await runFullReplication();
-  assert.equal(status.source, 'local');
-  assert.equal(status.targets.primary.state, 'paused');
-  assert.equal(fullBackupStatus().running, false);
 });
 
 test('snapshot replication copies inserts and deletions and protects concurrently modified local data', async () => {
@@ -120,22 +117,21 @@ test('snapshot replication copies inserts and deletions and protects concurrentl
     };
     // Reset the old local pending queue explicitly for an isolated replication test.
     const initial = (await primary.query('select public.sgt_export_app_data() as v')).rows[0].v;
-    await restoreFullSnapshot(initial, 'local', true);
+    importLocalDbSnapshot(initial, 'replace');
     saveDbRuntimeConfig({ activeBackend:'primary', autoFailover:true });
     saveFullBackupSettings({ enabled:true, intervalSec:150, targets:{ local:true, primary:false, secondary:true } });
     let status = await runFullReplication();
-    assert.equal(status.targets.local.state, 'ok');
+    assert.equal(status.targets.local.state, 'paused');
     assert.equal(status.targets.secondary.state, 'ok');
     assert.deepEqual((await secondary.query('select id from products order by id')).rows.map(r=>r.id), ['remote-1','remote-2']);
     await primary.exec("delete from products where id='remote-2'; update products set name='Changed' where id='remote-1'");
     status = await runFullReplication();
     assert.equal(status.targets.secondary.state, 'ok');
     assert.deepEqual((await secondary.query('select id,name from products')).rows, [{ id:'remote-1', name:'Changed' }]);
-    assert.equal((await getLocalJsonDbClient().from('products').select('*')).data.length, 1);
+    assert.equal((await getLocalJsonDbClient().from('products').select('*')).data.length, 2);
     concurrent = true;
     status = await runFullReplication();
-    assert.equal(status.targets.local.state, 'error');
-    assert.match(status.targets.local.message, /изменилась/);
+    assert.equal(status.targets.local.state, 'paused');
     assert.equal((await getLocalJsonDbClient().from('products').select('*').eq('id','remote-1').single()).data.name, 'offline change');
     assert.ok(getLocalDbSummary().pendingMutationsCount > 0);
   } finally {

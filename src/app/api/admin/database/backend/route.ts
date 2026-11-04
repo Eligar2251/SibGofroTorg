@@ -10,8 +10,7 @@
 // Доступ: только владелец (owner) и администратор (admin).
 // =========================================================
 
-import { beginLegacyDbSync, endLegacyDbSync, invalidateFullReplicaReadiness, isFullBackupRunning, isFullReplicaReady } from "@/lib/full-backup";
-import { readFullBackupSettings } from "@/lib/full-backup-settings";
+import { invalidateFullReplicaReadiness, isFullBackupRunning, isFullReplicaReady } from "@/lib/full-backup";
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermission, requireAdminApi } from "@/lib/auth";
 import { canAccessDatabase } from "@/lib/admin-rbac";
@@ -24,24 +23,15 @@ import {
   toPublicDbConfigView,
   type DbBackendMode,
 } from "@/lib/db-runtime-config";
-import {
-  getLocalDbSummary,
-  pushLocalDbToRemoteSupabase,
-  replayPendingMutationsToRemoteSupabase,
-  syncBidirectionalSupabaseAndLocal,
-  syncRemoteSupabaseToLocal,
-} from "@/lib/local-json-db";
-import { getMaskedSecretAccessCodeInfo } from "@/lib/local-db-secret";
+import { getLocalDbSummary } from "@/lib/local-json-db";
 import {
   ensureAutoBackupSchedulerStarted,
   getAutoBackupStatus,
   restartAutoBackupScheduler,
-  restoreDiskBackupSnapshot,
   runServerAutoBackupNow,
   validateBackupDirectory,
 } from "@/lib/auto-backup-scheduler";
 import {
-  createDirectSupabaseClient,
   probeDatabaseBackend,
 } from "@/lib/supabase";
 import { invalidateDatabaseSchemaCache } from "@/lib/admin-database";
@@ -86,7 +76,6 @@ export async function GET(request: NextRequest) {
     config,
     localSummary,
     autoBackupStatus,
-    secretCodeInfo: getMaskedSecretAccessCodeInfo(),
     ...(probes ? { probes } : {}),
   });
 }
@@ -99,6 +88,9 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     if (isFullBackupRunning()) return NextResponse.json({ error: "Дождитесь завершения полного копирования." }, { status: 409 });
 
+    if (body?.autoBackupEnabled === true || body?.runBackupNow === true || body?.mirrorWritesToLocal === true || body?.customBackupDir !== undefined) {
+      return NextResponse.json({ error: "Серверные резервные копии и зеркалирование отключены. Настройте архивы на ПК." }, { status: 410 });
+    }
     let activeBackend: DbBackendMode | undefined;
     if (body?.activeBackend !== undefined) {
       if (
@@ -111,6 +103,7 @@ export async function PUT(request: NextRequest) {
           { status: 400 }
         );
       }
+      if (body.activeBackend === "local") return NextResponse.json({ error: "Рабочая JSON-БД на ПК ещё не реализована; серверный локальный режим отключён." }, { status: 410 });
       activeBackend = body.activeBackend;
     }
 
@@ -122,7 +115,7 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: "Сначала успешно скопируйте текущую рабочую базу в выбранный резерв. Переключение на неподтверждённую копию остановлено." }, { status: 409 });
       }
       if (activeBackend !== "local" && getLocalDbSummary().pendingMutationsCount > 0) {
-        return NextResponse.json({ error: "В локальной БД есть несинхронизированные изменения. Сначала выполните синхронизацию с нужной базой и проверьте результат." }, { status: 409 });
+        return NextResponse.json({ error: "В старой серверной JSON-БД есть несинхронизированные изменения. Скачайте и сохраните старый файл для ручной проверки; переключение заблокировано." }, { status: 409 });
       }
       const probe = await probeDatabaseBackend(activeBackend);
       if (!probe.reachable) {
@@ -247,19 +240,12 @@ export async function POST(request: NextRequest) {
   const auth = await checkAccess();
   if (auth instanceof NextResponse) return auth;
 
-  let legacyLock = false;
   try {
     const body = await request.json();
     const action = String(body?.action || "").trim();
-    if ((isFullBackupRunning() || readFullBackupSettings().enabled) && ["sync_bidirectional", "sync_to_local", "push_to_remote", "replay_pending", "restore_disk_snapshot"].includes(action)) {
-      return NextResponse.json({ error: "Сначала остановите полное автокопирование и дождитесь завершения операции." }, { status: 409 });
+    if (["run_backup_now", "restore_disk_snapshot", "sync_bidirectional", "sync_to_local", "push_to_remote", "replay_pending"].includes(action)) {
+      return NextResponse.json({ error: "Старые серверные операции с JSON и резервными копиями отключены. Старые файлы не удалены." }, { status: 410 });
     }
-
-    if (["sync_bidirectional", "sync_to_local", "push_to_remote", "replay_pending", "restore_disk_snapshot"].includes(action)) {
-      if (!beginLegacyDbSync()) return NextResponse.json({ error: "Сначала остановите полное автокопирование и дождитесь завершения операции." }, { status: 409 });
-      legacyLock = true;
-    }
-
     if (action === "probe") {
       const [primary, secondary, local] = await Promise.all([
         probeDatabaseBackend("primary"),
@@ -275,269 +261,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (action === "run_backup_now") {
-      const result = await runServerAutoBackupNow({ force: true });
-      if (!result.ok) {
-        return NextResponse.json(
-          {
-            error: result.error || "Ошибка записи резервной копии на диск",
-            autoBackupStatus: getAutoBackupStatus(),
-          },
-          { status: 500 }
-        );
-      }
-      return NextResponse.json({
-        ok: true,
-        result,
-        localSummary: getLocalDbSummary(),
-        autoBackupStatus: getAutoBackupStatus(),
-      });
-    }
-
-    if (action === "restore_disk_snapshot") {
-      const filename = String(body?.filename || "").trim();
-      const mode: "replace" | "merge" =
-        body?.mode === "merge" ? "merge" : "replace";
-      const localSummary = restoreDiskBackupSnapshot(filename, mode);
-
-      invalidateDatabaseSchemaCache();
-      invalidateProductsCache();
-
-      await logActivity({
-        adminName: auth.displayName || auth.username || "Администратор",
-        adminRole: auth.role || "admin",
-        action: "update",
-        entityType: "settings",
-        entityId: "disk-snapshot-restore",
-        entityLabel: `Восстановление БД из снимка диска «${filename}» (${localSummary.totalRows} записей)`,
-      }).catch(() => {});
-
-      return NextResponse.json({
-        ok: true,
-        localSummary,
-        autoBackupStatus: getAutoBackupStatus(),
-      });
-    }
-
-    if (action === "sync_bidirectional") {
-      const cfg = getDbRuntimeConfig();
-      const rawTarget = String(body?.target || "").trim();
-      const remoteTarget: "primary" | "secondary" =
-        rawTarget === "secondary"
-          ? "secondary"
-          : rawTarget === "primary"
-            ? "primary"
-            : cfg.activeBackend === "secondary"
-              ? "secondary"
-              : "primary";
-
-      const creds = resolveSupabaseCredentials(remoteTarget);
-      if (!creds.configured) {
-        return NextResponse.json(
-          {
-            error: `${creds.label}: укажите URL и service_role ключ для двусторонней синхронизации`,
-          },
-          { status: 400 }
-        );
-      }
-
-      const remoteClient = createDirectSupabaseClient(
-        creds.url,
-        creds.serviceRoleKey,
-        25_000
-      );
-      const biResult = await syncBidirectionalSupabaseAndLocal(
-        remoteClient,
-        creds.label
-      );
-
-      // Записываем факт синхронизации в таблицу аудита db_sync_runs (если она создана в Supabase)
-      try {
-        await remoteClient.from("db_sync_runs").insert({
-          direction: "bidirectional",
-          status: biResult.failedTables.length > 0 ? "partial" : "success",
-          target_label: creds.label,
-          synced_tables: biResult.syncedTables,
-          synced_rows: biResult.totalRows,
-          replayed_mutations:
-            biResult.replayedUpserts + biResult.replayedDeletes,
-          local_file_path: biResult.summary.filePath,
-          initiated_by: auth.displayName || auth.username || "Администратор",
-        });
-      } catch {
-        /* ignore if table not yet migrated */
-      }
-
-      await runServerAutoBackupNow({ force: true, skipRemoteSync: true }).catch(
-        () => {}
-      );
-      invalidateDatabaseSchemaCache();
-      invalidateProductsCache();
-
-      // Не создавать новую офлайн-мутацию сразу после очистки очереди.
-      if (getDbRuntimeConfig().activeBackend !== "local" && getDbFailoverState().activeFallbackBackend !== "local") {
-      await logActivity({
-        adminName: auth.displayName || auth.username || "Администратор",
-        adminRole: auth.role || "admin",
-        action: "update",
-        entityType: "settings",
-        entityId: "bidirectional-db-sync",
-        entityLabel: `Двусторонняя синхронизация «${creds.label}» ↔ Локальная БД (отправлено офлайн-правок: ${
-          biResult.replayedUpserts + biResult.replayedDeletes
-        }, принято записей: ${biResult.totalRows})`,
-      }).catch(() => {});
-      }
-
-      return NextResponse.json({
-        ok: true,
-        targetLabel: creds.label,
-        ...biResult,
-        localSummary: biResult.summary,
-        autoBackupStatus: getAutoBackupStatus(),
-      });
-    }
-
-    if (action === "replay_pending") {
-      const cfg = getDbRuntimeConfig();
-      const remoteTarget: "primary" | "secondary" =
-        body?.target === "secondary"
-          ? "secondary"
-          : cfg.activeBackend === "secondary"
-            ? "secondary"
-            : "primary";
-
-      const creds = resolveSupabaseCredentials(remoteTarget);
-      if (!creds.configured) {
-        return NextResponse.json(
-          { error: `${creds.label}: не настроен URL или service_role ключ` },
-          { status: 400 }
-        );
-      }
-      const remoteClient = createDirectSupabaseClient(
-        creds.url,
-        creds.serviceRoleKey,
-        20_000
-      );
-      const replayRes =
-        await replayPendingMutationsToRemoteSupabase(remoteClient);
-
-      return NextResponse.json({
-        ok: true,
-        targetLabel: creds.label,
-        ...replayRes,
-        localSummary: getLocalDbSummary(),
-      });
-    }
-
-    if (action === "sync_to_local") {
-      const cfg = getDbRuntimeConfig();
-      const rawSource = String(body?.source || "").trim();
-      const sourceTarget: "primary" | "secondary" =
-        rawSource === "secondary"
-          ? "secondary"
-          : rawSource === "primary"
-            ? "primary"
-            : cfg.activeBackend === "secondary"
-              ? "secondary"
-              : "primary";
-
-      const creds = resolveSupabaseCredentials(sourceTarget);
-      if (!creds.configured) {
-        return NextResponse.json(
-          {
-            error: `${creds.label}: не заполнены SUPABASE_URL или SUPABASE_SERVICE_ROLE_KEY`,
-          },
-          { status: 400 }
-        );
-      }
-
-      const remoteClient = createDirectSupabaseClient(
-        creds.url,
-        creds.serviceRoleKey,
-        20_000
-      );
-      const syncResult = await syncRemoteSupabaseToLocal(
-        remoteClient,
-        creds.label
-      );
-
-      invalidateProductsCache();
-
-      // Не создавать новую офлайн-мутацию сразу после очистки очереди.
-      if (getDbRuntimeConfig().activeBackend !== "local" && getDbFailoverState().activeFallbackBackend !== "local") {
-      await logActivity({
-        adminName: auth.displayName || auth.username || "Администратор",
-        adminRole: auth.role || "admin",
-        action: "update",
-        entityType: "settings",
-        entityId: "local-db-sync",
-        entityLabel: `Снимок БД из «${creds.label}» в локальную JSON-БД (${syncResult.totalRows} записей)`,
-      }).catch(() => {});
-      }
-
-      return NextResponse.json({
-        ok: true,
-        ...syncResult,
-        localSummary: syncResult.summary,
-        autoBackupStatus: getAutoBackupStatus(),
-      });
-    }
-
-    if (action === "push_to_remote") {
-      const target: "primary" | "secondary" =
-        body?.target === "primary" ? "primary" : "secondary";
-      const creds = resolveSupabaseCredentials(target);
-      if (!creds.configured) {
-        return NextResponse.json(
-          {
-            error: `${creds.label}: укажите URL проекта и service_role ключ перед выгрузкой данных`,
-          },
-          { status: 400 }
-        );
-      }
-
-      const remoteClient = createDirectSupabaseClient(
-        creds.url,
-        creds.serviceRoleKey,
-        25_000
-      );
-      const pushResult = await pushLocalDbToRemoteSupabase(remoteClient);
-
-      try {
-        await remoteClient.from("db_sync_runs").insert({
-          direction: "local_to_supabase",
-          status: pushResult.failedTables.length > 0 ? "partial" : "success",
-          target_label: creds.label,
-          synced_tables: pushResult.pushedTables,
-          synced_rows: pushResult.pushedRows,
-          replayed_mutations: pushResult.replayedDeletes,
-          local_file_path: getLocalDbSummary().filePath,
-          initiated_by: auth.displayName || auth.username || "Администратор",
-        });
-      } catch {
-        /* ignore */
-      }
-
-      // Не создавать новую офлайн-мутацию сразу после очистки очереди.
-      if (getDbRuntimeConfig().activeBackend !== "local" && getDbFailoverState().activeFallbackBackend !== "local") {
-      await logActivity({
-        adminName: auth.displayName || auth.username || "Администратор",
-        adminRole: auth.role || "admin",
-        action: "update",
-        entityType: "settings",
-        entityId: "local-db-push",
-        entityLabel: `Импорт из локальной БД → «${creds.label}» (${pushResult.pushedRows} записей в ${pushResult.pushedTables} табл.)`,
-      }).catch(() => {});
-      }
-
-      return NextResponse.json({
-        ok: true,
-        targetLabel: creds.label,
-        ...pushResult,
-        localSummary: getLocalDbSummary(),
-      });
-    }
-
     return NextResponse.json(
       { error: `Неизвестное действие: ${action}` },
       { status: 400 }
@@ -548,7 +271,5 @@ export async function POST(request: NextRequest) {
       { error: e?.message || "Ошибка выполнения операции БД" },
       { status: 500 }
     );
-  } finally {
-    if (legacyLock) endLegacyDbSync();
   }
 }

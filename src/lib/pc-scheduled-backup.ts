@@ -116,3 +116,36 @@ export async function runPcScheduledBackups(username: string, now = new Date()):
     saveStatus(username, { ...getPcScheduleStatus(username), error: errors.join("; ") });
   });
 }
+
+/** Explicit on-demand current snapshot. This is not change tracking. */
+export async function savePcCurrentBackups(username: string): Promise<string[]> {
+  if (!navigator.locks) throw new Error("Браузер не поддерживает безопасную блокировку вкладок.");
+  return navigator.locks.request(`sgt-pc-scheduled-full-backup:${username}`, { ifAvailable: true }, async lock => {
+    if (!lock) throw new Error("Дождитесь завершения другой записи на этот ПК.");
+    const settings = getPcScheduleSettings(username);
+    const sources = (["primary", "secondary"] as const).filter(source => settings.sources[source]);
+    if (!settings.computerId || !sources.length) throw new Error("Сначала выберите папку и хотя бы одну Supabase.");
+    const root = await directory(username, "get");
+    if (!root || await root.queryPermission({ mode: "readwrite" }) !== "granted") throw new Error("Нет доступа к папке: подтвердите разрешение.");
+    const messages: string[] = [];
+    const errors: string[] = [];
+    for (const source of sources) {
+      try {
+        const res = await fetch(`/api/admin/database/full-backup?download=1&source=${source}`, { cache: "no-store", signal: AbortSignal.timeout(90_000) });
+        if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `HTTP ${res.status}`); }
+        const text = await res.text();
+        const snapshot = JSON.parse(text);
+        if (snapshot.app !== "SibGofroTorg" || snapshot.backupFormat !== "sgt-public-v1") throw new Error("Сервер вернул не полный бэкап");
+        const current = getPcScheduleSettings(username);
+        if (!current.sources[source] || current.computerId !== settings.computerId) throw new Error("Настройки изменились; повторите сохранение.");
+        const computer = await root.getDirectoryHandle(`pc-${settings.computerId}`, { create: true });
+        const dir = await computer.getDirectoryHandle(source, { create: true });
+        await writeFile(dir, "sgt-full-current.json", text);
+        messages.push(`${source}: сохранено`);
+      } catch (e) { errors.push(`${source}: ${e instanceof Error ? e.message : String(e)}`); }
+    }
+    const status = getPcScheduleStatus(username);
+    saveStatus(username, { ...status, error: errors.join("; "), ...(messages.length ? { last: `Вручную: ${messages.join(", ")} · ${new Date().toLocaleString("ru-RU")}` } : {}) });
+    return [...messages, ...errors];
+  });
+}

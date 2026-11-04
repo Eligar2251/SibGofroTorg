@@ -337,16 +337,14 @@ function loadStore(): LocalDbFileEnvelope {
             fs.readFileSync(candidatePath, "utf8")
           );
           const recovered = normalizeStore(recoveredRaw);
-          persistStore(recovered);
           return recovered;
         }
       }
     } catch {
       /* ignore recovery errors */
     }
-    const fresh = createEmptyStore();
-    persistStore(fresh);
-    return fresh;
+    // Reading status must never create a server-side database file.
+    return createEmptyStore();
   }
 }
 

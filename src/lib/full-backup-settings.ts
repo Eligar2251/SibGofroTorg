@@ -21,7 +21,7 @@ export function readFullBackupSettings(): FullBackupSettings {
     return {
       enabled: raw.enabled === true,
       intervalSec: Number.isFinite(seconds) ? Math.max(60, Math.min(86400, seconds)) : 150,
-      targets: { primary: raw.targets?.primary === true, secondary: raw.targets?.secondary === true, local: raw.targets?.local === true },
+      targets: { primary: raw.targets?.primary === true, secondary: raw.targets?.secondary === true, local: false },
     };
   } catch { return structuredClone(defaults); }
 }

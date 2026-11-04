@@ -220,7 +220,7 @@ test("Экспорт/импорт JSON-бэкапа и двусторонняя 
   assert.ok(getLocalDbSummary().exists);
 });
 
-test("Переключатель БД + Auto-Failover: при падении Supabase getAdminDb() прозрачно работает через локальную JSON-БД", async () => {
+test("При отказе Supabase серверный локальный файл не становится рабочей БД и доступен только для чтения", async () => {
   resetDbRuntimeConfigCache();
 
   // 1. Включаем режим Primary с заведомо недоступным портом (имитация упавшего сервера БД)
@@ -253,22 +253,37 @@ test("Переключатель БД + Auto-Failover: при падении Sup
     .from("products")
     .select("id, name");
 
-  assert.equal(error, null);
-  assert.equal(products.length, 2);
-  assert.equal(getDbFailoverState().activeFallbackBackend, "local");
-
-  // 2. Переключаем явно в режим "local" — прямое чтение/запись в JSON-БД без сети
+  assert.equal(error.code, "DB_UNAVAILABLE");
+  assert.equal(products, null);
+  assert.notEqual(getDbFailoverState().activeFallbackBackend, "local");
   saveDbRuntimeConfig({ activeBackend: "local" });
-  assert.equal(getDbRuntimeConfig().activeBackend, "local");
-  assert.equal(getDbFailoverState().activeFallbackBackend, null);
+  const read = await adminDb.from("products").select("id, name");
+  assert.equal(read.error, null);
+  assert.equal(read.data.length, 2);
+  const prior = fs.readFileSync(path.join(tmpDir, "local-db.json"), "utf8");
+  const write = await adminDb.from("settings").upsert({ key: "company_name", value: "СибГофроТорг" });
+  assert.equal(write.error.code, "LOCAL_SERVER_DISABLED");
+  assert.equal(fs.readFileSync(path.join(tmpDir, "local-db.json"), "utf8"), prior);
+});
 
-  const { data: insertedSetting, error: setErr } = await adminDb
-    .from("settings")
-    .upsert({ key: "company_name", value: "СибГофроТорг" })
-    .select("*")
-    .single();
-  assert.equal(setErr, null);
-  assert.equal(insertedSetting.value, "СибГофроТорг");
+test("Successful remote reads and writes never mirror into old server JSON", async () => {
+  const oldFetch = globalThis.fetch;
+  const names = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECONDARY_URL"];
+  const previous = names.map(n => process.env[n]);
+  try {
+    names.forEach(n => delete process.env[n]);
+    saveDbRuntimeConfig({ activeBackend:"primary", autoFailover:false, mirrorWritesToLocal:true,
+      primary:{url:"https://example.test",serviceRoleKey:"synthetic-key"} });
+    const file = path.join(tmpDir, "local-db.json");
+    const before = fs.readFileSync(file, "utf8");
+    globalThis.fetch = async () => new Response(JSON.stringify([{id:"new",name:"changed"}]), {status:200,headers:{"content-type":"application/json"}});
+    assert.equal((await getAdminDb().from("admins").select("*")).error, null);
+    assert.equal((await getAdminDb().from("products").insert({id:"new",name:"changed"})).error, null);
+    assert.equal(fs.readFileSync(file, "utf8"), before);
+  } finally {
+    globalThis.fetch = oldFetch;
+    names.forEach((n,i) => previous[i] === undefined ? delete process.env[n] : process.env[n] = previous[i]);
+  }
 });
 
 test("supabase/FULL_DATABASE_MIGRATION.sql содержит все 58 таблиц проекта и дублирует ВСЕ migration_*.sql", () => {
@@ -310,86 +325,17 @@ test("supabase/FULL_DATABASE_MIGRATION.sql содержит все 58 табли
   assert.match(sql, /CREATE\s+OR\s+REPLACE\s+VIEW\s+die_calc_job_stats/i);
 });
 
-test("Автоматическая локальная копия каждые 2–3 минуты на указанный пользователем диск: запись, ротация и автовосстановление", async () => {
-  // 1. Проверяем настройку по умолчанию (150 сек = 2,5 минуты) и привязку внешнего диска
-  const check = validateBackupDirectory(customUserDiskDir);
-  assert.equal(check.ok, true);
-
-  const cfg = saveDbRuntimeConfig({
-    activeBackend: "local",
-    autoBackupEnabled: true,
-    autoBackupIntervalSec: 150, // 2,5 минуты
-    customBackupDir: customUserDiskDir,
-    maxBackupSnapshots: 3,
-  });
-
-  assert.equal(cfg.autoBackupEnabled, true);
-  assert.equal(cfg.autoBackupIntervalSec, 150);
-  assert.equal(cfg.customBackupDir, customUserDiskDir);
-
-  // 2. Создаём 5 архивных копий подряд и проверяем, что ротация оставила ровно 3 свежих файла
-  const snapshotsDir = path.join(customUserDiskDir, "snapshots");
-  fs.mkdirSync(snapshotsDir, { recursive: true });
-  for (let i = 1; i <= 4; i++) {
-    const fakeSnapPath = path.join(
-      snapshotsDir,
-      `sibgofrotorg-2026-11-03_10-0${i}-00.json`
-    );
-    fs.writeFileSync(
-      fakeSnapPath,
-      JSON.stringify(exportLocalDbSnapshot(), null, 2),
-      "utf8"
-    );
-    const ts = new Date(Date.now() - (10 - i) * 60_000);
-    fs.utimesSync(fakeSnapPath, ts, ts);
-  }
-
-  const runRes = await runServerAutoBackupNow({ force: true });
-  assert.equal(runRes.ok, true);
-  assert.equal(
-    fs.existsSync(path.join(customUserDiskDir, "sibgofrotorg-latest.json")),
-    true
-  );
-  assert.equal(
-    fs.existsSync(path.join(customUserDiskDir, "local-db.json")),
-    true
-  );
-
-  const status = getAutoBackupStatus();
-  assert.equal(status.targetDir, path.resolve(customUserDiskDir));
-  assert.equal(status.intervalSec, 150);
-  assert.equal(
-    status.snapshotsCount,
-    3,
-    "Ротация должна оставить ровно maxBackupSnapshots = 3 последних снимка"
-  );
-
-  // 3. Удаляем все товары в рабочей БД, затем восстанавливаем из архивного снимка с диска
-  const db = getLocalJsonDbClient();
-  await db.from("products").delete().neq("id", "none");
-  assert.equal((getLocalDbSummary().tableCounts.products || 0), 0);
-
-  const restoredSummary = restoreDiskBackupSnapshot(
-    status.recentSnapshots[0].filename,
-    "replace"
-  );
-  assert.equal(restoredSummary.tableCounts.products, 2);
-
-  // 4. Имитируем полную потерю папки приложения (.sgt-data/local-db.json удалён),
-  //    но внешний диск пользователя с автобэкапом подключён — база должна подняться сама!
-  const mainDbPath = path.join(tmpDir, "local-db.json");
-  fs.unlinkSync(mainDbPath);
-  resetLocalJsonDbCache();
-
-  const { data: autoRecoveredProducts, error: recErr } = await db
-    .from("products")
-    .select("id, name");
-  assert.equal(recErr, null);
-  assert.equal(
-    autoRecoveredProducts.length,
-    2,
-    "Локальная БД должна автоматически восстановиться с указанного пользователем диска бэкапа"
-  );
+test("Серверные плановые и ручные бэкапы отключены без удаления старых файлов", async () => {
+  fs.mkdirSync(customUserDiskDir, { recursive: true });
+  const existing = path.join(customUserDiskDir, "old.json");
+  fs.writeFileSync(existing, "legacy-data");
+  saveDbRuntimeConfig({ activeBackend:"local", autoBackupEnabled:true, customBackupDir:customUserDiskDir });
+  const result = await runServerAutoBackupNow({ force:true });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /отключены/);
+  assert.equal(getAutoBackupStatus().enabled, false);
+  assert.equal(fs.readFileSync(existing, "utf8"), "legacy-data");
+  assert.equal(fs.existsSync(path.join(customUserDiskDir, "sibgofrotorg-latest.json")), false);
 });
 
 test("Двусторонняя синхронизация Supabase ↔ Локалка: очередь офлайн-правок/удалений не теряется при восстановлении БД", async () => {

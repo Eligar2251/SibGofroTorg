@@ -267,119 +267,8 @@ export async function runServerAutoBackupNow(options?: {
   syncWarning?: string | null;
   error?: string;
 }> {
-  const state = getState();
-  const cfg = getDbRuntimeConfig();
-
-  if (!options?.force && !cfg.autoBackupEnabled) {
-    return { ok: true, skipped: true };
-  }
-  if (state.isRunning) {
-    return { ok: true, skipped: true };
-  }
-
-  state.isRunning = true;
-  const startedMs = Date.now();
-  state.lastAttemptAt = new Date().toISOString();
-  let syncWarning: string | null = null;
-  let sourceLabel = "Локальная JSON-БД";
-
-  try {
-    // 1. Если сейчас активен внешний Supabase (#1 или #2), сначала освежаем снимок из него
-    if (
-      !options?.skipRemoteSync &&
-      !readFullBackupSettings().enabled &&
-      !getDbFailoverState().activeFallbackBackend &&
-      (cfg.activeBackend === "primary" || cfg.activeBackend === "secondary")
-    ) {
-      const creds = resolveSupabaseCredentials(cfg.activeBackend);
-      if (creds.configured && beginLegacyDbSync()) {
-        try {
-          const remoteClient = createDirectSupabaseClient(
-            creds.url,
-            creds.serviceRoleKey,
-            18_000
-          );
-          await syncRemoteSupabaseToLocal(remoteClient, creds.label);
-          sourceLabel = creds.label;
-        } catch (syncErr: any) {
-          // Если сервер БД упал — НЕ прерываем сохранение локального резерва на диск!
-          syncWarning = syncErr?.message || String(syncErr);
-          sourceLabel = "Локальная JSON-БД (внешний сервер недоступен)";
-        } finally { endLegacyDbSync(); }
-      }
-    }
-
-    // 2. Записываем актуальную копию на целевой диск
-    const targetDir = resolveServerBackupDir(cfg);
-    const snapshotsDir = path.join(/*turbopackIgnore: true*/ targetDir, "snapshots");
-    fs.mkdirSync(snapshotsDir, { recursive: true });
-
-    const latestPath = path.join(
-      /*turbopackIgnore: true*/ targetDir,
-      "sibgofrotorg-latest.json"
-    );
-    const liveMirrorPath = path.join(
-      /*turbopackIgnore: true*/ targetDir,
-      "local-db.json"
-    );
-    const snapshotFilename = formatSnapshotFilename();
-    const timestampedPath = path.join(
-      /*turbopackIgnore: true*/ snapshotsDir,
-      snapshotFilename
-    );
-
-    const snapshot = exportLocalDbSnapshot(timestampedPath);
-    writeJsonAtomic(latestPath, {
-      ...snapshot,
-      fileFullPath: latestPath,
-      sgtEmergencyAuth: {
-        ...snapshot.sgtEmergencyAuth,
-        fileFullPath: latestPath,
-      },
-    });
-    writeJsonAtomic(liveMirrorPath, {
-      ...snapshot,
-      fileFullPath: liveMirrorPath,
-      sgtEmergencyAuth: {
-        ...snapshot.sgtEmergencyAuth,
-        fileFullPath: liveMirrorPath,
-      },
-    });
-    writeJsonAtomic(timestampedPath, snapshot);
-
-    // 3. Ротация старых копий, чтобы диск не переполнялся при интервале 2–3 минуты
-    rotateOldSnapshots(snapshotsDir, cfg.maxBackupSnapshots);
-
-    state.lastSuccessAt = new Date().toISOString();
-    state.lastDurationMs = Date.now() - startedMs;
-    state.lastSavedFilePath = timestampedPath;
-    state.lastTotalRows = snapshot.totalRows;
-    state.lastSource = sourceLabel;
-    state.lastError = syncWarning
-      ? `Копия локальной БД сохранена, но внешний сервер не ответил: ${syncWarning}`
-      : null;
-    persistStatusMeta(state);
-
-    return {
-      ok: true,
-      savedFilePath: timestampedPath,
-      snapshotFilename,
-      totalRows: snapshot.totalRows,
-      source: sourceLabel,
-      syncWarning,
-    };
-  } catch (err: any) {
-    const msg = err?.message || String(err);
-    state.lastDurationMs = Date.now() - startedMs;
-    state.lastError = msg;
-    persistStatusMeta(state);
-    return {
-      ok: false,
-      error: msg,
-    };
-  } finally {
-    state.isRunning = false;
-  }
+  void options;
+  return { ok: false, error: "Серверные резервные копии отключены. Настройте архивы на ПК." };
 }
 
 /**
@@ -389,21 +278,8 @@ export function restoreDiskBackupSnapshot(
   filename: string,
   mode: "replace" | "merge" = "replace"
 ): LocalDbSummary {
-  const safeName = path.basename(String(filename || "").trim());
-  if (!safeName || !safeName.endsWith(".json")) {
-    throw new Error("Некорректное имя файла снимка");
-  }
-  const targetDir = resolveServerBackupDir();
-  const candidatePaths = [
-    path.join(/*turbopackIgnore: true*/ targetDir, "snapshots", safeName),
-    path.join(/*turbopackIgnore: true*/ targetDir, safeName),
-  ];
-  const existingPath = candidatePaths.find((p) => fs.existsSync(p));
-  if (!existingPath) {
-    throw new Error(`Файл снимка не найден на диске: ${safeName}`);
-  }
-  const parsed = JSON.parse(fs.readFileSync(existingPath, "utf8"));
-  return importLocalDbSnapshot(parsed, mode);
+  void filename; void mode;
+  throw new Error("Восстановление серверных файлов отключено. Существующие файлы не удалены.");
 }
 
 function scheduleNextTick(): void {
@@ -441,23 +317,8 @@ function scheduleNextTick(): void {
 export function restartAutoBackupScheduler(options?: {
   runInitialSoon?: boolean;
 }): void {
-  const state = getState();
-  state.started = true;
-  scheduleNextTick();
-
-  // При первом старте сервера делаем стартовую копию через 15 секунд,
-  // чтобы пользователю не приходилось ждать первые 2,5 минуты.
-  if (options?.runInitialSoon) {
-    const cfg = getDbRuntimeConfig();
-    if (cfg.autoBackupEnabled && !state.lastSuccessAt) {
-      const warmup = setTimeout(() => {
-        runServerAutoBackupNow().catch(() => {});
-      }, 15_000);
-      if (typeof (warmup as any)?.unref === "function") {
-        (warmup as any).unref();
-      }
-    }
-  }
+  void options;
+  stopAutoBackupScheduler();
 }
 
 export function stopAutoBackupScheduler(): void {
@@ -482,7 +343,7 @@ export function getAutoBackupStatus(): AutoBackupRuntimeStatus {
   const { total, items } = listDiskBackupSnapshots(15);
 
   return {
-    enabled: cfg.autoBackupEnabled,
+    enabled: false,
     intervalSec: cfg.autoBackupIntervalSec,
     targetDir: resolveServerBackupDir(cfg),
     maxSnapshots: cfg.maxBackupSnapshots,

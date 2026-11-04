@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { choosePcScheduleDirectory, confirmPcSchedulePermission, getPcScheduleSettings, getPcScheduleStatus, PC_SCHEDULE_EVENT, runPcScheduledBackups, savePcScheduleSettings, type PcScheduleSettings, type PcScheduleStatus } from "@/lib/pc-scheduled-backup";
+import { choosePcScheduleDirectory, confirmPcSchedulePermission, getPcScheduleSettings, getPcScheduleStatus, PC_SCHEDULE_EVENT, runPcScheduledBackups, savePcCurrentBackups, savePcScheduleSettings, type PcScheduleSettings, type PcScheduleStatus } from "@/lib/pc-scheduled-backup";
 
 /** Runs only while an owner is signed in with an admin tab open. */
 export function PcScheduledFullBackupRunner({ username }: { username: string }) {
@@ -23,6 +23,7 @@ export function PcScheduledFullBackupPanel({ username }: { username: string }) {
   const [config, setConfig] = useState<PcScheduleSettings | null>(null);
   const [status, setStatus] = useState<PcScheduleStatus>({});
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     const refresh = () => { setConfig(getPcScheduleSettings(username)); setStatus(getPcScheduleStatus(username)); };
     refresh(); window.addEventListener(PC_SCHEDULE_EVENT, refresh); window.addEventListener("storage", refresh);
@@ -33,10 +34,11 @@ export function PcScheduledFullBackupPanel({ username }: { username: string }) {
   return <section style={{ padding: 16, border: "1px solid var(--adm-border, #ddd)", borderRadius: 12, marginBottom: 16, display: "grid", gap: 10 }}>
     <strong>Полные архивы на этом ПК по расписанию</strong>
     <div style={{ fontSize: 13 }}>В 18:00 и 23:00 по Новосибирску. Выберите общую папку Z: или любую папку этого ПК. Каждый профиль браузера создаёт отдельную подпапку и не перезаписывает файлы других ПК.</div>
-    <div style={{ fontSize: 12 }}>Архив сохраняется только при открытой админке владельца, работающем сайте, доступном диске и разрешении браузера. Он содержит персональные данные и хеши паролей: ограничьте доступ к папке. Это архив, не рабочая локальная БД. Мгновенное копирование изменений и объединение независимых локальных БД здесь ещё не реализованы.</div>
+    <div style={{ fontSize: 12 }}>Архив сохраняется только при открытой админке владельца, работающем сайте, доступном диске и разрешении браузера. Он содержит персональные данные и хеши паролей: ограничьте доступ к папке. Кнопка сохраняет текущий полный файл вручную; автоматической записи после изменений пока нет. Это архив, не рабочая локальная БД. Мгновенное копирование изменений и объединение независимых локальных БД здесь ещё не реализованы.</div>
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
       <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={async () => { try { await choosePcScheduleDirectory(username); setMessage("Папка выбрана. Выберите базы и включите расписание."); } catch (e) { if ((e as Error).name !== "AbortError") setMessage(e instanceof Error ? e.message : String(e)); } }}>Выбрать папку на ПК</button>
       <button className="admin-btn admin-btn--outline admin-btn--sm" onClick={async () => { try { setMessage(await confirmPcSchedulePermission(username) ? "Доступ к папке разрешён." : "Доступ не разрешён. Выберите папку заново."); } catch (e) { setMessage(e instanceof Error ? e.message : String(e)); } }}>Подтвердить доступ</button>
+      <button className="admin-btn admin-btn--outline admin-btn--sm" disabled={busy || !config.folderName} onClick={async () => { setBusy(true); try { setMessage((await savePcCurrentBackups(username)).join("; ")); } catch (e) { setMessage(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }}>Сохранить текущую копию сейчас</button>
     </div>
     <div style={{ fontSize: 12 }}>Папка: {config.folderName || "не выбрана"}{config.computerId ? ` / pc-${config.computerId}` : ""}. Настройки хранятся для вашей учётной записи в этом профиле браузера.</div>
     <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>

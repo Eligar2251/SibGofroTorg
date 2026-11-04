@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
       const requested = req.nextUrl.searchParams.get("source");
       if (requested && requested !== "primary" && requested !== "secondary") throw new Error("Недопустимый источник бэкапа");
       const source: DbBackendMode = requested === "primary" || requested === "secondary" ? requested : effectiveSource();
+      if (source === "local") throw new Error("Серверная JSON-БД отключена. Для сохранения старых данных скачайте серверный JSON в разделе восстановления.");
       const snapshot = await captureFullSnapshot(source);
       if (!requested && effectiveSource() !== source) throw new Error("Рабочая база изменилась во время создания копии. Повторите попытку.");
       return new NextResponse(JSON.stringify(snapshot), { headers: {
@@ -39,6 +40,7 @@ export async function PUT(req: NextRequest) {
     if (typeof body.enabled !== "boolean" || !body.targets || !["primary", "secondary", "local"].every(k => typeof body.targets[k] === "boolean")) throw new Error("Некорректные настройки синхронизации");
     const interval = Number(body.intervalSec);
     if (!Number.isInteger(interval) || interval < 60 || interval > 86400) throw new Error("Интервал должен быть от 60 до 86400 секунд");
+    if (body.targets.local) throw new Error("Серверная локальная БД отключена для репликации. Используйте архивы на ПК.");
     if (body.enabled && body.confirmReplace !== true) throw new Error("Подтвердите замену данных в выбранных резервных базах");
     saveFullBackupSettings({ enabled: body.enabled, intervalSec: interval, targets: { primary: body.targets.primary, secondary: body.targets.secondary, local: body.targets.local } });
     invalidateFullReplicaReadiness();
@@ -60,6 +62,7 @@ export async function POST(req: NextRequest) {
       if (body.confirmReplace !== true) return NextResponse.json({ error: "Подтвердите полную замену данных" }, { status: 400 });
       const targets: DbBackendMode[] = Array.isArray(body.targets) ? body.targets : [];
       if (!targets.length || targets.some(t => !["primary", "secondary", "local"].includes(t)) || new Set(targets).size !== targets.length) throw new Error("Выберите базы для восстановления");
+      if (targets.includes("local")) throw new Error("Восстановление на сервер в локальный JSON отключено. Используйте Supabase.");
       const snapshot = validateFullSnapshot(body.snapshot);
       const results = await restoreFullSnapshotTargets(snapshot, targets);
       invalidateProductsCache(); invalidateDatabaseSchemaCache();

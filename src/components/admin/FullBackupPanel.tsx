@@ -6,7 +6,7 @@ type Mode = "primary" | "secondary" | "local";
 type Config = { enabled: boolean; intervalSec: number; targets: Record<Mode, boolean> };
 type Status = { running: boolean; source: Mode; lastRunAt: string | null; error: string | null; settings: Config; targets: Partial<Record<Mode, { state: string; at: string; message: string }>> };
 const labels: Record<Mode, string> = { primary: "Supabase Cloud", secondary: "Supabase VPS", local: "Локальная JSON-БД" };
-const modes: Mode[] = ["primary", "secondary", "local"];
+const modes: Mode[] = ["primary", "secondary"];
 
 export function FullBackupPanel() {
   const [status, setStatus] = useState<Status | null>(null);
@@ -87,7 +87,7 @@ export function FullBackupPanel() {
   return <section style={{ padding: 16, border: "1px solid var(--adm-border, #ddd)", borderRadius: 12, marginBottom: 16, display: "grid", gap: 10 }}>
     <strong>Полные копии всех таблиц приложения — только владелец</strong>
     <div style={{ fontSize: 13 }}>Рабочая база: <b>{labels[status.source]}</b>. Выбранные резервные базы периодически <b>полностью заменяются</b> её снимком. Остановка копирования не выключает сервер БД. Файлы Cloudinary и системные данные Supabase не включены.</div>
-    <div style={{ fontSize: 12 }}>Требуется migration_complete_app_backup.sql на обоих Supabase и одинаковая схема таблиц. Снимки содержат персональные данные. При отказе рабочей базы автоматический переход выполняется на локальную копию; она может отставать на интервал копирования.</div>
+    <div style={{ fontSize: 12 }}>Требуется migration_complete_app_backup.sql на обоих Supabase и одинаковая схема таблиц. Снимки содержат персональные данные. Серверные JSON-копии не создаются. Независимая рабочая JSON-БД на ПК пока не реализована.</div>
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
       {modes.map(m => <label key={m}><input type="checkbox" checked={config.targets[m]} onChange={e => setConfig({ ...config, targets: { ...config.targets, [m]: e.target.checked } })} disabled={busy || status.running} /> {labels[m]} — копирование</label>)}
       <label>Интервал (сек.): <input type="number" min={60} max={86400} value={config.intervalSec} onChange={e => setConfig({ ...config, intervalSec: Number(e.target.value) })} style={{ width: 75 }} disabled={busy || status.running} /></label>

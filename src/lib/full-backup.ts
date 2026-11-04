@@ -2,10 +2,9 @@
 // service-role-only migration. Automatic replica refresh is explicit opt-in.
 import fs from "node:fs";
 import path from "node:path";
-import { getDbFailoverState, getDbRuntimeConfig, getSgtDataDir, resolveServerBackupDir, resolveSupabaseCredentials, type DbBackendMode } from "./db-runtime-config";
+import { getDbFailoverState, getDbRuntimeConfig, getSgtDataDir, resolveSupabaseCredentials, type DbBackendMode } from "./db-runtime-config";
 import { readFullBackupSettings, type FullBackupSettings } from "./full-backup-settings";
 import { createDirectSupabaseClient } from "./supabase-server-engine";
-import { exportLocalDbSnapshot, getLocalDbSummary, importLocalDbSnapshot, ORDERED_BACKUP_TABLES } from "./local-json-db";
 
 export interface FullSnapshot {
   app: "SibGofroTorg";
@@ -52,14 +51,6 @@ export function validateFullSnapshot(input: unknown): FullSnapshot {
   return s;
 }
 
-function manifestPath() { return path.join(getSgtDataDir(), "full-backup-manifest.json"); }
-function saveManifest(snapshot: FullSnapshot) {
-  const file = manifestPath(); fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ app: snapshot.app, backupFormat: snapshot.backupFormat, version: snapshot.version, columns: snapshot.columns, sequences: snapshot.sequences }), { mode: 0o600 });
-  fs.renameSync(tmp, file);
-}
-
 export function effectiveSource(): DbBackendMode {
   return getDbFailoverState().activeFallbackBackend || getDbRuntimeConfig().activeBackend;
 }
@@ -76,28 +67,13 @@ export async function captureFullSnapshot(source: DbBackendMode): Promise<FullSn
     if (error) throw new Error(`Не удалось получить полный снимок (${error.message}). Установите migration_complete_app_backup.sql на источнике.`);
     return validateFullSnapshot(data);
   }
-  let manifest: Pick<FullSnapshot, "columns" | "sequences">;
-  try { manifest = JSON.parse(fs.readFileSync(manifestPath(), "utf8")); }
-  catch { throw new Error("Для полного бэкапа локальной БД сначала создайте её полную копию из Supabase с новой миграцией или импортируйте полный бэкап."); }
-  const local = exportLocalDbSnapshot();
-  const names = Object.keys(manifest.columns || {});
-  const extras = Object.keys(local.tables).filter(n => !names.includes(n) && local.tables[n]?.length);
-  if (extras.length) throw new Error(`Нет описания локальных таблиц: ${extras.join(", ")}`);
-  const tables = Object.fromEntries(names.map(name => [name, local.tables[name] || []]));
-  return validateFullSnapshot({ app: "SibGofroTorg", backupFormat: "sgt-public-v1", version: 1, exportedAt: new Date().toISOString(), totalRows: Object.values(tables).reduce((n, rows) => n + rows.length, 0), tables, columns: manifest.columns, sequences: manifest.sequences });
+  throw new Error("Серверная JSON-БД отключена для создания полных копий. Старые файлы сохранены для извлечения.");
 }
 
 export async function restoreFullSnapshot(snapshotInput: unknown, target: DbBackendMode, allowPendingLocal = false): Promise<void> {
   const snapshot = validateFullSnapshot(snapshotInput);
-  if (target === "local") {
-    if (!allowPendingLocal && getLocalDbSummary().pendingMutationsCount > 0) throw new Error("В локальной БД есть неотправленные изменения; автоматическая замена остановлена.");
-    // Do not let the legacy normalizer seed default rows for tables absent
-    // from a legitimate public snapshot.
-    const emptyKnownTables = Object.fromEntries(ORDERED_BACKUP_TABLES.map(name => [name, []]));
-    importLocalDbSnapshot({ ...snapshot, tables: { ...emptyKnownTables, ...snapshot.tables } }, "replace");
-    saveManifest(snapshot);
-    return;
-  }
+  void allowPendingLocal;
+  if (target === "local") throw new Error("Восстановление серверной JSON-БД отключено. Существующие файлы не удалены.");
   const { error } = await direct(target).rpc("sgt_restore_app_data", { p_snapshot: snapshot });
   if (error) throw new Error(`Восстановление ${target} не выполнено: ${error.message}. Проверьте миграцию, совпадение схем и ограничения.`);
 }
@@ -145,20 +121,6 @@ export function isFullReplicaReady(target: DbBackendMode): boolean {
   return result?.state === "ok" && result.source === effectiveSource();
 }
 
-function archiveSnapshot(snapshot: FullSnapshot) {
-  const dir = path.join(resolveServerBackupDir(), "full-snapshots");
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const file = path.join(dir, `sgt-full-${stamp}.json`);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(snapshot), { encoding: "utf8", mode: 0o600 });
-  fs.renameSync(tmp, file);
-  const keep = getDbRuntimeConfig().maxBackupSnapshots;
-  const snapshots = fs.readdirSync(dir).filter(name => name.startsWith("sgt-full-") && name.endsWith(".json")).sort().reverse();
-  for (const old of snapshots.slice(keep)) fs.unlinkSync(path.join(dir, old));
-}
-
-function localFingerprint() { const s = exportLocalDbSnapshot(); return JSON.stringify({ tables: s.tables, pending: s.pendingMutations }); }
 function sameSource(source: DbBackendMode) { return effectiveSource() === source; }
 
 export async function runFullReplication(force = false) {
@@ -169,19 +131,17 @@ export async function runFullReplication(force = false) {
   r.running = true; r.error = null;
   const source = effectiveSource();
   try {
-    const before = localFingerprint();
+    if (source === "local") throw new Error("Серверная JSON-БД не используется для копирования. Сохраните старые локальные данные перед переходом на Supabase.");
     const snapshot = await captureFullSnapshot(source);
     if (snapshot.totalRows === 0) throw new Error("Источник пуст: автоматическая замена резервных баз остановлена. Для намеренного восстановления используйте импорт файла.");
     if (!sameSource(source)) throw new Error("Рабочая база изменилась во время снимка; синхронизация прервана");
-    archiveSnapshot(snapshot);
     for (const target of ["local", "primary", "secondary"] as const) {
       const at = new Date().toISOString();
       if (target === source) { r.targets[target] = { state: "source", at, message: "Рабочая база", source }; continue; }
       if (!settings.targets[target]) { r.targets[target] = { state: "paused", at, message: "Копирование выключено", source }; continue; }
       try {
         if (!sameSource(source)) throw new Error("Рабочая база изменилась; повторите синхронизацию");
-        if (source !== "local" && target !== "local" && resolveSupabaseCredentials(source).url === resolveSupabaseCredentials(target).url) throw new Error("Источник и резерв указывают на один сервер; копирование остановлено");
-        if (target === "local" && localFingerprint() !== before) throw new Error("Локальная БД изменилась во время снимка; повторите синхронизацию");
+        if (target !== "local" && resolveSupabaseCredentials(source).url === resolveSupabaseCredentials(target).url) throw new Error("Источник и резерв указывают на один сервер; копирование остановлено");
         await restoreFullSnapshot(snapshot, target);
         r.targets[target] = { state: "ok", at, message: `Скопировано ${snapshot.totalRows} строк`, source };
       } catch (e) { r.targets[target] = { state: "error", at, message: e instanceof Error ? e.message : String(e), source }; }

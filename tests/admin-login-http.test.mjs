@@ -21,13 +21,14 @@ async function freePort() {
   return port;
 }
 
-test('login and local switching work with and without hydrated JavaScript', { timeout: 120000 }, async () => {
-  saveDbRuntimeConfig({ activeBackend: 'primary', autoFailover: true, autoBackupEnabled: false });
+test('login works for legacy read-only data and server-local switching is disabled', { timeout: 120000 }, async () => {
+  saveDbRuntimeConfig({ activeBackend: 'local', autoFailover: true, autoBackupEnabled: true, mirrorWritesToLocal: true });
   const inserted = await getLocalJsonDbClient().from('admins').insert({
     id: 'test-admin', username: 'fake_owner', password_hash: 'fake-password-only-for-test',
     role: 'owner', is_active: true,
   });
   assert.equal(inserted.error, null);
+  const legacyBefore = fs.readFileSync(path.join(dir, 'local-db.json'), 'utf8');
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   let output = '';
@@ -70,8 +71,19 @@ test('login and local switching work with and without hydrated JavaScript', { ti
       method: 'PUT', headers: { cookie, 'content-type': 'application/json' },
       body: JSON.stringify({ activeBackend: 'local' }),
     });
-    assert.equal(switched.status, 200);
-    assert.equal((await switched.json()).config.activeBackend, 'local');
+    assert.equal(switched.status, 410);
+    assert.match((await switched.json()).error, /отключён/);
+    const oldBackup = await fetch(`${base}/api/admin/database/backend`, {
+      method:'POST', headers:{cookie, 'content-type':'application/json'}, body:JSON.stringify({action:'run_backup_now'})
+    });
+    assert.equal(oldBackup.status,410);
+    const oldImport = await fetch(`${base}/api/admin/database/backup`, {
+      method:'POST', headers:{cookie, 'content-type':'application/json'}, body:JSON.stringify({snapshot:{tables:{}}})
+    });
+    assert.equal(oldImport.status,410);
+    const emergency = await fetch(`${base}/admin/api/login/local-file`, { method:'POST', headers:{'content-type':'application/json'}, body:'{}' });
+    assert.equal(emergency.status,410);
+    assert.equal(fs.readFileSync(path.join(dir, 'local-db.json'), 'utf8'), legacyBefore);
 
     const json = await fetch(`${base}/admin/api/login`, {
       method: 'POST', headers: { 'content-type': 'application/json', origin: base },
