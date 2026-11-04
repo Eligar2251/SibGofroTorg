@@ -161,9 +161,11 @@ function formatDateTime(iso: string | null | undefined): string {
 export function DatabaseBackendSwitcher({
   onSwitched,
   ownerUsername,
+  pcLocalSite = false,
 }: {
   onSwitched?: () => void;
   ownerUsername?: string;
+  pcLocalSite?: boolean;
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -960,7 +962,7 @@ export function DatabaseBackendSwitcher({
       )}
 
       <FullBackupPanel />
-      {ownerUsername && <PcScheduledFullBackupPanel username={ownerUsername} />}
+      {ownerUsername && !pcLocalSite && <PcScheduledFullBackupPanel username={ownerUsername} />}
       {ownerUsername && <MergeBackupPanel />}
 
       {/* Три карточки выбора источника БД */}

@@ -3,6 +3,13 @@ import fs from 'node:fs';import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
+test('consolidated SQL includes every individual migration and PC backup dependencies in order',()=>{
+ const sql=fs.readFileSync('supabase/FULL_DATABASE_MIGRATION.sql','utf8');
+ const files=fs.readdirSync('supabase').filter(x=>x.startsWith('migration_')&&x.endsWith('.sql'));
+ for(const file of files)assert.ok(sql.includes(`-- МИГРАЦИЯ: ${file}`),`${file} is missing`);
+ assert.ok(sql.indexOf('-- МИГРАЦИЯ: migration_complete_app_backup.sql')<sql.indexOf('-- МИГРАЦИЯ: migration_pc_incremental_backup.sql'));
+});
+
 test('complete migration installs on a clean database and can be rerun without losing existing rows',{timeout:90000},async()=>{
   const db=new PGlite({extensions:{pgcrypto}});
   try {

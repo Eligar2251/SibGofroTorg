@@ -134,6 +134,7 @@ export default async function AdminLayout({
           {isPcLocalServer() && session?.role === "owner" && pcLocalRoute().kind === "remote" && <PcWorkingLiveRunner />}
           <AdminShell
             adminPath={ADMIN_PATH}
+            pcLocalSite={isPcLocalServer()}
             role={session?.role ?? null}
             displayName={session?.displayName ?? null}
             username={session?.username ?? ""}

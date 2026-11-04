@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth";
-import { captureFullSnapshot, validateFullSnapshot } from "@/lib/full-backup";
-import { assertPcOwner, initializePcLocal, isPcLocalServer, pcLocalStatus, readConfiguredPcSnapshot, readConfiguredPcStore, setPcLocalMode, setPcLiveDisabled, setPcArchivesEnabled, pcLocalRoute, changePcRoot } from "@/lib/pc-local-runtime";
+import { captureFullSnapshot, validateFullSnapshot, effectiveSource } from "@/lib/full-backup";
+import { assertPcOwner, initializePcLocal, isPcLocalServer, pcLocalStatus, readConfiguredPcSnapshot, readConfiguredPcStore, setPcLocalMode, setPcLiveDisabled, setPcArchivesEnabled, pcLocalRoute, changePcRoot, defaultPcDownloadsRoot } from "@/lib/pc-local-runtime";
 import { resolveSupabaseCredentials } from "@/lib/db-runtime-config";
 import { createDirectSupabaseClient } from "@/lib/supabase-server-engine";
+import { prepareAutomaticPcCopy } from "@/lib/pc-working-auto";
 import { enablePcWorkingRefresh, tickPcWorkingRefresh } from "@/lib/pc-working-live";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -28,6 +29,27 @@ export async function POST(req:NextRequest) {
   try {if(type!=="application/json" || req.headers.get("sec-fetch-site")==="cross-site" || (origin && new URL(origin).host.toLowerCase()!==host)) return result({error:"Недопустимый источник запроса"},403)} catch{return result({error:"Недопустимый источник запроса"},403)}
   try {
     const body=await req.json();
+    if(body.action==="auto_prepare") {
+      if(pcLocalRoute().kind!=="remote")return result({error:"Локальный просмотр не изменяется автоматически."},409);
+      const state=pcLocalStatus();
+      if(!state.available)return result({error:"Локальная копия доступна только на этом ПК."},403);
+      if(state.configured && (state.ready || !state.autoManaged))return result({status:state});
+      const source=state.configured?state.source:effectiveSource();
+      if(source!=="primary" && source!=="secondary")return result({error:"Выберите доступную Supabase для первой копии."},409);
+      const root=state.configured?state.root:defaultPcDownloadsRoot();
+      const credentials=resolveSupabaseCredentials(source);
+      if(!credentials.configured)throw new Error(`${credentials.label}: URL и секретный ключ не настроены.`);
+      const db=createDirectSupabaseClient(credentials.url,credentials.serviceRoleKey,60_000);
+      const getTracked=async()=>{const {data,error}=await db.rpc("sgt_pc_backup_snapshot");if(error)throw new Error(error.message);return data;};
+      return result(await prepareAutomaticPcCopy(auth.username,source,root,getTracked,()=>captureFullSnapshot(source)));
+    }
+    if(body.action==="auto_resume") {
+      const state=pcLocalStatus();
+      if(!state.available || !state.configured || !state.autoManaged || state.mode!=="remote" || !state.ready) return result({disabled:true});
+      if(state.liveEnabled)return result({status:state});
+      await enablePcWorkingRefresh(rpcForPc(),auth.username,true);
+      return result({status:pcLocalStatus()});
+    }
     if(body.action==="prepare" || body.action==="prepare_file") {
       if(pcLocalRoute().kind!=="remote") return result({error:"Сначала вернитесь в режим Supabase; локальная копия не будет заменена."},409);
       if((body.source!=="primary" && body.source!=="secondary") || typeof body.root!=="string") return result({error:"Укажите папку и источник"},400);

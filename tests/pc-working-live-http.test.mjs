@@ -24,7 +24,7 @@ test('owner can enable and apply tracked changes over HTTP; local mode never cal
   const tick=await post({action:'live_tick'});assert.equal(tick.status,200,`${logs} ${await tick.clone().text()}`);assert.deepEqual(await tick.json(),{changed:true});assert.deepEqual(rpcCalls,['snapshot','changes']);assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).current.tables.products[0].name,'after');
   assert.equal((await post({action:'archives',enabled:true})).status,200);
   assert.equal((await post({action:'mode',mode:'readonly'})).status,200);cookie=await login();
-  const old=[...rpcCalls];assert.equal((await post({action:'prepare',root,source:'primary'})).status,409);assert.equal((await post({action:'live_enable',confirmReplace:true})).status,409);assert.equal((await post({action:'live_tick'})).status,200);assert.deepEqual(rpcCalls,old);
+  const old=[...rpcCalls];assert.equal((await fetch(`${base}/api/admin/database/full-backup?download=1&source=primary`,{headers:{cookie}})).status,403);assert.equal((await fetch(`${base}/api/admin/database/backend?probe=1`,{headers:{cookie}})).status,403);assert.equal((await fetch(`${base}/api/admin/database/backup`,{headers:{cookie}})).status,403);assert.equal((await post({action:'prepare',root,source:'primary'})).status,409);assert.equal((await post({action:'live_enable',confirmReplace:true})).status,409);assert.equal((await post({action:'live_tick'})).status,200);assert.deepEqual(rpcCalls,old);
   assert.equal((await post({action:'archives',enabled:false})).status,200);
  }finally{
   if(child.exitCode===null){try{process.platform==='win32'?child.kill():process.kill(-child.pid,'SIGTERM')}catch{}await new Promise(r=>{child.once('exit',r);setTimeout(r,5000).unref()})}

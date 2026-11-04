@@ -44,8 +44,8 @@
     "dev:pc": "node scripts/pc-server.mjs dev",
     "start:pc": "node scripts/pc-server.mjs start",
     "test:pc-local": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-local-readonly.test.mjs tests/pc-local-http.test.mjs",
-    "test:pc-working-live": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-working-live.test.mjs tests/pc-local-archives.test.mjs",
-    "test:pc-working-live-http": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-working-live-http.test.mjs",
+    "test:pc-working-live": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-working-live.test.mjs tests/pc-working-auto.test.mjs tests/pc-local-archives.test.mjs",
+    "test:pc-working-live-http": "node --experimental-strip-types --import ./tests/ts-register.mjs --test --test-concurrency=1 tests/pc-working-live-http.test.mjs tests/pc-npm-dev-http.test.mjs",
     "test:pc-reconcile-primitives": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-change-root.test.mjs tests/pc-merge-apply-sql.test.mjs tests/full-migration-install.test.mjs"
   },
   "dependencies": {

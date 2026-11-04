@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import test from 'node:test';
 import { assertPcOwner, initializePcLocal, pcLocalRoute, pcLocalStatus, readActivePcSnapshot, setPcLocalMode } from '../src/lib/pc-local-runtime.ts';
-import { signAdminSession, verifyAdminSessionToken } from '../src/lib/admin-session-token.ts';
+import { signAdminSession, verifyAdminSessionToken, adminSessionSecretState } from '../src/lib/admin-session-token.ts';
 import { getAdminDb, getPublicDb } from '../src/lib/supabase-server-engine.ts';
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'sgt-local-ro-')), cfg=fs.mkdtempSync(path.join(os.tmpdir(),'sgt-local-cfg-'));
 const env=['SGT_PC_LOCAL_SERVER','SGT_PC_CONFIG_DIR','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY'];const before=Object.fromEntries(env.map(k=>[k,process.env[k]]));
@@ -13,6 +13,11 @@ test('PC sessions cannot be replayed against the public server, even with the sa
   const saved=process.env.ADMIN_SESSION_SECRET;process.env.ADMIN_SESSION_SECRET='test-only-admin-session-secret-123456789';
   try {process.env.SGT_PC_LOCAL_SERVER='1';const pc=await signAdminSession({username:'owner',role:'owner',pcMode:'readonly'});assert.ok(await verifyAdminSessionToken(pc));delete process.env.SGT_PC_LOCAL_SERVER;assert.equal(await verifyAdminSessionToken(pc),null);const web=await signAdminSession({username:'owner',role:'owner'});process.env.SGT_PC_LOCAL_SERVER='1';assert.equal(await verifyAdminSessionToken(web),null);}
   finally {process.env.SGT_PC_LOCAL_SERVER='1';if(saved===undefined)delete process.env.ADMIN_SESSION_SECRET;else process.env.ADMIN_SESSION_SECRET=saved;}
+});
+test('PC mode never permits the known development session secret',async()=>{
+ const old=process.env.ADMIN_SESSION_SECRET;delete process.env.ADMIN_SESSION_SECRET;process.env.SGT_PC_LOCAL_SERVER='1';
+ try {assert.equal(adminSessionSecretState(),'missing');await assert.rejects(signAdminSession({username:'owner',role:'owner',pcMode:'remote'}),/ADMIN_SESSION_SECRET/);}
+ finally {if(old===undefined)delete process.env.ADMIN_SESSION_SECRET;else process.env.ADMIN_SESSION_SECRET=old;}
 });
 test('local mode is explicit and never initializes a server file implicitly',()=>{
  delete process.env.SGT_PC_LOCAL_SERVER;process.env.SGT_PC_CONFIG_DIR=cfg;

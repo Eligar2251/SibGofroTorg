@@ -42,12 +42,14 @@ export function AdminShell({
   role,
   displayName,
   username,
+  pcLocalSite = false,
 }: {
   children: ReactNode;
   adminPath: string;
   role: AdminRole | null;
   displayName: string | null;
   username: string;
+  pcLocalSite?: boolean;
 }) {
   const pathname = usePathname() || "";
   const isLogin = pathname === `/${adminPath}/login`;
@@ -194,7 +196,7 @@ export function AdminShell({
           icon: link.icon,
         }))}
       >
-        {role === "owner" && <PcScheduledFullBackupRunner username={username} />}
+        {role === "owner" && !pcLocalSite && <PcScheduledFullBackupRunner username={username} />}
         {children}
       </MobileAdminShell>
     );
@@ -391,7 +393,7 @@ export function AdminShell({
         {/* Индикатор состояния realtime-канала: зелёный = данные живые,
             красный = realtime недоступен, обновляем по таймеру. */}
         {role && <RealtimeStatusIndicator />}
-        {role === "owner" && <PcScheduledFullBackupRunner username={username} />}
+        {role === "owner" && !pcLocalSite && <PcScheduledFullBackupRunner username={username} />}
 
         {/* Три кружка справа сверху: планы поставок · новые заявки ·
             срочные уведомления. Макулатурщику и юристу недоступны. */}

@@ -9,6 +9,7 @@ import { hasPermission, verifySession } from "@/lib/auth";
 import { canAccessDatabase } from "@/lib/admin-rbac";
 import { DatabaseBrowser } from "@/components/admin/DatabaseBrowser";
 import { DatabaseBackendSwitcher } from "@/components/admin/DatabaseBackendSwitcher";
+import { isPcLocalServer } from "@/lib/pc-local-runtime";
 import { PcLocalReadOnlyPanel } from "@/components/admin/PcLocalReadOnlyPanel";
 import { ADMIN_PATH } from "@/lib/admin-path";
 
@@ -42,7 +43,7 @@ export default async function AdminDatabasePage({
         )}
       </p>
       {session.role === "owner" && <PcLocalReadOnlyPanel adminPath={ADMIN_PATH} />}
-      <DatabaseBackendSwitcher ownerUsername={session.role === "owner" ? session.username : undefined} />
+      <DatabaseBackendSwitcher pcLocalSite={isPcLocalServer()} ownerUsername={session.role === "owner" ? session.username : undefined} />
       <DatabaseBrowser />
     </div>
   );

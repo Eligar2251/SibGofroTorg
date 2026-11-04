@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import { createPcWorkingStore, readPcWorkingStore, replacePcCleanBaseline, copyPcWorkingStore, type PcWorkingStore } from "./pc-working-store";
 import type { PublicBackup } from "./merge-public-snapshots";
 
-export type PcLocalSettings = { version:1; root:string; computerId:string; source:"primary"|"secondary"; mode:"remote"|"readonly"; liveEnabled?:boolean; archivesEnabled?:boolean };
+export type PcLocalSettings = { version:1; root:string; computerId:string; source:"primary"|"secondary"; mode:"remote"|"readonly"; liveEnabled?:boolean; archivesEnabled?:boolean; autoManaged?:boolean };
 export type PcLocalRoute = { kind:"disabled"|"remote" } | { kind:"readonly"; settings:PcLocalSettings } | { kind:"error"; message:string };
 const idFormat=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function isPcLocalServer() { return process.env.SGT_PC_LOCAL_SERVER === "1"; }
@@ -17,7 +17,7 @@ function loadSettings(): PcLocalSettings | null {
   try { raw=fs.readFileSync(configPath(),"utf8"); }
   catch(e) { if((e as NodeJS.ErrnoException).code==="ENOENT") return null; throw e; }
   const c=JSON.parse(raw);
-  if (!c || c.version!==1 || typeof c.root!=="string" || !path.isAbsolute(c.root) || typeof c.computerId!=="string" || !idFormat.test(c.computerId) || !["primary","secondary"].includes(c.source) || !["remote","readonly"].includes(c.mode) || (c.liveEnabled !== undefined && typeof c.liveEnabled !== "boolean") || (c.archivesEnabled !== undefined && typeof c.archivesEnabled !== "boolean")) throw new Error("Настройки локального сервера повреждены; автоматическое переключение остановлено.");
+  if (!c || c.version!==1 || typeof c.root!=="string" || !path.isAbsolute(c.root) || typeof c.computerId!=="string" || !idFormat.test(c.computerId) || !["primary","secondary"].includes(c.source) || !["remote","readonly"].includes(c.mode) || (c.liveEnabled !== undefined && typeof c.liveEnabled !== "boolean") || (c.archivesEnabled !== undefined && typeof c.archivesEnabled !== "boolean") || (c.autoManaged !== undefined && typeof c.autoManaged !== "boolean")) throw new Error("Настройки локального сервера повреждены; автоматическое переключение остановлено.");
   return c;
 }
 function writeSettings(c:PcLocalSettings) {
@@ -42,10 +42,10 @@ export function pcLocalStatus() {
   const c=loadSettings(); if(!c) return {available:true as const,configured:false as const};
   let store:PcWorkingStore|null=null, error:string|null=null;
   try {store=readPcWorkingStore(c.root,c.computerId);} catch(e) {error=e instanceof Error?e.message:String(e)}
-  return {available:true as const,configured:true as const,root:c.root,computerId:c.computerId,source:c.source,mode:c.mode,liveEnabled:c.liveEnabled===true,archivesEnabled:c.archivesEnabled===true,archiveStatus:readPcArchiveStatus(),ready:!!store,error,createdAt:store?.createdAt??null,updatedAt:store?.current.exportedAt??null,revision:store?.revision??null,totalRows:store?.current.totalRows??null};
+  return {available:true as const,configured:true as const,root:c.root,computerId:c.computerId,source:c.source,mode:c.mode,liveEnabled:c.liveEnabled===true,autoManaged:c.autoManaged===true,archivesEnabled:c.archivesEnabled===true,archiveStatus:readPcArchiveStatus(),ready:!!store,error,createdAt:store?.createdAt??null,updatedAt:store?.current.exportedAt??null,revision:store?.revision??null,totalRows:store?.current.totalRows??null};
 }
 /** Configuration is stored first; if interrupted after file creation it remains recoverable. */
-export function initializePcLocal(root:string,source:"primary"|"secondary",snapshot:PublicBackup) {
+export function initializePcLocal(root:string,source:"primary"|"secondary",snapshot:PublicBackup, options?:{autoManaged?:boolean}) {
   if(!isPcLocalServer()) throw new Error("Рабочая папка доступна только на локальном сервере ПК.");
   if(typeof root!=="string" || !path.isAbsolute(root)) throw new Error("Введите абсолютный путь к существующей папке ПК.");
   if(source!=="primary" && source!=="secondary") throw new Error("Неизвестный источник.");
@@ -53,7 +53,7 @@ export function initializePcLocal(root:string,source:"primary"|"secondary",snaps
   return configLock(()=>{
     let c=loadSettings();
     if(c && (c.root!==root || c.source!==source)) throw new Error("У этого ПК уже выбраны папка или источник. Старые файлы не перезаписаны.");
-    if(!c) { c={version:1,root,computerId:crypto.randomUUID(),source,mode:"remote"}; writeSettings(c); }
+    if(!c) { c={version:1,root,computerId:crypto.randomUUID(),source,mode:"remote",...(options?.autoManaged ? {autoManaged:true,archivesEnabled:true} : {})}; writeSettings(c); }
     createPcWorkingStore(c.root,c.computerId,snapshot,{source,instanceId:null});
     return pcLocalStatus();
   });
@@ -68,6 +68,15 @@ export function setPcLocalMode(mode:"remote"|"readonly") {
     return pcLocalStatus();
   });
 }
+/** Existing Downloads only: never guess a missing, redirected or inaccessible folder. */
+export function defaultPcDownloadsRoot():string {
+  if(!isPcLocalServer())throw new Error("Путь ПК доступен только при запуске сайта на этом компьютере.");
+  const root=process.env.SGT_PC_DOWNLOADS_DIR || path.join(os.homedir(),"Downloads");
+  if(!path.isAbsolute(root))throw new Error("Путь загрузок ПК должен быть абсолютным.");
+  try {if(!fs.statSync(root).isDirectory())throw new Error("not directory");} catch {throw new Error("Папка Downloads не найдена или недоступна. Укажите существующую папку ПК в админке.");}
+  return root;
+}
+
 /** Avoid switching into a snapshot that cannot authenticate this owner. */
 export function assertPcOwner(snapshot:PublicBackup,username:string) {
   const admins=snapshot.tables.admins;
@@ -87,10 +96,10 @@ export function readActivePcSnapshot():PublicBackup {
 }
 
 /** Commit a received update only if settings and file have not changed during the network call. */
-export function commitPcLiveBaseline(computerId:string,source:"primary"|"secondary",revision:number,tracked:unknown,enable:boolean) {
+export function commitPcLiveBaseline(computerId:string,source:"primary"|"secondary",revision:number,tracked:unknown,enable:boolean, automatic=false) {
   return configLock(()=>{
     const c=loadSettings();
-    if (!c || c.mode!=="remote" || c.computerId!==computerId || c.source!==source || (!enable && c.liveEnabled!==true)) throw new Error("Настройки или режим ПК изменились; обновление отменено.");
+    if (!c || c.mode!=="remote" || c.computerId!==computerId || c.source!==source || (!enable && c.liveEnabled!==true) || (automatic && c.autoManaged!==true)) throw new Error("Настройки или режим ПК изменились; обновление отменено.");
     const store=replacePcCleanBaseline(c.root,c.computerId,revision,tracked);
     if(enable) writeSettings({...c,liveEnabled:true});
     return store;
@@ -98,7 +107,7 @@ export function commitPcLiveBaseline(computerId:string,source:"primary"|"seconda
 }
 export function setPcLiveDisabled() {
   if(!isPcLocalServer()) throw new Error("Локальный сервер ПК не включён.");
-  return configLock(()=>{const c=loadSettings();if(!c) throw new Error("Локальная копия не настроена.");writeSettings({...c,liveEnabled:false});return pcLocalStatus();});
+  return configLock(()=>{const c=loadSettings();if(!c) throw new Error("Локальная копия не настроена.");writeSettings({...c,liveEnabled:false,autoManaged:false});return pcLocalStatus();});
 }
 export function readConfiguredPcStore():PcWorkingStore {
   const c=loadSettings();if(!c)throw new Error("Локальная копия не настроена.");return readPcWorkingStore(c.root,c.computerId);

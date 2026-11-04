@@ -11,12 +11,13 @@ function remote() {
   const store=readConfiguredPcStore();
   return store;
 }
-export async function enablePcWorkingRefresh(rpc:Rpc,username:string) {
+export async function enablePcWorkingRefresh(rpc:Rpc,username:string, automatic=false) {
   const store=remote();
+  if(automatic && !(pcLocalStatus() as {autoManaged?:boolean}).autoManaged) throw new Error("Автоматическое обновление отключено на этом ПК.");
   if(store.baseHash!==store.currentHash) throw new Error("В локальной БД есть независимые изменения; обновление запрещено.");
   const tracked=trackedFromInitial(await rpc("sgt_pc_backup_snapshot"));
   assertPcOwner(tracked,username);
-  return commitPcLiveBaseline(store.computerId,store.origin.source,store.revision,tracked,true);
+  return commitPcLiveBaseline(store.computerId,store.origin.source,store.revision,tracked,true,automatic);
 }
 export async function tickPcWorkingRefresh(rpc:Rpc) {
   const status=pcLocalStatus();

@@ -30,7 +30,8 @@ export type AdminSessionSecretState = "ok" | "missing" | "too_short" | "dev_fall
 export function adminSessionSecretState(): AdminSessionSecretState {
   const fromEnv = process.env.ADMIN_SESSION_SECRET;
   if (fromEnv && fromEnv.length >= 32) return "ok";
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" || process.env.SGT_PC_LOCAL_SERVER === "1") {
+    // npm run dev is used for real PC data; never accept the public dev secret.
     return fromEnv ? "too_short" : "missing";
   }
   return "dev_fallback";

@@ -179,7 +179,13 @@ export async function proxy(request: NextRequest) {
       const allowedAction = pathname === "/api/admin/database/pc-local" || pathname === `/${ADMIN_PATH}/api/login` || pathname === `/${ADMIN_PATH}/api/logout`;
       const unsafe = !["GET", "HEAD", "OPTIONS"].includes(request.method) && !allowedAction;
       const changeJournal = pathname.startsWith("/api/admin/database/pc-incremental");
-      if (unsafe || changeJournal) return NextResponse.json({error:"Локальная копия доступна только для чтения; операции записи отключены.",code:"PC_READ_ONLY"},{status:403,headers:{"Cache-Control":"no-store"}});
+      // An offline session is authorized by a PC file. It must never use the
+      // server's service-role credentials to fetch another database's data.
+      const normalizedPath = pathname.replace(/\/+$/, "");
+      const remoteExport = normalizedPath === "/api/admin/database/full-backup" && request.nextUrl.searchParams.get("download") === "1";
+      const remoteProbe = normalizedPath === "/api/admin/database/backend" && request.nextUrl.searchParams.get("probe") === "1";
+      const legacyExport = normalizedPath === "/api/admin/database/backup" && request.nextUrl.searchParams.get("format") !== "sql";
+      if (unsafe || changeJournal || remoteExport || remoteProbe || legacyExport) return NextResponse.json({error:"Локальная копия доступна только для чтения; операции записи отключены.",code:"PC_READ_ONLY"},{status:403,headers:{"Cache-Control":"no-store"}});
     }
   }
   const isHttps = isHttpsRequest(request);
