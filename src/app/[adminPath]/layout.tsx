@@ -130,6 +130,7 @@ export default async function AdminLayout({
             adminPath={ADMIN_PATH}
             role={session?.role ?? null}
             displayName={session?.displayName ?? null}
+            username={session?.username ?? ""}
           >
             {children}
           </AdminShell>

@@ -40,7 +40,7 @@ export default async function AdminDatabasePage({
           <> Правки денежных правок владельца видит только роль «Владелец».</>
         )}
       </p>
-      <DatabaseBackendSwitcher />
+      <DatabaseBackendSwitcher ownerUsername={session.role === "owner" ? session.username : undefined} />
       <DatabaseBrowser />
     </div>
   );

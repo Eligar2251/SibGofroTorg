@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FullBackupPanel } from "./FullBackupPanel";
+import { PcScheduledFullBackupPanel } from "./PcScheduledFullBackup";
 import {
   Activity,
   AlertTriangle,
@@ -158,8 +159,10 @@ function formatDateTime(iso: string | null | undefined): string {
 
 export function DatabaseBackendSwitcher({
   onSwitched,
+  ownerUsername,
 }: {
   onSwitched?: () => void;
+  ownerUsername?: string;
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -960,6 +963,7 @@ export function DatabaseBackendSwitcher({
       )}
 
       <FullBackupPanel />
+      {ownerUsername && <PcScheduledFullBackupPanel username={ownerUsername} />}
 
       {/* Три карточки выбора источника БД */}
       <div

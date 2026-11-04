@@ -18,9 +18,11 @@ export async function GET(req: NextRequest) {
   const auth = await ownerOnly(); if (auth instanceof NextResponse) return auth;
   try {
     if (req.nextUrl.searchParams.get("download") === "1") {
-      const source = effectiveSource();
+      const requested = req.nextUrl.searchParams.get("source");
+      if (requested && requested !== "primary" && requested !== "secondary") throw new Error("Недопустимый источник бэкапа");
+      const source: DbBackendMode = requested === "primary" || requested === "secondary" ? requested : effectiveSource();
       const snapshot = await captureFullSnapshot(source);
-      if (effectiveSource() !== source) throw new Error("Рабочая база изменилась во время создания копии. Повторите попытку.");
+      if (!requested && effectiveSource() !== source) throw new Error("Рабочая база изменилась во время создания копии. Повторите попытку.");
       return new NextResponse(JSON.stringify(snapshot), { headers: {
         "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store",
         "Content-Disposition": `attachment; filename="sgt-full-public-${new Date().toISOString().slice(0, 10)}.json"`,
