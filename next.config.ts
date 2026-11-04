@@ -11,11 +11,12 @@ const nextConfig: NextConfig = {
   compress: true,
   reactStrictMode: true,
 
-  // Только явно указанные доверенные хосты dev-сервера; в production не нужны.
-  allowedDevOrigins: (process.env.SGT_ALLOWED_DEV_ORIGINS || "")
+  // Конкретный адрес из сети администратора, плюс явно заданные dev-хосты.
+  // Не открываем dev-ресурсы всем адресам через wildcard.
+  allowedDevOrigins: ["10.121.106.53", ...(process.env.SGT_ALLOWED_DEV_ORIGINS || "")
     .split(",")
     .map((host) => host.trim())
-    .filter(Boolean),
+    .filter(Boolean)],
 
   images: {
     // Любые внешние картинки идут через наш /media (src/lib/image-loader.ts).

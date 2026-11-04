@@ -26,15 +26,17 @@ import { getAdminLandingPath, parseAdminRole } from "@/lib/admin-rbac";
 export function LoginForm({
   adminPath,
   expired = false,
+  initialError = "",
 }: {
   adminPath: string;
   expired?: boolean;
+  initialError?: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError);
   const [dbError, setDbError] = useState<{
     message: string;
     detail?: string;
@@ -225,10 +227,13 @@ export function LoginForm({
     const username = formData.get("username") as string;
     const password = formData.get("password") as string;
 
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
     try {
       const res = await fetch(`/${adminPath}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ username, password }),
       });
 
@@ -252,9 +257,13 @@ export function LoginForm({
       window.location.assign(getAdminLandingPath(role, adminPath));
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Неверный логин или пароль"
+        controller.signal.aborted
+          ? "Сервер не ответил вовремя. Проверьте соединение и состояние базы данных."
+          : err instanceof Error ? err.message : "Не удалось связаться с сервером"
       );
       setLoading(false);
+    } finally {
+      window.clearTimeout(timeout);
     }
   }
 
@@ -508,8 +517,9 @@ export function LoginForm({
       <form method="post" action={`/${adminPath}/api/login`} onSubmit={handleSubmit}>
         {!hydrated && (
           <div className="admin-error" role="status" style={{ marginBottom: 16 }}>
-            Загрузка формы входа. Если сообщение не исчезает, не загрузился JavaScript:
-            обновите страницу и проверьте ошибки загрузки в браузере.
+            Интерактивный интерфейс ещё не загрузился. Вход по логину и паролю
+            доступен через обычную отправку формы, но для переключения базы
+            и работы админки необходим JavaScript.
           </div>
         )}
         <div className="admin-field" style={{ marginBottom: 16 }}>
@@ -550,7 +560,7 @@ export function LoginForm({
 
         <button
           type="submit"
-          disabled={loading || !hydrated}
+          disabled={loading}
           className="admin-btn admin-btn--navy"
           style={{ width: "100%", padding: "14px 24px", fontWeight: 700 }}
         >

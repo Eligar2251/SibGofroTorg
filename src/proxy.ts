@@ -67,7 +67,7 @@ function buildCsp(isHttps: boolean): string {
     "img-src 'self' data: blob: https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
     "font-src 'self' data:",
     // Метрика открывает WebSocket wss://mc.yandex.ru/solid.ws — схема wss://
-    "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com https://botapi.max.ru https://*.yandex.ru https://yandex.ru wss://mc.yandex.ru wss://mc.yandex.com wss://*.yandex.ru https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in",
+    `connect-src 'self' ${isDev ? "ws: wss: " : ""}https://mc.yandex.ru https://mc.yandex.com https://botapi.max.ru https://*.yandex.ru https://yandex.ru wss://mc.yandex.ru wss://mc.yandex.com wss://*.yandex.ru https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in`,
     "frame-src 'self' https://yandex.ru https://*.yandex.ru https://yandex.com https://*.yandex.com https://mc.yandex.ru",
     "worker-src 'self' blob:",
     "object-src 'none'",
@@ -164,6 +164,19 @@ async function maybeRenewSession(
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isHttps = isHttpsRequest(request);
+
+  // Старые версии формы отправляли пароль в URL через GET. Удаляем его из
+  // адресной строки при повторном открытии старой ссылки (уже записанные логи
+  // это не очищает — пароль необходимо сменить).
+  if (request.method === "GET" && pathname === `/${ADMIN_PATH}/login` &&
+      (request.nextUrl.searchParams.has("password") || request.nextUrl.searchParams.has("username"))) {
+    const cleanUrl = request.nextUrl.clone();
+    cleanUrl.search = "";
+    const response = NextResponse.redirect(cleanUrl, 303);
+    response.headers.set("Cache-Control", "no-store");
+    applySecurityHeaders(response, isHttps);
+    return response;
+  }
 
   // ── Короткие QR-ссылки /q/{code} ──
   const shortQr = pathname.match(/^\/[Qq]\/(.+)$/);
