@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FullBackupPanel } from "./FullBackupPanel";
 import { PcScheduledFullBackupPanel } from "./PcScheduledFullBackup";
+import { MergeBackupPanel } from "./MergeBackupPanel";
 import {
   Activity,
   AlertTriangle,
@@ -960,6 +961,7 @@ export function DatabaseBackendSwitcher({
 
       <FullBackupPanel />
       {ownerUsername && <PcScheduledFullBackupPanel username={ownerUsername} />}
+      {ownerUsername && <MergeBackupPanel />}
 
       {/* Три карточки выбора источника БД */}
       <div
