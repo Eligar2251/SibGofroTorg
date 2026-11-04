@@ -755,7 +755,9 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
   private singleMode: "none" | "single" | "maybeSingle" = "none";
   private isMirrorReplay = false;
 
-  constructor(table: string) {
+  private readonly readOnlyStore?: LocalDbFileEnvelope;
+  constructor(table: string, readOnlyStore?: LocalDbFileEnvelope) {
+    this.readOnlyStore = readOnlyStore;
     this.table = table;
   }
 
@@ -896,13 +898,13 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
 
   like(column: string, pattern: string): this {
     const re = sqlLikeToRegex(pattern, false);
-    this.predicates.push((row) => re.test(String(row[column] ?? "")));
+    this.predicates.push((row) => row[column] != null && re.test(String(row[column])));
     return this;
   }
 
   ilike(column: string, pattern: string): this {
     const re = sqlLikeToRegex(pattern, true);
-    this.predicates.push((row) => re.test(String(row[column] ?? "")));
+    this.predicates.push((row) => row[column] != null && re.test(String(row[column])));
     return this;
   }
 
@@ -924,7 +926,7 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
     this.orders.push({
       column,
       ascending: options?.ascending !== false,
-      nullsFirst: options?.nullsFirst,
+      nullsFirst: options?.nullsFirst ?? options?.ascending === false,
     });
     return this;
   }
@@ -996,13 +998,13 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
     }
 
     if (this.singleMode === "single") {
-      if (projected.length === 0) {
+      if (projected.length !== 1) {
         return {
           data: null,
           error: {
             code: "PGRST116",
             message:
-              "JSON object requested, multiple (or no) rows returned (0 rows)",
+              `JSON object requested, multiple (or no) rows returned (${projected.length} rows)`,
           },
           count: this.wantCount ? exactCount : undefined,
           status: 406,
@@ -1019,6 +1021,7 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
     }
 
     if (this.singleMode === "maybeSingle") {
+      if (projected.length > 1) return { data:null, error:{code:"PGRST116",message:`JSON object requested, multiple rows returned (${projected.length} rows)`}, status:406 };
       return {
         data: projected[0] ?? null,
         error: null,
@@ -1038,7 +1041,8 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
   }
 
   executeSync(): PostgrestLikeResult {
-    const store = loadStore();
+    if (this.readOnlyStore && this.operation !== "select") return { data:null, error:{code:"PC_READ_ONLY",message:"Локальная копия доступна только для чтения."} };
+    const store = this.readOnlyStore ? deepClone(this.readOnlyStore) : loadStore();
 
     if (this.table === "die_calc_job_stats" && this.operation === "select") {
       const viewRows = computeDieCalcJobStatsView(store).filter((r) =>
@@ -1231,14 +1235,17 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
 }
 
 export class LocalJsonSupabaseClient {
+  private readonly readOnlyStore?: LocalDbFileEnvelope;
+  constructor(readOnlyStore?: LocalDbFileEnvelope) { this.readOnlyStore = readOnlyStore; }
   from(table: string): LocalJsonQueryBuilder {
-    return new LocalJsonQueryBuilder(table);
+    return new LocalJsonQueryBuilder(table, this.readOnlyStore);
   }
 
   async rpc(
     fnName: string,
     args?: Record<string, any>
   ): Promise<PostgrestLikeResult> {
+    if (this.readOnlyStore) return { data:null, error:{code:"PC_READ_ONLY",message:"RPC в режиме чтения локальной копии отключены."} };
     const store = loadStore();
 
     if (fnName === "fn_next_counter") {

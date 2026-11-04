@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { pcLocalRoute } from "@/lib/pc-local-runtime";
 import { verifySession } from "@/lib/auth";
 import { ADMIN_PATH } from "@/lib/admin-path";
 // Стили админки грузятся только здесь, а не на всём сайте (раньше
@@ -126,6 +127,8 @@ export default async function AdminLayout({
           role={session?.role ?? null}
           username={session?.username ?? ""}
         >
+          {pcLocalRoute().kind === "readonly" && <div role="status" style={{padding:12,background:"#fff4e5",color:"#762d0a",fontWeight:600}}>Локальная копия на этом ПК: только чтение. Данные могут быть устаревшими; изменения и синхронизация отключены.</div>}
+          {pcLocalRoute().kind === "error" && <div role="alert" style={{padding:12,background:"#fff4e5",color:"#762d0a"}}>Ошибка настроек локального сервера: доступ к БД остановлен.</div>}
           <AdminShell
             adminPath={ADMIN_PATH}
             role={session?.role ?? null}

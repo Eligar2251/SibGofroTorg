@@ -20,6 +20,7 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { logActivity } from "@/lib/activity-log";
 import { getAdminLandingPath, parseAdminRole } from "@/lib/admin-rbac";
 import { ADMIN_PATH } from "@/lib/admin-path";
+import { pcLocalRoute } from "@/lib/pc-local-runtime";
 import { isDbUnavailable, noStoreJson } from "@/lib/api-errors";
 
 export const runtime = "nodejs";
@@ -124,7 +125,7 @@ export async function POST(
       // выбрать локальный файл БД для беспарольного входа!
       const failover = getDbFailoverState();
       const cfg = getDbRuntimeConfig();
-      if (failover.activeFallbackBackend === "local" || cfg.activeBackend !== "local") {
+      if (pcLocalRoute().kind !== "readonly" && (failover.activeFallbackBackend === "local" || cfg.activeBackend !== "local")) {
         const primaryProbe = await probeDatabaseBackend("primary");
         if (!primaryProbe.reachable) {
           return respond(

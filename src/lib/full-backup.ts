@@ -156,7 +156,7 @@ export async function runFullReplication(force = false) {
 function schedule() {
   const r = runtime(); if (r.timer) clearTimeout(r.timer);
   const cfg = readFullBackupSettings();
-  if (!cfg.enabled) { r.timer = undefined; return; }
+  if (!cfg.enabled || process.env.SGT_PC_LOCAL_SERVER === "1") { r.timer = undefined; return; }
   r.timer = setTimeout(async () => { try { await runFullReplication(); } catch (e) { console.error("[full-backup]", e); } finally { schedule(); } }, cfg.intervalSec * 1000);
   r.timer.unref?.();
 }

@@ -16,6 +16,7 @@
 // =========================================================
 
 import { NextResponse } from "next/server";
+import { pcLocalRoute } from "@/lib/pc-local-runtime";
 import type { NextRequest } from "next/server";
 import {
   ADMIN_PATH,
@@ -150,6 +151,7 @@ async function maybeRenewSession(
       username: session.username,
       role: session.role,
       displayName: session.displayName,
+      pcMode: session.pcMode,
     });
     response.cookies.set(
       ADMIN_SESSION_COOKIE,
@@ -162,7 +164,24 @@ async function maybeRenewSession(
 }
 
 export async function proxy(request: NextRequest) {
+  if (process.env.SGT_PC_LOCAL_SERVER === "1") {
+    // Also defend against DNS rebinding and accidentally binding the local
+    // server to a network interface. Do not trust X-Forwarded-Host here.
+    try {
+      const hostname = new URL(`http://${request.headers.get("host") || ""}`).hostname.toLowerCase();
+      if (!["localhost", "127.0.0.1", "[::1]"].includes(hostname)) return new NextResponse("Local server only", {status:403});
+    } catch { return new NextResponse("Local server only", {status:403}); }
+  }
   const { pathname } = request.nextUrl;
+  if (process.env.SGT_PC_LOCAL_SERVER === "1") {
+    const local = pcLocalRoute();
+    if (local.kind === "readonly" || local.kind === "error") {
+      const allowedAction = pathname === "/api/admin/database/pc-local" || pathname === `/${ADMIN_PATH}/api/login` || pathname === `/${ADMIN_PATH}/api/logout`;
+      const unsafe = !["GET", "HEAD", "OPTIONS"].includes(request.method) && !allowedAction;
+      const changeJournal = pathname.startsWith("/api/admin/database/pc-incremental");
+      if (unsafe || changeJournal) return NextResponse.json({error:"Локальная копия доступна только для чтения; операции записи отключены.",code:"PC_READ_ONLY"},{status:403,headers:{"Cache-Control":"no-store"}});
+    }
+  }
   const isHttps = isHttpsRequest(request);
 
   // Старые версии формы отправляли пароль в URL через GET. Удаляем его из
@@ -192,7 +211,8 @@ export async function proxy(request: NextRequest) {
 
   if (scope) {
     const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
-    const session = await verifyAdminSessionToken(token);
+    let session = await verifyAdminSessionToken(token);
+    if (process.env.SGT_PC_LOCAL_SERVER === "1" && session && session.pcMode !== pcLocalRoute().kind) session = null;
 
     if (scope === "api") {
       if (!session) {

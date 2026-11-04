@@ -7,6 +7,7 @@
 // layout нет» больше невозможно. Здесь только работа с cookie и React.
 // =========================================================
 
+import { pcLocalRoute } from "@/lib/pc-local-runtime";
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import {
@@ -45,7 +46,9 @@ export async function createSession(data: {
     throw new Error(problem);
   }
 
-  const token = await signAdminSession(data);
+  const pc = pcLocalRoute();
+  if (pc.kind === "error") throw new Error(pc.message);
+  const token = await signAdminSession({ ...data, pcMode: pc.kind === "remote" || pc.kind === "readonly" ? pc.kind : undefined });
 
   // Определяем реальную схему запроса (HTTPS или HTTP), чтобы при локальном
   // прод-запуске или аварийном доступе по HTTP-адресу браузер не отбрасывал
@@ -90,6 +93,7 @@ export async function verifySession(): Promise<AdminSession | null> {
     return null;
   }
 
+  if (process.env.SGT_PC_LOCAL_SERVER === "1" && session.pcMode !== pcLocalRoute().kind) return null;
   return {
     username: session.username,
     role: session.role,

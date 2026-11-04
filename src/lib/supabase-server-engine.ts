@@ -1,3 +1,5 @@
+import { pcLocalRoute } from "./pc-local-runtime";
+import { activePcQuery } from "./pc-readonly-query";
 // =========================================================
 // FILE: src/lib/supabase-server-engine.ts
 // Серверное ядро маршрутизации БД (только Node.js):
@@ -258,6 +260,12 @@ class SmartQueryProxy implements PromiseLike<any> {
   }
 
   private async execute(): Promise<any> {
+    const pc = pcLocalRoute();
+    if (pc.kind === "error") return remoteUnavailable(pc.message);
+    if (pc.kind === "readonly") {
+      try { const local = activePcQuery(this.table,this.calls); return local.error || await this.replayOn(local.client,false); }
+      catch (e) { return remoteUnavailable(`Локальная копия недоступна: ${e instanceof Error ? e.message : String(e)}`); }
+    }
     const cfg = getDbRuntimeConfig();
 
     if (cfg.activeBackend === "local") {
@@ -398,6 +406,9 @@ class SmartAdminSupabaseClient {
   }
 
   async rpc(fnName: string, args?: Record<string, any>): Promise<any> {
+    const pc = pcLocalRoute();
+    if (pc.kind === "error") return remoteUnavailable(pc.message);
+    if (pc.kind === "readonly") return { data:null, error:{code:"PC_READ_ONLY",message:"RPC отключены в режиме чтения локальной копии."} };
     const cfg = getDbRuntimeConfig();
     if (cfg.activeBackend === "local") {
       return localServerUnavailable();
@@ -460,6 +471,8 @@ export function getAdminDb(): SupabaseClient {
 }
 
 export function getPublicDb(): SupabaseClient {
+  const pc = pcLocalRoute();
+  if (pc.kind === "readonly" || pc.kind === "error") return smartAdminClient as unknown as SupabaseClient;
   const cfg = getDbRuntimeConfig();
   if (cfg.activeBackend === "local") {
     return smartAdminClient as unknown as SupabaseClient;
@@ -505,6 +518,8 @@ export function getActiveDatabaseConnectionInfo(): {
   serviceRoleKey: string;
 } {
   const cfg = getDbRuntimeConfig();
+  const pc = pcLocalRoute();
+  if (pc.kind === "readonly" || pc.kind === "error") return { configuredMode:cfg.activeBackend, effectiveMode:"local", label:"Локальная копия ПК (только чтение)", url:"", serviceRoleKey:"" };
   const failover = getDbFailoverState();
   const effectiveMode = failover.activeFallbackBackend || cfg.activeBackend;
 
@@ -542,6 +557,13 @@ export async function probeDatabaseBackend(
   const started = Date.now();
 
   if (target === "local") {
+    const pc = pcLocalRoute();
+    if (pc.kind === "error") return { target, label:"Локальная копия ПК", configured:true, reachable:false, latencyMs:Date.now()-started, productsCount:null, error:pc.message };
+    if (pc.kind === "readonly") {
+      try { const q=activePcQuery("products",[{method:"select",args:["id",{count:"exact",head:true}]}]); const res=q.error || await q.client.from("products").select("id",{count:"exact",head:true});
+        return {target,label:"Локальная копия ПК (только чтение)",configured:true,reachable:!res.error,latencyMs:Date.now()-started,productsCount:("count" in res ? res.count??null : null),error:res.error?.message||null};
+      } catch(e) {return {target,label:"Локальная копия ПК",configured:true,reachable:false,latencyMs:Date.now()-started,productsCount:null,error:e instanceof Error?e.message:String(e)};}
+    }
     try {
       const res = await getLocalJsonDbClient()
         .from("products")
