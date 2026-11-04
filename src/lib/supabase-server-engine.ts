@@ -70,6 +70,12 @@ function remoteUnavailable(message: string) {
   return { data: null, error: { code: "DB_UNAVAILABLE", message } };
 }
 
+// A timeout or dropped connection does not prove the first database rolled
+// back. Replaying a write or an RPC elsewhere could create it twice.
+function uncertainWrite() {
+  return { data: null, error: { code: "DB_WRITE_OUTCOME_UNKNOWN", message: "Связь прервалась во время записи. Она могла сохраниться в исходной БД; проверьте результат перед повтором или переключением. Автоматический повтор в другой БД отменён." } };
+}
+
 const clientCache = new Map<string, SupabaseClient>();
 
 export function createDirectSupabaseClient(
@@ -273,9 +279,10 @@ class SmartQueryProxy implements PromiseLike<any> {
               fbCreds.serviceRoleKey
             );
             const fbRes = await this.replayOn(fbClient, false);
-            if (!fbRes?.error) return fbRes;
-          } catch {
-            /* fallback to local */
+            if (this.mutationOp && fbRes?.error && isRemoteServerFailure(fbRes.error)) return uncertainWrite();
+            return fbRes;
+          } catch (e) {
+            if (this.mutationOp) return uncertainWrite();
           }
         }
         return remoteUnavailable("Резервный Supabase недоступен; запись в серверный JSON отключена.");
@@ -303,6 +310,7 @@ class SmartQueryProxy implements PromiseLike<any> {
         }
         return res;
       } catch (primaryErr: any) {
+        if (this.mutationOp && isRemoteServerFailure(primaryErr)) return uncertainWrite();
         if (!cfg.autoFailover || !isRemoteServerFailure(primaryErr)) {
           return {
             data: null,
@@ -341,6 +349,7 @@ class SmartQueryProxy implements PromiseLike<any> {
       }
     }
 
+    if (this.mutationOp) return remoteUnavailable(`${creds.label}: параметры подключения не заданы. Запись в другую базу без проверки копии отменена.`);
     if (cfg.autoFailover) {
       const altTarget: "primary" | "secondary" =
         activeTarget === "primary" ? "secondary" : "primary";
@@ -402,8 +411,9 @@ class SmartAdminSupabaseClient {
         if (fb.configured) {
           try {
             const res = await createDirectSupabaseClient(fb.url, fb.serviceRoleKey).rpc(fnName, args);
-            if (!res?.error) return res;
-          } catch { /* fallback to local */ }
+            if (res?.error && isRemoteServerFailure(res.error)) return uncertainWrite();
+            return res;
+          } catch { return uncertainWrite(); }
         }
         return remoteUnavailable("Резервный Supabase недоступен; запись в серверный JSON отключена.");
       }
@@ -424,34 +434,8 @@ class SmartAdminSupabaseClient {
         }
         return res;
       } catch (err: any) {
-        if (!cfg.autoFailover || !isRemoteServerFailure(err)) {
-          return {
-            data: null,
-            error: {
-              code: "DB_UNAVAILABLE",
-              message: err?.message || String(err),
-            },
-          };
-        }
-        const altTarget: "primary" | "secondary" =
-          activeTarget === "primary" ? "secondary" : "primary";
-        const altCreds = resolveSupabaseCredentials(altTarget);
-        if (!readFullBackupSettings().enabled && altCreds.configured && altCreds.url !== creds.url) {
-          try {
-            const altClient = createDirectSupabaseClient(
-              altCreds.url,
-              altCreds.serviceRoleKey
-            );
-            const altRes = await altClient.rpc(fnName, args);
-            if (!altRes?.error) {
-              recordDbFailover(altTarget, err?.message || String(err));
-              return altRes;
-            }
-          } catch {
-            /* fallback to local */
-          }
-        }
-        return remoteUnavailable(err?.message || String(err));
+        if (isRemoteServerFailure(err)) return uncertainWrite();
+        return { data: null, error: { code: "DB_UNAVAILABLE", message: err?.message || String(err) } };
       }
     }
 

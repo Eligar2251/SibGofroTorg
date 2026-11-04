@@ -20,3 +20,6 @@ node_modules
 .sgt-data/
 /data/
 
+
+# Per-PC working database, lock and temporary writes contain real data
+**/sgt-working-db.json*

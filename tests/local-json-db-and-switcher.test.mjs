@@ -684,3 +684,36 @@ test("remote failover stays active across cooldown and process state reload, inc
     names.forEach((n, i) => previous[i] === undefined ? delete process.env[n] : process.env[n] = previous[i]);
   }
 });
+
+test("ambiguous remote writes and RPC are never replayed to another database", async () => {
+  const { clearDbFailoverState } = await import("../src/lib/db-runtime-config.ts");
+  const names = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECONDARY_URL"];
+  const previous = names.map((n) => process.env[n]);
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  try {
+    names.forEach((n) => delete process.env[n]);
+    saveDbRuntimeConfig({ activeBackend:"primary", autoFailover:true,
+      primary:{url:"https://uncertain-primary.example",serviceRoleKey:"key-primary"},
+      secondary:{url:"https://uncertain-secondary.example",serviceRoleKey:"key-secondary"} });
+    clearDbFailoverState();
+    globalThis.fetch = async (url) => {
+      requests.push(String(url));
+      if (String(url).startsWith("https://uncertain-primary.example/")) throw new Error("fetch failed: connection reset after send");
+      return new Response(JSON.stringify([{id:"duplicate"}]),{status:200,headers:{"content-type":"application/json"}});
+    };
+    const inserted=await getAdminDb().from("products").insert({id:"one",name:"test"});
+    assert.equal(inserted.error.code,"DB_WRITE_OUTCOME_UNKNOWN");
+    assert.match(inserted.error.message,/могла сохраниться/);
+    assert.equal(requests.length,1);
+    assert.equal(getDbFailoverState().activeFallbackBackend,null);
+    requests.length=0;
+    const rpc=await getAdminDb().rpc("fn_next_counter",{p_key:"deal"});
+    assert.equal(rpc.error.code,"DB_WRITE_OUTCOME_UNKNOWN");
+    assert.equal(requests.length,1);
+    assert.equal(getDbFailoverState().activeFallbackBackend,null);
+  } finally {
+    clearDbFailoverState(); globalThis.fetch=originalFetch;
+    names.forEach((n,i)=>previous[i]===undefined ? delete process.env[n] : process.env[n]=previous[i]);
+  }
+});
