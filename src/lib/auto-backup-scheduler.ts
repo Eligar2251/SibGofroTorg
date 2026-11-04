@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   getDbRuntimeConfig,
+  getDbFailoverState,
   getSgtDataDir,
   resolveServerBackupDir,
   resolveSupabaseCredentials,
@@ -284,6 +285,7 @@ export async function runServerAutoBackupNow(options?: {
     // 1. Если сейчас активен внешний Supabase (#1 или #2), сначала освежаем снимок из него
     if (
       !options?.skipRemoteSync &&
+      !getDbFailoverState().activeFallbackBackend &&
       (cfg.activeBackend === "primary" || cfg.activeBackend === "secondary")
     ) {
       const creds = resolveSupabaseCredentials(cfg.activeBackend);

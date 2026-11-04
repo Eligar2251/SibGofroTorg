@@ -103,24 +103,16 @@ function defaultConfig(): DbRuntimeConfig {
     lastEmergencyDbFilePath: "",
     lastEmergencyLoginAt: null,
     primary: {
-      label: "Supabase #1 (Основной / .env)",
+      label: "Supabase Cloud (Европа)",
       url: "",
       anonKey: "",
       serviceRoleKey: "",
     },
     secondary: {
-      label: "Supabase #2 (Облачный / Резервный)",
-      url: String(process.env.SUPABASE_SECONDARY_URL || "").trim(),
-      anonKey: String(
-        process.env.SUPABASE_SECONDARY_PUBLISHABLE_KEY ||
-          process.env.SUPABASE_SECONDARY_ANON_KEY ||
-          ""
-      ).trim(),
-      serviceRoleKey: String(
-        process.env.SUPABASE_SECONDARY_SECRET_KEY ||
-          process.env.SUPABASE_SECONDARY_SERVICE_ROLE_KEY ||
-          ""
-      ).trim(),
+      label: "Supabase на VPS",
+      url: "",
+      anonKey: "",
+      serviceRoleKey: "",
     },
     updatedAt: null,
     updatedBy: null,
@@ -136,6 +128,7 @@ interface ConfigCache {
 const globalRef = globalThis as unknown as {
   __sgtDbRuntimeConfigCache?: ConfigCache | null;
   __sgtDbFailoverState?: DbFailoverState;
+  __sgtDbFailoverPath?: string;
 };
 
 function sanitizeEndpoint(
@@ -373,29 +366,32 @@ export function resolveSupabaseCredentials(target: "primary" | "secondary"): {
         ""
     ).trim();
 
-    const url = cfg.primary.url || envUrl;
-    const anonKey = cfg.primary.anonKey || envAnon;
-    const serviceRoleKey = cfg.primary.serviceRoleKey || envService;
+    const url = envUrl || cfg.primary.url;
+    const anonKey = envUrl ? envAnon : cfg.primary.anonKey;
+    const serviceRoleKey = envUrl ? envService : cfg.primary.serviceRoleKey;
     return {
       label: cfg.primary.label || "Supabase #1 (Основной)",
       url,
       anonKey,
       serviceRoleKey,
       configured: Boolean(url && serviceRoleKey),
-      usingEnvFallback: !cfg.primary.url && Boolean(envUrl),
+      usingEnvFallback: Boolean(envUrl),
     };
   }
 
-  const url = cfg.secondary.url;
-  const anonKey = cfg.secondary.anonKey;
-  const serviceRoleKey = cfg.secondary.serviceRoleKey;
+  const envUrl = String(process.env.SUPABASE_SECONDARY_URL || "").trim().replace(/\/+$/, "");
+  const envAnon = String(process.env.SUPABASE_SECONDARY_PUBLISHABLE_KEY || process.env.SUPABASE_SECONDARY_ANON_KEY || "").trim();
+  const envService = String(process.env.SUPABASE_SECONDARY_SECRET_KEY || process.env.SUPABASE_SECONDARY_SERVICE_ROLE_KEY || "").trim();
+  const url = envUrl || cfg.secondary.url;
+  const anonKey = envUrl ? envAnon : cfg.secondary.anonKey;
+  const serviceRoleKey = envUrl ? envService : cfg.secondary.serviceRoleKey;
   return {
-    label: cfg.secondary.label || "Supabase #2 (Облачный)",
+    label: cfg.secondary.label || "Supabase на VPS",
     url,
     anonKey,
     serviceRoleKey,
     configured: Boolean(url && serviceRoleKey),
-    usingEnvFallback: false,
+    usingEnvFallback: Boolean(envUrl),
   };
 }
 
@@ -410,34 +406,46 @@ export function isMaskedSecret(value: string | null | undefined): boolean {
   return String(value || "").includes("••••");
 }
 
+function failoverPath(): string {
+  return path.join(/*turbopackIgnore: true*/ getSgtDataDir(), "db-failover-state.json");
+}
+
 export function getDbFailoverState(): DbFailoverState {
-  if (!globalRef.__sgtDbFailoverState) {
-    globalRef.__sgtDbFailoverState = {
-      activeFallbackBackend: null,
-      lastError: null,
-      failedAt: null,
-    };
+  const file = failoverPath();
+  if (!globalRef.__sgtDbFailoverState || globalRef.__sgtDbFailoverPath !== file) {
+    let state: DbFailoverState = { activeFallbackBackend: null, lastError: null, failedAt: null };
+    try {
+      const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (["primary", "secondary", "local"].includes(saved.activeFallbackBackend)) {
+        state = { activeFallbackBackend: saved.activeFallbackBackend, lastError: saved.lastError || null, failedAt: saved.failedAt || null };
+      }
+    } catch { /* no previous failover */ }
+    globalRef.__sgtDbFailoverState = state;
+    globalRef.__sgtDbFailoverPath = file;
   }
   return globalRef.__sgtDbFailoverState;
 }
 
-export function recordDbFailover(
-  fallbackBackend: DbBackendMode,
-  reason: string
-): void {
-  globalRef.__sgtDbFailoverState = {
-    activeFallbackBackend: fallbackBackend,
-    lastError: reason,
-    failedAt: new Date().toISOString(),
-  };
+function setFailoverState(state: DbFailoverState): void {
+  const file = failoverPath();
+  globalRef.__sgtDbFailoverState = state;
+  globalRef.__sgtDbFailoverPath = file;
+  try {
+    ensureDataDir();
+    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(state), { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    console.error("[db-failover] Не удалось сохранить состояние переключения:", err);
+  }
+}
+
+export function recordDbFailover(fallbackBackend: DbBackendMode, reason: string): void {
+  setFailoverState({ activeFallbackBackend: fallbackBackend, lastError: reason, failedAt: new Date().toISOString() });
 }
 
 export function clearDbFailoverState(): void {
-  globalRef.__sgtDbFailoverState = {
-    activeFallbackBackend: null,
-    lastError: null,
-    failedAt: null,
-  };
+  setFailoverState({ activeFallbackBackend: null, lastError: null, failedAt: null });
 }
 
 export function toPublicDbConfigView() {
@@ -479,6 +487,7 @@ export function toPublicDbConfigView() {
       anonKeyMasked: maskSecret(secondary.anonKey),
       serviceRoleKeyMasked: maskSecret(secondary.serviceRoleKey),
       configured: secondary.configured,
+      usingEnvFallback: secondary.usingEnvFallback,
     },
   };
 }

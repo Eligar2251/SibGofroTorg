@@ -250,6 +250,10 @@ export function DatabaseBackendSwitcher({
 
   function openEndpointEditor(target: "primary" | "secondary") {
     if (!config) return;
+    if (config[target].usingEnvFallback) {
+      setError("Подключение задано в .env: URL и ключи меняются в окружении сервера, а не в этой форме.");
+      return;
+    }
     const ep = config[target];
     setEditingTarget(target);
     setFormLabel(ep.label);
@@ -260,6 +264,7 @@ export function DatabaseBackendSwitcher({
   }
 
   async function switchBackend(nextMode: DbBackendMode) {
+    if (!window.confirm("Переключение не копирует данные между базами. Убедитесь, что выбранная база актуальна и нужные изменения синхронизированы. Продолжить?")) return;
     setBusyAction(`switch_${nextMode}`);
     setError("");
     setNotice("");
@@ -963,7 +968,7 @@ export function DatabaseBackendSwitcher({
       >
         {/* 1. SUPABASE #1 (ОСНОВНОЙ / БЕГЕТ / .ENV) */}
         {(() => {
-          const isActive = config.activeBackend === "primary";
+          const isActive = config.activeBackend === "primary" && !config.failover.activeFallbackBackend;
           return (
             <div
               style={{
@@ -1086,7 +1091,7 @@ export function DatabaseBackendSwitcher({
 
         {/* 2. SUPABASE #2 (ОБЛАЧНЫЙ / РЕЗЕРВНЫЙ SUPABASE) */}
         {(() => {
-          const isActive = config.activeBackend === "secondary";
+          const isActive = config.activeBackend === "secondary" && !config.failover.activeFallbackBackend;
           return (
             <div
               style={{
@@ -1220,7 +1225,7 @@ export function DatabaseBackendSwitcher({
 
         {/* 3. ЛОКАЛЬНАЯ JSON-БД (АВТОНОМНАЯ РАБОТА БЕЗ SUPABASE) */}
         {(() => {
-          const isActive = config.activeBackend === "local";
+          const isActive = config.activeBackend === "local" && !config.failover.activeFallbackBackend;
           return (
             <div
               style={{

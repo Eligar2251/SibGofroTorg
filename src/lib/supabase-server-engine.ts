@@ -39,7 +39,11 @@ function getActiveCircuitFallback(): DbBackendMode | null {
   const st = getDbFailoverState();
   if (!st.activeFallbackBackend || !st.failedAt) return null;
   const elapsed = Date.now() - new Date(st.failedAt).getTime();
-  if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < FAILOVER_CIRCUIT_COOLDOWN_MS) {
+  // Never silently switch back from a different remote database: writes made
+  // there are not replicated to the original. Local pending writes also need
+  // explicit reconciliation before returning to a remote database.
+  if (st.activeFallbackBackend !== "local" || getLocalDbSummary().pendingMutationsCount > 0 ||
+      (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < FAILOVER_CIRCUIT_COOLDOWN_MS)) {
     return st.activeFallbackBackend;
   }
   return null;
@@ -49,12 +53,12 @@ function fetchWithTimeout(
   timeoutMs = SUPABASE_FETCH_TIMEOUT_MS
 ): typeof fetch {
   return (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (init?.signal) return fetch(input, init);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    return fetch(input, { ...init, signal: controller.signal }).finally(() =>
-      clearTimeout(timer)
-    );
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, controller.signal])
+      : controller.signal;
+    return fetch(input, { ...init, signal }).finally(() => clearTimeout(timer));
   };
 }
 
@@ -310,7 +314,7 @@ class SmartQueryProxy implements PromiseLike<any> {
               fbCreds.serviceRoleKey
             );
             const fbRes = await this.replayOn(fbClient, cfg.mirrorWritesToLocal);
-            if (!fbRes?.error || !isRemoteServerFailure(fbRes.error)) {
+            if (!fbRes?.error) {
               if (!fbRes?.error && cfg.mirrorWritesToLocal) {
                 this.mirrorToLocal(fbRes);
               }
@@ -320,6 +324,8 @@ class SmartQueryProxy implements PromiseLike<any> {
             /* fallback to local */
           }
         }
+        recordDbFailover("local", "Резервный сервер БД недоступен");
+        return await this.replayOn(getLocalJsonDbClient(), false);
       }
     }
 
@@ -381,7 +387,7 @@ class SmartQueryProxy implements PromiseLike<any> {
               altClient,
               cfg.mirrorWritesToLocal
             );
-            if (!altRes?.error || !isRemoteServerFailure(altRes.error)) {
+            if (!altRes?.error) {
               recordDbFailover(altTarget, errMsg);
               if (!altRes?.error && cfg.mirrorWritesToLocal) {
                 this.mirrorToLocal(altRes);
@@ -409,7 +415,7 @@ class SmartQueryProxy implements PromiseLike<any> {
             altCreds.serviceRoleKey
           );
           const altRes = await this.replayOn(altClient, cfg.mirrorWritesToLocal);
-          if (!altRes?.error || !isRemoteServerFailure(altRes.error)) {
+          if (!altRes?.error) {
             recordDbFailover(
               altTarget,
               `${creds.label}: не указаны URL или service_role ключ`
@@ -455,8 +461,20 @@ class SmartAdminSupabaseClient {
       return getLocalJsonDbClient().rpc(fnName, args);
     }
 
-    if (cfg.autoFailover && getActiveCircuitFallback() === "local") {
-      return getLocalJsonDbClient().rpc(fnName, args);
+    if (cfg.autoFailover) {
+      const fallback = getActiveCircuitFallback();
+      if (fallback === "local") return getLocalJsonDbClient().rpc(fnName, args);
+      if (fallback === "primary" || fallback === "secondary") {
+        const fb = resolveSupabaseCredentials(fallback);
+        if (fb.configured) {
+          try {
+            const res = await createDirectSupabaseClient(fb.url, fb.serviceRoleKey).rpc(fnName, args);
+            if (!res?.error) return res;
+          } catch { /* fallback to local */ }
+        }
+        recordDbFailover("local", "Резервный сервер БД недоступен");
+        return getLocalJsonDbClient().rpc(fnName, args);
+      }
     }
 
     const activeTarget = cfg.activeBackend;
@@ -504,7 +522,7 @@ class SmartAdminSupabaseClient {
               altCreds.serviceRoleKey
             );
             const altRes = await altClient.rpc(fnName, args);
-            if (!altRes?.error || !isRemoteServerFailure(altRes.error)) {
+            if (!altRes?.error) {
               recordDbFailover(altTarget, err?.message || String(err));
               return altRes;
             }

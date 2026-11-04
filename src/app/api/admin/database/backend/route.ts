@@ -16,6 +16,7 @@ import { canAccessDatabase } from "@/lib/admin-rbac";
 import { logActivity } from "@/lib/activity-log";
 import {
   getDbRuntimeConfig,
+  getDbFailoverState,
   resolveSupabaseCredentials,
   saveDbRuntimeConfig,
   toPublicDbConfigView,
@@ -108,6 +109,16 @@ export async function PUT(request: NextRequest) {
         );
       }
       activeBackend = body.activeBackend;
+    }
+
+    if (activeBackend && (activeBackend !== getDbRuntimeConfig().activeBackend || getDbFailoverState().activeFallbackBackend)) {
+      if (activeBackend !== "local" && getLocalDbSummary().pendingMutationsCount > 0) {
+        return NextResponse.json({ error: "В локальной БД есть несинхронизированные изменения. Сначала выполните синхронизацию с нужной базой и проверьте результат." }, { status: 409 });
+      }
+      const probe = await probeDatabaseBackend(activeBackend);
+      if (!probe.reachable) {
+        return NextResponse.json({ error: `Переключение отменено: ${probe.label} недоступна. ${probe.error || ""}` }, { status: 409 });
+      }
     }
 
     // Если пользователь указал путь к диску/папке для бэкапов — сразу проверяем права записи
@@ -339,6 +350,8 @@ export async function POST(request: NextRequest) {
       invalidateDatabaseSchemaCache();
       invalidateProductsCache();
 
+      // Не создавать новую офлайн-мутацию сразу после очистки очереди.
+      if (getDbRuntimeConfig().activeBackend !== "local" && getDbFailoverState().activeFallbackBackend !== "local") {
       await logActivity({
         adminName: auth.displayName || auth.username || "Администратор",
         adminRole: auth.role || "admin",
@@ -349,6 +362,7 @@ export async function POST(request: NextRequest) {
           biResult.replayedUpserts + biResult.replayedDeletes
         }, принято записей: ${biResult.totalRows})`,
       }).catch(() => {});
+      }
 
       return NextResponse.json({
         ok: true,
@@ -425,6 +439,8 @@ export async function POST(request: NextRequest) {
 
       invalidateProductsCache();
 
+      // Не создавать новую офлайн-мутацию сразу после очистки очереди.
+      if (getDbRuntimeConfig().activeBackend !== "local" && getDbFailoverState().activeFallbackBackend !== "local") {
       await logActivity({
         adminName: auth.displayName || auth.username || "Администратор",
         adminRole: auth.role || "admin",
@@ -433,6 +449,7 @@ export async function POST(request: NextRequest) {
         entityId: "local-db-sync",
         entityLabel: `Снимок БД из «${creds.label}» в локальную JSON-БД (${syncResult.totalRows} записей)`,
       }).catch(() => {});
+      }
 
       return NextResponse.json({
         ok: true,
@@ -477,6 +494,8 @@ export async function POST(request: NextRequest) {
         /* ignore */
       }
 
+      // Не создавать новую офлайн-мутацию сразу после очистки очереди.
+      if (getDbRuntimeConfig().activeBackend !== "local" && getDbFailoverState().activeFallbackBackend !== "local") {
       await logActivity({
         adminName: auth.displayName || auth.username || "Администратор",
         adminRole: auth.role || "admin",
@@ -485,6 +504,7 @@ export async function POST(request: NextRequest) {
         entityId: "local-db-push",
         entityLabel: `Импорт из локальной БД → «${creds.label}» (${pushResult.pushedRows} записей в ${pushResult.pushedTables} табл.)`,
       }).catch(() => {});
+      }
 
       return NextResponse.json({
         ok: true,

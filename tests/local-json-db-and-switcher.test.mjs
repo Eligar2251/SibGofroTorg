@@ -23,6 +23,7 @@ const {
   getLocalJsonDbClient,
   importLocalDbSnapshot,
   pushLocalDbToRemoteSupabase,
+  replayPendingMutationsToRemoteSupabase,
   resetLocalJsonDbCache,
   syncBidirectionalSupabaseAndLocal,
   syncRemoteSupabaseToLocal,
@@ -177,8 +178,14 @@ test("Экспорт/импорт JSON-бэкапа и двусторонняя 
             },
           };
         },
-        async upsert(batch) {
-          remoteMemory[table] = [...(remoteMemory[table] || []), ...batch];
+        async upsert(batch, options) {
+          const keys = (options?.onConflict || "id").split(",");
+          remoteMemory[table] ||= [];
+          for (const row of batch) {
+            const index = remoteMemory[table].findIndex((existing) => keys.every((key) => existing[key] === row[key]));
+            if (index === -1) remoteMemory[table].push(row);
+            else remoteMemory[table][index] = row;
+          }
           return { data: batch, error: null };
         },
       };
@@ -386,6 +393,8 @@ test("Автоматическая локальная копия каждые 2�
 });
 
 test("Двусторонняя синхронизация Supabase ↔ Локалка: очередь офлайн-правок/удалений не теряется при восстановлении БД", async () => {
+  // Independent initial state: earlier tests deliberately leave offline writes.
+  importLocalDbSnapshot({ tables: {}, pendingMutations: [] }, "replace");
   const localDb = getLocalJsonDbClient();
 
   // Создаём изолированный «удалённый сервер Supabase» на базе второго экземпляра памяти
@@ -637,3 +646,95 @@ test("Вьюха die_calc_job_stats использует security_invoker = true
 });
 
 
+
+
+test("VPS credentials come from current environment even after saving settings", () => {
+  const names = ["SUPABASE_SECONDARY_URL", "SUPABASE_SECONDARY_SECRET_KEY", "SUPABASE_SECONDARY_PUBLISHABLE_KEY"];
+  const before = names.map((n) => process.env[n]);
+  try {
+    saveDbRuntimeConfig({ secondary: { url: "https://old.example", serviceRoleKey: "old-key" } });
+    process.env.SUPABASE_SECONDARY_URL = "https://vps.example/";
+    process.env.SUPABASE_SECONDARY_SECRET_KEY = "vps-secret-1";
+    process.env.SUPABASE_SECONDARY_PUBLISHABLE_KEY = "vps-pub";
+    saveDbRuntimeConfig({ autoFailover: true });
+    assert.equal(resolveSupabaseCredentials("secondary").url, "https://vps.example");
+    process.env.SUPABASE_SECONDARY_SECRET_KEY = "vps-secret-2";
+    assert.equal(resolveSupabaseCredentials("secondary").serviceRoleKey, "vps-secret-2");
+    delete process.env.SUPABASE_SECONDARY_SECRET_KEY;
+    assert.equal(resolveSupabaseCredentials("secondary").configured, false);
+    assert.equal(resolveSupabaseCredentials("secondary").serviceRoleKey, "");
+  } finally {
+    names.forEach((n, i) => before[i] === undefined ? delete process.env[n] : process.env[n] = before[i]);
+  }
+});
+
+test("failed and concurrent offline changes are retained during replay", async () => {
+  importLocalDbSnapshot({ tables: {}, pendingMutations: [] }, "replace");
+  const db = getLocalJsonDbClient();
+  await db.from("products").insert({ id: "pending-race", name: "first" });
+  const missing = { from: () => ({ upsert: async () => ({ error: { code: "PGRST205", message: "table missing" } }) }) };
+  const fail = await replayPendingMutationsToRemoteSupabase(missing);
+  assert.equal(fail.remainingMutations, 1);
+  await assert.rejects(syncRemoteSupabaseToLocal(missing, "missing"), /не все локальные изменения/i);
+  assert.equal(getLocalDbSummary().pendingMutationsCount, 1);
+  const concurrent = { from: () => ({ upsert: async () => {
+    await db.from("products").update({ name: "newer" }).eq("id", "pending-race");
+    return { error: null };
+  } }) };
+  const res = await replayPendingMutationsToRemoteSupabase(concurrent);
+  assert.equal(res.remainingMutations, 1);
+  const snapshot = exportLocalDbSnapshot();
+  assert.equal(snapshot.pendingMutations[0].row.name, "newer");
+});
+
+test("timeout still applies when Supabase supplies an AbortSignal", async () => {
+  const { createDirectSupabaseClient } = await import("../src/lib/supabase-server-engine.ts");
+  const originalFetch = globalThis.fetch;
+  let seenSignal = false;
+  globalThis.fetch = (_url, options) => new Promise((_resolve, reject) => {
+    seenSignal = !!options.signal;
+    options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+  });
+  try {
+    const client = createDirectSupabaseClient("https://timeout.example", "some-key", 30);
+    const start = Date.now();
+    const result = await client.from("products").select("*").abortSignal(new AbortController().signal);
+    assert.ok(seenSignal);
+    assert.ok(result.error);
+    assert.ok(Date.now() - start < 3000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("remote failover stays active across cooldown and process state reload, including RPC", async () => {
+  const { recordDbFailover, clearDbFailoverState } = await import("../src/lib/db-runtime-config.ts");
+  const names = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECONDARY_URL"];
+  const previous = names.map((n) => process.env[n]);
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  try {
+    names.forEach((n) => delete process.env[n]);
+    saveDbRuntimeConfig({ activeBackend: "primary", autoFailover: true,
+      primary: { url: "https://primary.example", serviceRoleKey: "primary-key" },
+      secondary: { url: "https://secondary.example", serviceRoleKey: "secondary-key" } });
+    recordDbFailover("secondary", "primary unavailable");
+    globalThis.__sgtDbFailoverState = undefined;
+    assert.equal(getDbFailoverState().activeFallbackBackend, "secondary");
+    globalThis.__sgtDbFailoverState.failedAt = "2000-01-01T00:00:00.000Z";
+    globalThis.fetch = async (url) => {
+      requests.push(String(url));
+      return new Response(JSON.stringify([{ id: "secondary" }]), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const rows = await getAdminDb().from("products").select("*");
+    const rpc = await getAdminDb().rpc("some_test_function");
+    assert.equal(rows.error, null);
+    assert.equal(rpc.error, null);
+    assert.equal(requests.length, 2);
+    assert.ok(requests.every((url) => url.startsWith("https://secondary.example/")));
+  } finally {
+    clearDbFailoverState();
+    globalThis.fetch = originalFetch;
+    names.forEach((n, i) => previous[i] === undefined ? delete process.env[n] : process.env[n] = previous[i]);
+  }
+});

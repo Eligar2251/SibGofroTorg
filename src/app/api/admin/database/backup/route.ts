@@ -19,6 +19,7 @@ import { canAccessDatabase } from "@/lib/admin-rbac";
 import { logActivity } from "@/lib/activity-log";
 import {
   getDbRuntimeConfig,
+  getDbFailoverState,
   resolveSupabaseCredentials,
 } from "@/lib/db-runtime-config";
 import {
@@ -85,8 +86,8 @@ export async function GET(request: NextRequest) {
   if (syncMode === "auto") {
     const cfg = getDbRuntimeConfig();
     if (
-      cfg.activeBackend === "primary" ||
-      cfg.activeBackend === "secondary"
+      !getDbFailoverState().activeFallbackBackend &&
+      (cfg.activeBackend === "primary" || cfg.activeBackend === "secondary")
     ) {
       const summary = getLocalDbSummary();
       const lastSyncMs = summary.lastSyncedAt
