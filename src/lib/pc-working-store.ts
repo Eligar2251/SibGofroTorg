@@ -159,3 +159,39 @@ export function replacePcCleanBaseline(root:string, computerId:string, expectedR
     writeAtomic(file,nextStore); return clone(nextStore);
   });
 }
+
+/** Copy the exact working store to a new manually selected root; never remove the old copy. */
+export function copyPcWorkingStore<T>(sourceRoot:string,destinationRoot:string,computerId:string,afterCopy:(store:PcWorkingStore)=>T):T {
+  const src=location(sourceRoot,computerId),dst=location(destinationRoot,computerId);
+  if(fs.realpathSync(sourceRoot)===fs.realpathSync(destinationRoot)) throw new Error("Выбранная папка совпадает с текущей.");
+  assertWorkingDirectory(src);
+  try {fs.mkdirSync(path.dirname(dst),{mode:0o700});}catch(e){if((e as NodeJS.ErrnoException).code!=="EEXIST")throw e;}
+  assertWorkingDirectory(dst);
+  return withLock(src,()=>withLock(dst,()=>{
+    const source=readExisting(src,computerId);
+    // Safe recovery if the copy succeeded but switching the PC config failed.
+    let previous:PcWorkingStore|undefined;
+    try { previous=readExisting(dst,computerId); }
+    catch(e) {if((e as NodeJS.ErrnoException).code!=="ENOENT") throw new Error("Файл в новой папке повреждён или недоступен; исходная БД сохранена, автоматическая перезапись запрещена.");}
+    if(previous) {
+      if(JSON.stringify(previous)!==JSON.stringify(source)) throw new Error("В новой папке уже есть другая рабочая БД. Она не будет перезаписана.");
+      return afterCopy(clone(previous));
+    }
+    const temp=`${dst}.${crypto.randomUUID()}.tmp`;let fd:number|undefined;
+    try {
+      fd=fs.openSync(temp,"wx",0o600);fs.writeFileSync(fd,JSON.stringify(source),"utf8");fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;
+      // Unlike rename, link is atomic and never replaces an existing destination.
+      try {fs.linkSync(temp,dst);} catch(e) {
+        const code=(e as NodeJS.ErrnoException).code;
+        if(code!=="EPERM" && code!=="EACCES" && code!=="EOPNOTSUPP" && code!=="ENOTSUP" && code!=="EXDEV") throw e;
+        // Some SMB shares disallow hard links. Exclusive creation still avoids
+        // replacement; the old config stays active until the file validates.
+        // A crash can leave a partial *new* file, which must never be overwritten.
+        let destFd:number|undefined;
+        try {destFd=fs.openSync(dst,"wx",0o600);fs.writeFileSync(destFd,JSON.stringify(source),"utf8");fs.fsyncSync(destFd);}
+        finally {if(destFd!==undefined)fs.closeSync(destFd);}
+      }
+      return afterCopy(clone(readExisting(dst,computerId)));
+    } finally {if(fd!==undefined)fs.closeSync(fd);try{fs.unlinkSync(temp)}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}}
+  }));
+}

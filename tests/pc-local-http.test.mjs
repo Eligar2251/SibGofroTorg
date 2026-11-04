@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';import {scryptSync} from 'node:crypto';import {spawn} from 'node:child_process';import fs from 'node:fs';import http from 'node:http';import net from 'node:net';import os from 'node:os';import path from 'node:path';import test from 'node:test';
 import {initializePcLocal,setPcLocalMode} from '../src/lib/pc-local-runtime.ts';
-const root=fs.mkdtempSync(path.join(os.tmpdir(),'pc-offline-')),config=fs.mkdtempSync(path.join(os.tmpdir(),'pc-offline-config-'));
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'pc-offline-')),newRoot=fs.mkdtempSync(path.join(os.tmpdir(),'pc-offline-new-')),config=fs.mkdtempSync(path.join(os.tmpdir(),'pc-offline-config-'));
 process.env.SGT_PC_LOCAL_SERVER='1';process.env.SGT_PC_CONFIG_DIR=config;
 const cols=fields=>fields.map(name=>({name,type:'text',generated:'',identity:''}));
 const snapshot={app:'SibGofroTorg',backupFormat:'sgt-public-v1',version:1,exportedAt:'2026-01-01T00:00:00Z',totalRows:3,tables:{admins:[{id:'test-id',username:'pc_owner',password_hash:`0123456789abcdef0123456789abcdef:${scryptSync('pc-test-password','0123456789abcdef0123456789abcdef',64).toString('hex')}`,role:'owner',is_active:true,display_name:'Owner'},{id:'other',username:'manager',password_hash:'manager-test-password',role:'manager',is_active:true,display_name:'Manager'}],products:[{id:'p',name:'Test'}]},columns:{admins:cols(['id','username','password_hash','role','is_active','display_name']),products:cols(['id','name'])},sequences:{admins:{},products:{}}};
@@ -26,10 +26,17 @@ test('local server permits password login and snapshot reads without Supabase, b
   const denied=await new Promise((resolve,reject)=>{const req=http.request(`${base}/admin/login`,{headers:{host:'evil.example'}},res=>{res.resume();resolve(res.statusCode)});req.on('error',reject);req.end()});assert.equal(denied,403);
   const page=await fetch(`${base}/admin`,{headers:{cookie}});assert.equal(page.status,200);assert.match(await page.text(),/только чтение/);
   assert.equal(fs.readFileSync(file,'utf8'),before);
+  const moveBody=JSON.stringify({action:'change_root',root:newRoot});
+  const byManager=await fetch(`${base}/api/admin/database/pc-local`,{method:'POST',headers:{cookie:managerCookie,origin:base,'content-type':'application/json'},body:moveBody});assert.equal(byManager.status,403);
+  const byCross=await fetch(`${base}/api/admin/database/pc-local`,{method:'POST',headers:{cookie,origin:'http://evil.example','content-type':'application/json'},body:moveBody});assert.equal(byCross.status,403);
+  assert.deepEqual(fs.readdirSync(newRoot),[]);
+  const moved=await fetch(`${base}/api/admin/database/pc-local`,{method:'POST',headers:{cookie,origin:base,'content-type':'application/json'},body:moveBody});assert.equal(moved.status,200,await moved.clone().text());assert.equal((await moved.json()).root,newRoot);
+  assert.equal(fs.readFileSync(file,'utf8'),before);assert.equal(fs.readFileSync(path.join(newRoot,`pc-${state.computerId}`,'sgt-working-db.json'),'utf8'),before);
+  assert.equal((await fetch(`${base}/admin`,{headers:{cookie}})).status,200);
   const toRemote=await fetch(`${base}/api/admin/database/pc-local`,{method:'POST',headers:{cookie,origin:base,'content-type':'application/json'},body:JSON.stringify({action:'mode',mode:'remote'})});assert.equal(toRemote.status,200);
   assert.equal((await fetch(`${base}/api/admin/database/pc-local`,{headers:{cookie}})).status,401, 'offline session must not authorize cloud mode');
  }finally{
   if(child.exitCode===null){try{process.platform==='win32'?child.kill():process.kill(-child.pid,'SIGTERM')}catch{} await new Promise(r=>{child.once('exit',r);setTimeout(r,5000).unref()})}
-  fs.rmSync(root,{recursive:true,force:true});fs.rmSync(config,{recursive:true,force:true});
+  fs.rmSync(root,{recursive:true,force:true});fs.rmSync(newRoot,{recursive:true,force:true});fs.rmSync(config,{recursive:true,force:true});
  }
 });

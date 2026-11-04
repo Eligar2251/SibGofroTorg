@@ -23,3 +23,9 @@ node_modules
 
 # Per-PC working database, lock and temporary writes contain real data
 **/sgt-working-db.json*
+
+# PC snapshots and temporary archives can contain personal data and credentials
+**/sgt-pc-[0-9]*.json
+**/.sgt-archive-*.tmp
+**/sgt-live-current.json*
+**/sgt-full-current.json*

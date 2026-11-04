@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { createPcWorkingStore, readPcWorkingStore, replacePcCleanBaseline, type PcWorkingStore } from "./pc-working-store";
+import { createPcWorkingStore, readPcWorkingStore, replacePcCleanBaseline, copyPcWorkingStore, type PcWorkingStore } from "./pc-working-store";
 import type { PublicBackup } from "./merge-public-snapshots";
 
 export type PcLocalSettings = { version:1; root:string; computerId:string; source:"primary"|"secondary"; mode:"remote"|"readonly"; liveEnabled?:boolean; archivesEnabled?:boolean };
@@ -150,4 +150,19 @@ export function recordPcArchiveStatus(now:Date,result:{created:boolean;file?:str
   const file=archiveStatusPath();fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});const tmp=`${file}.${crypto.randomUUID()}.tmp`;let fd:number|undefined;
   try{fd=fs.openSync(tmp,'wx',0o600);fs.writeFileSync(fd,JSON.stringify(next));fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(tmp,file);}
   finally{if(fd!==undefined)fs.closeSync(fd);try{fs.unlinkSync(tmp)}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}}
+}
+
+/** Change the per-PC root only after a verified copy has been made; old data is retained. */
+export function changePcRoot(root:string) {
+  if(!isPcLocalServer()) throw new Error("Папка настраивается только на локальном сервере ПК.");
+  if(typeof root!=="string" || !path.isAbsolute(root)) throw new Error("Введите абсолютный путь к существующей папке ПК.");
+  if(!fs.statSync(root).isDirectory()) throw new Error("Выберите существующую папку на ПК.");
+  return configLock(()=>{
+    const c=loadSettings();if(!c)throw new Error("Сначала подготовьте локальную копию.");
+    return copyPcWorkingStore(c.root,root,c.computerId,()=>{
+      // Keep the source locked until config points to the verified copy.
+      // If this write fails both full copies remain intact, and retry is safe.
+      writeSettings({...c,root});return pcLocalStatus();
+    });
+  });
 }
