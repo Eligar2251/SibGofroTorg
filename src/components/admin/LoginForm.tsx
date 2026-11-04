@@ -33,6 +33,7 @@ export function LoginForm({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [error, setError] = useState("");
   const [dbError, setDbError] = useState<{
     message: string;
@@ -87,6 +88,7 @@ export function LoginForm({
   );
 
   useEffect(() => {
+    setHydrated(true);
     checkPrimaryStatus(true);
   }, [checkPrimaryStatus]);
 
@@ -233,7 +235,7 @@ export function LoginForm({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        if (res.status === 503 || data.code === "db_unavailable") {
+        if (data.code === "db_unavailable" || (res.status === 503 && !data.code)) {
           setDbError({
             message: data.error || "Основная база данных не отвечает",
             detail: data.detail || data.hint,
@@ -243,7 +245,7 @@ export function LoginForm({
           setLoading(false);
           return;
         }
-        throw new Error(data.error || "Ошибка входа");
+        throw new Error([data.error || "Ошибка входа", data.hint].filter(Boolean).join(". "));
       }
 
       const role = parseAdminRole(data.role);
@@ -503,7 +505,13 @@ export function LoginForm({
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form method="post" action={`/${adminPath}/api/login`} onSubmit={handleSubmit}>
+        {!hydrated && (
+          <div className="admin-error" role="status" style={{ marginBottom: 16 }}>
+            Загрузка формы входа. Если сообщение не исчезает, не загрузился JavaScript:
+            обновите страницу и проверьте ошибки загрузки в браузере.
+          </div>
+        )}
         <div className="admin-field" style={{ marginBottom: 16 }}>
           <label htmlFor="username" className="admin-label">
             Логин
@@ -542,7 +550,7 @@ export function LoginForm({
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || !hydrated}
           className="admin-btn admin-btn--navy"
           style={{ width: "100%", padding: "14px 24px", fontWeight: 700 }}
         >
