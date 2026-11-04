@@ -1,27 +1,43 @@
+import { requestPcDownload } from "./pc-download-backup";
+import { validatePublicBackup } from "./merge-public-snapshots";
 // Scheduled browser backups are separate from the server's local JSON database.
-// Opt in per browser profile. Files from different profiles never share a path.
+// Defaults apply per browser profile. Files from different profiles never share a path.
 export type PcSource = "primary" | "secondary";
-export type PcScheduleSettings = { enabled: boolean; liveEnabled: boolean; sources: Record<PcSource, boolean>; folderName: string; computerId: string };
+export type PcScheduleSettings = { enabled: boolean; liveEnabled: boolean; autoActive?: boolean; sources: Record<PcSource, boolean>; folderName: string; computerId: string };
 const SETTINGS = "sgt-pc-full-schedule-v1:";
 const STATUS = "sgt-pc-full-schedule-status-v1:";
 const EVENT = "sgt:pc-full-schedule";
 const STORE = "handles";
 const DB = "sgt-pc-full-schedule";
 export const PC_SCHEDULE_EVENT = EVENT;
-const empty: PcScheduleSettings = { enabled: false, liveEnabled: false, sources: { primary: true, secondary: false }, folderName: "", computerId: "" };
+const empty: PcScheduleSettings = { enabled: true, liveEnabled: true, autoActive: true, sources: { primary: true, secondary: false }, folderName: "", computerId: "" };
 export function getPcScheduleSettings(username: string): PcScheduleSettings {
   try {
     const stored = localStorage.getItem(SETTINGS + username);
     if (!stored) return structuredClone(empty);
     const x = JSON.parse(stored);
-    return { enabled: x.enabled === true, liveEnabled: x.liveEnabled === true, sources: { primary: x.sources?.primary === true, secondary: x.sources?.secondary === true }, folderName: typeof x.folderName === "string" ? x.folderName : "", computerId: typeof x.computerId === "string" && /^[a-f0-9-]{36}$/.test(x.computerId) ? x.computerId : "" };
+    return { enabled: x.enabled === true, liveEnabled: x.liveEnabled === true, autoActive: x.autoActive === true, sources: { primary: x.sources?.primary === true, secondary: x.sources?.secondary === true }, folderName: typeof x.folderName === "string" ? x.folderName : "", computerId: typeof x.computerId === "string" && /^[a-f0-9-]{36}$/.test(x.computerId) ? x.computerId : "" };
   } catch { return structuredClone(empty); }
 }
 export function savePcScheduleSettings(username: string, value: PcScheduleSettings) {
   localStorage.setItem(SETTINGS + username, JSON.stringify(value));
   window.dispatchEvent(new Event(EVENT));
 }
-export type PcScheduleStatus = { last?: string; error?: string; completed?: Record<string, string>; live?: Partial<Record<PcSource, { last?: string; error?: string }>> };
+/** Allocate an independent identity even when no folder was chosen. Call under Web Lock. */
+export function ensurePcScheduleIdentity(username:string):PcScheduleSettings {
+  const settings=getPcScheduleSettings(username);
+  if(!settings.computerId) {if(typeof crypto.randomUUID!=="function") throw new Error("Для настройки копии нужны HTTPS или localhost.");settings.computerId=crypto.randomUUID();savePcScheduleSettings(username,settings);}
+  return settings;
+}
+export async function selectedPcSources(settings:PcScheduleSettings):Promise<PcSource[]> {
+  if(!settings.autoActive) return (["primary","secondary"] as const).filter(s=>settings.sources[s]);
+  const res=await fetch("/api/admin/database/pc-source",{cache:"no-store",signal:AbortSignal.timeout(8_000)});
+  const data=await res.json();if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);
+  if(data.localReadonly===true)return [];
+  if(data.source!=="primary" && data.source!=="secondary")throw new Error("Активная Supabase не выбрана.");
+  return [data.source];
+}
+export type PcScheduleStatus = { last?: string; error?: string; sourceError?:string; activeSource?:PcSource | null; completed?: Record<string, string>; live?: Partial<Record<PcSource, { last?: string; error?: string; downloadRequested?:string; downloadError?:string; trackingWarning?:string }>> };
 export function getPcScheduleStatus(username: string): PcScheduleStatus {
   try { return JSON.parse(localStorage.getItem(STATUS + username) || "{}"); } catch { return {}; }
 }
@@ -89,20 +105,21 @@ export async function writePcFile(dir: any, name: string, text: string) {
 export async function runPcScheduledBackups(username: string, now = new Date()): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.locks) return;
   const initial = getPcScheduleSettings(username); const slot = novosibirskSlot(now);
-  if (!initial.enabled || !initial.computerId || !slot) return;
+  if (!initial.enabled || !slot) return;
   // Web Locks serialize tabs of the same browser profile. Different PCs write
   // separate UUID directories, never the same file.
   await navigator.locks.request(`sgt-pc-scheduled-full-backup:${username}`, { ifAvailable: true }, async lock => {
     if (!lock) return;
-    const settings = getPcScheduleSettings(username);
-    if (!settings.enabled || !settings.computerId) return;
+    const settings = ensurePcScheduleIdentity(username);
+    if (!settings.enabled) return;
     const handle = await directory(username, "get");
-    if (!handle || await handle.queryPermission({ mode: "readwrite" }) !== "granted") {
+    if ((!handle && settings.folderName) || (handle && await handle.queryPermission({ mode: "readwrite" }) !== "granted")) {
       savePcScheduleStatus(username, { ...getPcScheduleStatus(username), error: "Нет доступа к папке: подтвердите разрешение в настройках бэкапа." }); return;
     }
     const errors: string[] = [];
-    for (const source of ["primary", "secondary"] as const) {
-      if (!settings.sources[source]) continue;
+    let sources: PcSource[];
+    try {sources=await selectedPcSources(settings)} catch(e) {savePcScheduleStatus(username,{...getPcScheduleStatus(username),error:e instanceof Error?e.message:String(e)});return;}
+    for (const source of sources) {
       const key = `${slot.date}_${slot.time}_${source}`;
       if (getPcScheduleStatus(username).completed?.[source] === key) continue;
       try {
@@ -112,14 +129,15 @@ export async function runPcScheduledBackups(username: string, now = new Date()):
         const snapshot = JSON.parse(text);
         if (snapshot.app !== "SibGofroTorg" || snapshot.backupFormat !== "sgt-public-v1") throw new Error("Сервер вернул не полный бэкап");
         const stillEnabled = getPcScheduleSettings(username);
-        if (!stillEnabled.enabled || !stillEnabled.sources[source] || stillEnabled.computerId !== settings.computerId) continue;
-        const computer = await handle.getDirectoryHandle(`pc-${settings.computerId}`, { create: true });
-        const sourceDir = await computer.getDirectoryHandle(source, { create: true });
-        const archives = await sourceDir.getDirectoryHandle("scheduled", { create: true });
-        const filename = `sgt-full-${slot.date}-${slot.time}.json`;
-        await writePcFile(archives, filename, text);
+        if (!stillEnabled.enabled || !(stillEnabled.autoActive || stillEnabled.sources[source]) || stillEnabled.computerId !== settings.computerId) continue;
+        if (handle) {
+          const computer = await handle.getDirectoryHandle(`pc-${settings.computerId}`, { create: true });
+          const sourceDir = await computer.getDirectoryHandle(source, { create: true });
+          const archives = await sourceDir.getDirectoryHandle("scheduled", { create: true });
+          await writePcFile(archives, `sgt-full-${slot.date}-${slot.time}.json`, text);
+        } else { validatePublicBackup(snapshot); requestPcDownload(text,source,settings.computerId,"scheduled",now); }
         const current = getPcScheduleStatus(username);
-        savePcScheduleStatus(username, { ...current, last: `${source}: ${slot.date} ${slot.time.replace("-", ":")} (Новосибирск), ${new Date().toLocaleString("ru-RU")}`, completed: { ...current.completed, [source]: key } });
+        savePcScheduleStatus(username, { ...current, last: `${source}: ${handle ? "архив записан" : "запрошена загрузка архива (сохранение не подтверждено)"} · ${slot.date} ${slot.time.replace("-", ":")} (Новосибирск)`, completed: { ...current.completed, [source]: key } });
       } catch (e) {
         errors.push(`${source}: ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -133,11 +151,11 @@ export async function savePcCurrentBackups(username: string): Promise<string[]> 
   if (!navigator.locks) throw new Error("Браузер не поддерживает безопасную блокировку вкладок.");
   return navigator.locks.request(`sgt-pc-scheduled-full-backup:${username}`, { ifAvailable: true }, async lock => {
     if (!lock) throw new Error("Дождитесь завершения другой записи на этот ПК.");
-    const settings = getPcScheduleSettings(username);
-    const sources = (["primary", "secondary"] as const).filter(source => settings.sources[source]);
-    if (!settings.computerId || !sources.length) throw new Error("Сначала выберите папку и хотя бы одну Supabase.");
+    const settings = ensurePcScheduleIdentity(username);
+    const sources = await selectedPcSources(settings);
+    if (!sources.length) throw new Error("Нет выбранной доступной Supabase для снимка.");
     const root = await directory(username, "get");
-    if (!root || await root.queryPermission({ mode: "readwrite" }) !== "granted") throw new Error("Нет доступа к папке: подтвердите разрешение.");
+    if ((!root && settings.folderName) || (root && await root.queryPermission({ mode: "readwrite" }) !== "granted")) throw new Error("Нет доступа к папке: подтвердите разрешение.");
     const messages: string[] = [];
     const errors: string[] = [];
     for (const source of sources) {
@@ -148,11 +166,13 @@ export async function savePcCurrentBackups(username: string): Promise<string[]> 
         const snapshot = JSON.parse(text);
         if (snapshot.app !== "SibGofroTorg" || snapshot.backupFormat !== "sgt-public-v1") throw new Error("Сервер вернул не полный бэкап");
         const current = getPcScheduleSettings(username);
-        if (!current.sources[source] || current.computerId !== settings.computerId) throw new Error("Настройки изменились; повторите сохранение.");
-        const computer = await root.getDirectoryHandle(`pc-${settings.computerId}`, { create: true });
-        const dir = await computer.getDirectoryHandle(source, { create: true });
-        await writePcFile(dir, "sgt-full-current.json", text);
-        messages.push(`${source}: сохранено`);
+        if (!(current.autoActive || current.sources[source]) || current.computerId !== settings.computerId) throw new Error("Настройки изменились; повторите сохранение.");
+        if(root) {
+          const computer = await root.getDirectoryHandle(`pc-${settings.computerId}`, { create: true });
+          const dir = await computer.getDirectoryHandle(source, { create: true });
+          await writePcFile(dir, "sgt-full-current.json", text);
+          messages.push(`${source}: сохранено`);
+        } else {validatePublicBackup(snapshot);requestPcDownload(text,source,settings.computerId,"full");messages.push(`${source}: запрошена загрузка (сохранение не подтверждено)`)}
       } catch (e) { errors.push(`${source}: ${e instanceof Error ? e.message : String(e)}`); }
     }
     const status = getPcScheduleStatus(username);

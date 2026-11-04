@@ -10,6 +10,8 @@ test('production local launcher serves offline login and refuses an external Hos
  try {await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(logs)),45000);const data=x=>{logs+=x.toString();if(logs.includes('Ready in')){clearTimeout(timer);resolve()}};child.stdout.on('data',data);child.stderr.on('data',data);child.once('exit',code=>{clearTimeout(timer);reject(new Error(`exit ${code}: ${logs}`))})});
  const res=await fetch(`${base}/admin/api/login`,{method:'POST',headers:{'content-type':'application/json',origin:base},body:JSON.stringify({username:'owner',password:'pc-test-password'})});assert.equal(res.status,200,await res.clone().text());
  const cookie=res.headers.get('set-cookie').split(';')[0], status=await fetch(`${base}/api/admin/database/pc-local`,{headers:{cookie}});assert.equal((await status.json()).mode,'readonly');
+ const source=await fetch(`${base}/api/admin/database/pc-source`,{headers:{cookie}});assert.equal(source.status,200);assert.deepEqual(await source.json(),{localReadonly:true,source:null});
+ const unauth=await fetch(`${base}/api/admin/database/pc-source`);assert.notEqual(unauth.status,200);
  const denied=await new Promise((resolve,reject)=>{const request=http.request(`${base}/admin/login`,{headers:{host:'evil.example'}},r=>{r.resume();resolve(r.statusCode)});request.on('error',reject);request.end()});assert.equal(denied,403);
  }finally{if(child.exitCode===null){try{process.platform==='win32'?child.kill():process.kill(-child.pid,'SIGTERM')}catch{}await new Promise(r=>{child.once('exit',r);setTimeout(r,5000).unref()})}fs.rmSync(root,{recursive:true,force:true});fs.rmSync(cfg,{recursive:true,force:true})}
 });

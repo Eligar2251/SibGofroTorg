@@ -1,6 +1,8 @@
 // Browser-only incremental backup. It is NOT a working database.
 import { applyPcDelta, trackedFromInitial, validateTrackedBackup, type PcTrackedBackup } from "./pc-incremental";
-import { getPcScheduleDirectory, getPcScheduleSettings, getPcScheduleStatus, savePcScheduleStatus, writePcFile, type PcSource } from "./pc-scheduled-backup";
+import { ensurePcScheduleIdentity, getPcScheduleDirectory, getPcScheduleSettings, getPcScheduleStatus, savePcScheduleStatus, selectedPcSources, writePcFile, type PcSource } from "./pc-scheduled-backup";
+import { downloadCopyKey, hashDownloadText, readDownloadCopy, rememberTrackedDownload, requestPcDownload, trackedDownload, writeDownloadCopy, type DownloadCopy } from "./pc-download-backup";
+import { validatePublicBackup } from "./merge-public-snapshots";
 
 type Cache = { backup: PcTrackedBackup; text: string; stamp: string };
 const caches = new Map<string, Cache>();
@@ -13,7 +15,7 @@ async function digest(text: string): Promise<string> {
 function stateKey(username: string, computerId: string, source: PcSource) { return `${username}:${computerId}:${source}`; }
 function hashKey(key: string) { return `sgt-pc-live-hash:${key}`; }
 function pollKey(key: string) { return `sgt-pc-live-poll:${key}`; }
-function saveLiveStatus(username: string, source: PcSource, patch: { error?: string; last?: string }) {
+function saveLiveStatus(username: string, source: PcSource, patch: { error?: string; last?: string; downloadRequested?:string; downloadError?:string; trackingWarning?:string }) {
   const status = getPcScheduleStatus(username);
   savePcScheduleStatus(username, { ...status, live: { ...status.live, [source]: { ...status.live?.[source], ...patch } } });
 }
@@ -35,7 +37,7 @@ async function initial(source: PcSource): Promise<PcTrackedBackup> {
 }
 function ensureStillEnabled(username: string, computerId: string, source: PcSource) {
   const current = getPcScheduleSettings(username);
-  if (!current.liveEnabled || !current.sources[source] || current.computerId !== computerId) throw new Error("Настройки изменились, копирование остановлено.");
+  if (!current.liveEnabled || !(current.autoActive || current.sources[source]) || current.computerId !== computerId) throw new Error("Настройки изменились, копирование остановлено.");
 }
 async function readCache(dir: any, key: string): Promise<Cache | null> {
   const file = await fileIfExists(dir);
@@ -103,17 +105,73 @@ async function syncSource(username: string, source: PcSource, computerId: string
     saveLiveStatus(username,source,{ error:"" });
   }
 }
+function requestTrackedDownload(username:string,source:PcSource,computerId:string,text:string) {
+  try { requestPcDownload(text,source,computerId,"live"); }
+  catch(e) {saveLiveStatus(username,source,{downloadError:`Не удалось запросить загрузку; копия осталась в браузере. Скачайте её вручную: ${e instanceof Error?e.message:String(e)}`});throw e;}
+}
+async function downloadSource(username:string,source:PcSource,computerId:string) {
+  const key=downloadCopyKey(username,computerId,source), pk=pollKey(`download:${key}`);
+  if(Date.now()-Number(localStorage.getItem(pk)||0)<3500)return;
+  localStorage.setItem(pk,String(Date.now()));
+  const old=await readDownloadCopy(key);
+  let backup:PcTrackedBackup|undefined;
+  if(!old || old.kind==="full") {
+    const retry=`sgt-pc-download-track-retry:${key}`;
+    if(old && Date.now()-Number(localStorage.getItem(retry)||0)<60_000)return;
+    localStorage.setItem(retry,String(Date.now()));
+    try {backup=await initial(source)} catch(e) {
+      const reason=e instanceof Error?e.message:String(e);
+      if(old) {saveLiveStatus(username,source,{error:"",trackingWarning:`Изменения пока не отслеживаются: ${reason}. Подготовьте журнал Supabase.`});return;}
+      const res=await fetch(`/api/admin/database/full-backup?download=1&source=${source}`,{cache:"no-store",signal:AbortSignal.timeout(90_000)});
+      if(!res.ok){const data=await res.json().catch(()=>({}));throw new Error(data.error||`HTTP ${res.status}`)}
+      const text=await res.text();validatePublicBackup(JSON.parse(text));
+      ensureStillEnabled(username,computerId,source);
+      const record:DownloadCopy={version:1,kind:"full",text,hash:await hashDownloadText(text)};
+      await writeDownloadCopy(key,record,null);
+      requestTrackedDownload(username,source,computerId,text);
+      saveLiveStatus(username,source,{downloadError:"",last:new Date().toISOString(),downloadRequested:new Date().toISOString(),error:"",trackingWarning:`Создан только начальный снимок; изменения не отслеживаются: ${reason}. Подготовьте журнал Supabase.`});return;
+    }
+  } else {
+    const current=trackedDownload(old), t=current.pcTracking;
+    const res=await fetch("/api/admin/database/pc-incremental",{method:"POST",headers:{"Content-Type":"application/json"},cache:"no-store",signal:AbortSignal.timeout(90_000),body:JSON.stringify({source,instance:t.instance,cursor:t.cursor,catalogHash:t.catalogHash})});
+    const data=await res.json();if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);
+    if(data?.reset===true) {
+      if(data.reason==="instance_changed")throw new Error("Источник Supabase изменился. Старая копия не заменена; выберите новую папку или сохраните копию и настройте новый профиль.");
+      const reset=`sgt-pc-download-reset:${key}`;if(Date.now()-Number(localStorage.getItem(reset)||0)<60_000)throw new Error("Повторный полный снимок отложен на минуту.");
+      localStorage.setItem(reset,String(Date.now()));backup=await initial(source);
+      if(backup.pcTracking.instance!==t.instance)throw new Error("Источник Supabase изменился во время снимка; старая копия сохранена.");
+    } else {
+      const applied=applyPcDelta(current,data);
+      if(!applied.changed){rememberTrackedDownload(old,applied.backup);saveLiveStatus(username,source,{error:"",trackingWarning:""});return;}
+      backup=applied.backup;backup.exportedAt=new Date().toISOString();
+    }
+  }
+  ensureStillEnabled(username,computerId,source);
+  const text=JSON.stringify(backup),record:DownloadCopy={version:1,kind:"tracked",text,hash:await hashDownloadText(text)};
+  await writeDownloadCopy(key,record,old);
+  requestTrackedDownload(username,source,computerId,text);
+  saveLiveStatus(username,source,{downloadError:"",last:new Date().toISOString(),downloadRequested:new Date().toISOString(),error:"",trackingWarning:""});
+}
 export async function runPcLiveBackup(username: string): Promise<void> {
-  if (typeof navigator === "undefined" || !navigator.locks) return;
+  if (typeof navigator === "undefined") return;
+  if (!navigator.locks) throw new Error("Для автоматической локальной копии нужен браузер с блокировкой вкладок и HTTPS или localhost.");
   const initialSettings = getPcScheduleSettings(username);
-  if (!initialSettings.liveEnabled || !initialSettings.computerId) return;
+  if (!initialSettings.liveEnabled) return;
   await navigator.locks.request(`sgt-pc-scheduled-full-backup:${username}`, { ifAvailable:true }, async lock => {
     if (!lock) return;
-    for (const source of ["primary","secondary"] as const) {
-      const cfg = getPcScheduleSettings(username);
-      if (!cfg.liveEnabled || !cfg.sources[source] || !cfg.computerId) continue;
-      try { await syncSource(username,source,cfg.computerId); }
-      catch (e) { saveLiveStatus(username,source,{ error:e instanceof Error ? e.message : String(e) }); }
+    const cfg=ensurePcScheduleIdentity(username);
+    let sources:PcSource[];
+    try {sources=await selectedPcSources(cfg)} catch(e) {savePcScheduleStatus(username,{...getPcScheduleStatus(username),sourceError:e instanceof Error?e.message:String(e)});return;}
+    const status=getPcScheduleStatus(username),activeSource=cfg.autoActive?(sources[0]||null):null;
+    if(status.sourceError || status.activeSource!==activeSource) savePcScheduleStatus(username,{...status,sourceError:"",activeSource});
+    for (const source of sources) {
+      try {
+        // An existing, but revoked, folder permission is an error, not a silent move to downloads.
+        const handle=await getPcScheduleDirectory(username);
+        if(handle) await syncSource(username,source,cfg.computerId);
+        else if(cfg.folderName) throw new Error("Доступ к выбранной папке утрачен. Выберите её заново.");
+        else await downloadSource(username,source,cfg.computerId);
+      } catch (e) { saveLiveStatus(username,source,{ error:e instanceof Error ? e.message : String(e) }); }
     }
   });
 }

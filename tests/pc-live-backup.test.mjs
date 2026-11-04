@@ -26,7 +26,7 @@ test('browser backup applies incremental changes, does not rewrite unchanged dat
       return new Response(JSON.stringify({reset:true,reason:'instance_changed'}),{status:200});
     }});
     const cfg=await choosePcScheduleDirectory('owner');
-    savePcScheduleSettings('owner',{...cfg,liveEnabled:true,sources:{primary:true,secondary:false}});
+    savePcScheduleSettings('owner',{...cfg,liveEnabled:true,autoActive:false,sources:{primary:true,secondary:false}});
     const allowPoll=()=>{for(const key of storage.keys()) if(key.startsWith('sgt-pc-live-poll:')) storage.delete(key)};
     await runPcLiveBackup('owner');
     assert.equal(writes,1);

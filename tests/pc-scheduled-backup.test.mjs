@@ -32,8 +32,8 @@ test('independent accounts and sources, retry failures without recording false s
       return new Response(JSON.stringify({app:'SibGofroTorg',backupFormat:'sgt-public-v1',tables:{},totalRows:0}),{status:200});
     }});
     const settings = await choosePcScheduleDirectory('owner');
-    savePcScheduleSettings('owner',{...settings, enabled:true, sources:{primary:true,secondary:true}});
-    assert.equal(getPcScheduleSettings('another-owner').enabled,false);
+    savePcScheduleSettings('owner',{...settings, enabled:true, autoActive:false, sources:{primary:true,secondary:true}});
+    assert.equal(getPcScheduleSettings('another-owner').enabled,true);
     const when = new Date('2026-11-04T11:00:00Z');
     await runPcScheduledBackups('owner',when);
     assert.equal(fetches.length,2);

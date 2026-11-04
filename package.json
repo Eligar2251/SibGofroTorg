@@ -39,7 +39,7 @@
     "test:pallet": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pallet.test.mjs",
     "test:pc-schedule": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-scheduled-backup.test.mjs",
     "test:merge-backup": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/merge-public-snapshots.test.mjs",
-    "test:pc-incremental": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-incremental-sql.test.mjs tests/pc-incremental-client.test.mjs tests/pc-live-backup.test.mjs",
+    "test:pc-incremental": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-incremental-sql.test.mjs tests/pc-incremental-client.test.mjs tests/pc-live-backup.test.mjs tests/pc-download-backup.test.mjs",
     "test:pc-working": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-working-store.test.mjs tests/pc-merge-plan.test.mjs",
     "dev:pc": "node scripts/pc-server.mjs dev",
     "start:pc": "node scripts/pc-server.mjs start",
