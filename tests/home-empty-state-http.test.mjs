@@ -37,6 +37,8 @@ test('empty homepage contains customer-facing text and no admin instruction', { 
     const html = await response.text();
     assert.match(html, /Товары сейчас не отображаются\. Уточните наличие по телефону\./);
     assert.doesNotMatch(html, /Плитки ещё не настроены — добавьте их в админ-панели/);
+    assert.match(html, /Мы используем cookies/);
+    assert.match(html, /Настройки cookies/);
   } finally {
     if (child.exitCode === null) {
       try { process.platform === 'win32' ? child.kill() : process.kill(-child.pid, 'SIGTERM'); } catch {}

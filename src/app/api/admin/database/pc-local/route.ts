@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth";
-import { captureFullSnapshot, validateFullSnapshot, effectiveSource } from "@/lib/full-backup";
-import { assertPcOwner, initializePcLocal, isPcLocalServer, pcLocalStatus, readConfiguredPcSnapshot, readConfiguredPcStore, setPcLocalMode, setPcLiveDisabled, setPcArchivesEnabled, pcLocalRoute, changePcRoot, defaultPcDownloadsRoot } from "@/lib/pc-local-runtime";
+import { captureFullSnapshot, validateFullSnapshot, effectiveSource, restoreFullSnapshotTargets, isFullBackupRunning } from "@/lib/full-backup";
+import { assertPcOwner, initializePcLocal, isPcLocalServer, pcLocalStatus, readConfiguredPcSnapshot, readConfiguredPcStore, setPcLocalMode, setPcLiveDisabled, setPcArchivesEnabled, pcLocalRoute, changePcRoot, defaultPcDownloadsRoot, restoreConfiguredPcSnapshot } from "@/lib/pc-local-runtime";
 import { resolveSupabaseCredentials } from "@/lib/db-runtime-config";
 import { createDirectSupabaseClient } from "@/lib/supabase-server-engine";
+import { readFullBackupSettings } from "@/lib/full-backup-settings";
+import { invalidateProductsCache } from "@/lib/supabase-queries";
+import { invalidateDatabaseSchemaCache } from "@/lib/admin-database";
 import { prepareAutomaticPcCopy } from "@/lib/pc-working-auto";
 import { enablePcWorkingRefresh, tickPcWorkingRefresh } from "@/lib/pc-working-live";
 export const runtime="nodejs";
@@ -17,9 +20,15 @@ function rpcForPc() {
   return async (fn:string,args?:Record<string,unknown>)=>{const {data,error}=await db.rpc(fn,args);if(error)throw new Error(`Не удалось обновить локальный снимок: ${error.message}`);return data;};
 }
 const result=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:{"Cache-Control":"no-store"}});
-export async function GET() {
+export async function GET(req:NextRequest) {
   const auth=await owner(); if(auth instanceof NextResponse) return auth;
-  try {return result(pcLocalStatus());} catch(e) {return result({error:e instanceof Error?e.message:String(e)},503)}
+  try {
+    if(req.nextUrl.searchParams.get("download")==="1") {
+      if(!isPcLocalServer()) return result({error:"Локальный файл доступен только на сайте, запущенном на этом ПК."},404);
+      const snapshot=validateFullSnapshot(readConfiguredPcSnapshot());
+      return new NextResponse(JSON.stringify(snapshot),{headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","Content-Disposition":"attachment; filename=sgt-local-public.json"}});
+    }
+    return result(pcLocalStatus());} catch(e) {return result({error:e instanceof Error?e.message:String(e)},503)}
 }
 export async function POST(req:NextRequest) {
   const auth=await owner(); if(auth instanceof NextResponse) return auth;
@@ -29,6 +38,23 @@ export async function POST(req:NextRequest) {
   try {if(type!=="application/json" || req.headers.get("sec-fetch-site")==="cross-site" || (origin && new URL(origin).host.toLowerCase()!==host)) return result({error:"Недопустимый источник запроса"},403)} catch{return result({error:"Недопустимый источник запроса"},403)}
   try {
     const body=await req.json();
+    if(body.action==="restore_all") {
+      if(body.confirmReplace!==true) return result({error:"Подтвердите полную замену трёх источников."},400);
+      if(pcLocalRoute().kind!=="remote") return result({error:"Сначала войдите в локальный сайт в режиме Supabase."},409);
+      if(readFullBackupSettings().enabled || isFullBackupRunning()) return result({error:"Сначала остановите копирование между базами и дождитесь его завершения."},409);
+      const snapshot=validateFullSnapshot(body.snapshot);
+      assertPcOwner(snapshot,auth.username);
+      const first=resolveSupabaseCredentials("primary"), second=resolveSupabaseCredentials("secondary");
+      if(!first.configured || !second.configured) return result({error:"Сначала настройте обе Supabase: URL и секретный ключ."},409);
+      if(first.url.replace(/\/+$/,"")===second.url.replace(/\/+$/, "")) return result({error:"Обе Supabase указывают на один URL; операция остановлена."},409);
+      // Local file first: failure leaves both Supabase untouched. The following
+      // independent database restores cannot be atomic across servers.
+      restoreConfiguredPcSnapshot(snapshot,auth.username);
+      const remote=await restoreFullSnapshotTargets(snapshot,["primary","secondary"]);
+      invalidateProductsCache(); invalidateDatabaseSchemaCache();
+      const results=[{target:"local",ok:true},...remote];
+      return result({ok:results.every(r=>r.ok),results},results.every(r=>r.ok)?200:207);
+    }
     if(body.action==="auto_prepare") {
       if(pcLocalRoute().kind!=="remote")return result({error:"Локальный просмотр не изменяется автоматически."},409);
       const state=pcLocalStatus();

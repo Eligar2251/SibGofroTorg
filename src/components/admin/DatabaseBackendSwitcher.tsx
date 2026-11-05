@@ -961,8 +961,8 @@ export function DatabaseBackendSwitcher({
         </div>
       )}
 
-      <FullBackupPanel />
-      {ownerUsername && !pcLocalSite && <PcScheduledFullBackupPanel username={ownerUsername} />}
+      <FullBackupPanel pcLocalSite={pcLocalSite} />
+      {ownerUsername && <PcScheduledFullBackupPanel username={ownerUsername} />}
       {ownerUsername && <MergeBackupPanel />}
 
       {/* Три карточки выбора источника БД */}

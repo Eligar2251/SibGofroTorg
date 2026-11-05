@@ -34,7 +34,12 @@ export async function GET(req: NextRequest) {
     const source = req.nextUrl.searchParams.get("source");
     const db = client(source);
     const { data, error: err } = await db.rpc("sgt_pc_backup_snapshot");
-    if (err) throw new Error(`Не удалось начать отслеживание: ${err.message}. Установите обе миграции полного и инкрементального бэкапа.`);
+    if (err) {
+      if (/Incremental (partition )?triggers? missing|Incremental triggers missing or disabled/i.test(err.message)) {
+        throw new Error("Журнал изменений на этой Supabase не подготовлен. В разделе «База данных» нажмите «Подготовить отслеживание Supabase» для этой базы. Полные снимки можно сохранять и без журнала.");
+      }
+      throw new Error(`Не удалось начать отслеживание: ${err.message}. Проверьте, что на этой Supabase установлены миграции полного и инкрементального бэкапа.`);
+    }
     validateFullSnapshot(data?.snapshot);
     await maybePrune(db, source!);
     return noStore(data);

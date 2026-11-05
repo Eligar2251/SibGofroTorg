@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { createPcWorkingStore, readPcWorkingStore, replacePcCleanBaseline, copyPcWorkingStore, type PcWorkingStore } from "./pc-working-store";
+import { createPcWorkingStore, readPcWorkingStore, replacePcCleanBaseline, restorePcWorkingSnapshot, copyPcWorkingStore, type PcWorkingStore } from "./pc-working-store";
 import type { PublicBackup } from "./merge-public-snapshots";
 
 export type PcLocalSettings = { version:1; root:string; computerId:string; source:"primary"|"secondary"; mode:"remote"|"readonly"; liveEnabled?:boolean; archivesEnabled?:boolean; autoManaged?:boolean };
@@ -105,6 +105,21 @@ export function commitPcLiveBaseline(computerId:string,source:"primary"|"seconda
     return store;
   });
 }
+/** Only a remote-authenticated local owner may explicitly replace this PC file. */
+export function restoreConfiguredPcSnapshot(snapshot:PublicBackup,username:string) {
+  if(!isPcLocalServer()) throw new Error("Восстановление файла ПК доступно только на локальном сайте.");
+  assertPcOwner(snapshot,username);
+  return configLock(()=>{
+    const c=loadSettings();
+    if(!c || c.mode!=="remote") throw new Error("Для восстановления нужен локальный сайт в режиме Supabase и подготовленный JSON на ПК.");
+    const old=readPcWorkingStore(c.root,c.computerId);
+    // Disable the runner first, including after a write failure. A request that
+    // was in flight cannot commit because it checks settings and revision.
+    writeSettings({...c,liveEnabled:false,autoManaged:false});
+    restorePcWorkingSnapshot(c.root,c.computerId,old.revision,snapshot);
+    return pcLocalStatus();
+  });
+}
 export function setPcLiveDisabled() {
   if(!isPcLocalServer()) throw new Error("Локальный сервер ПК не включён.");
   return configLock(()=>{const c=loadSettings();if(!c) throw new Error("Локальная копия не настроена.");writeSettings({...c,liveEnabled:false,autoManaged:false});return pcLocalStatus();});
@@ -119,18 +134,33 @@ export function archivePcSnapshotAt(now:Date):{created:boolean;file?:string;reas
   const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Novosibirsk',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);
   const get=(type:string)=>parts.find(p=>p.type===type)?.value || '';
   const hour=get('hour'),minute=Number(get('minute'));
-  if(!['18','23'].includes(hour) || !Number.isInteger(minute) || minute>=10) return {created:false,reason:'outside_window'};
+  // 18:00 Moscow is 22:00 Novosibirsk. Keep the two previous archives.
+  const moscow = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);
+  const mg=(type:string)=>moscow.find(p=>p.type===type)?.value || '';
+  const oldSlot=['18','23'].includes(hour) && Number.isInteger(minute) && minute<10;
+  const dailyMoscow=Number(mg('hour'))>=18 && !oldSlot;
+  if((!['18','23'].includes(hour) || !Number.isInteger(minute) || minute>=10) && !dailyMoscow) return {created:false,reason:'outside_window'};
   return configLock(()=>{
     const c=loadSettings();if(!c || c.archivesEnabled!==true) return {created:false,reason:'disabled'};
     const store=readPcWorkingStore(c.root,c.computerId);
     const base=path.join(c.root,`pc-${c.computerId.toLowerCase()}`), dir=path.join(base,'scheduled');
     try {fs.mkdirSync(dir,{mode:0o700});}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;}
     const st=fs.lstatSync(dir);if(!st.isDirectory() || st.isSymbolicLink())throw new Error('Каталог архивов должен быть обычной папкой, не ссылкой.');
-    const file=path.join(dir,`sgt-pc-${get('year')}-${get('month')}-${get('day')}-${hour}00.json`);
+    const file=path.join(dir,dailyMoscow ? `sgt-pc-${mg('year')}-${mg('month')}-${mg('day')}-1800-msk.json` : `sgt-pc-${get('year')}-${get('month')}-${get('day')}-${hour}00.json`);
     try {fs.lstatSync(file);return {created:false,file,reason:'already_exists'};} catch(e) {if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}
     const temp=path.join(dir,`.sgt-archive-${crypto.randomUUID()}.tmp`);let fd:number|undefined;
     try {
       fd=fs.openSync(temp,'wx',0o600);fs.writeFileSync(fd,JSON.stringify(store.current));fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;
+      if (dailyMoscow) {
+        // The dated file is retained as history; this additional stable name is
+        // replaced only after a complete snapshot was flushed to disk.
+        const daily=path.join(dir,'sgt-pc-daily-msk.json');
+        try {const old=fs.lstatSync(daily); if(!old.isFile() || old.isSymbolicLink()) throw new Error('Ежедневный файл не является обычным файлом.');}
+        catch(e) {if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}
+        const dailyTemp=path.join(dir,`.sgt-daily-${crypto.randomUUID()}.tmp`);let dailyFd:number|undefined;
+        try {dailyFd=fs.openSync(dailyTemp,'wx',0o600);fs.writeFileSync(dailyFd,JSON.stringify(store.current));fs.fsyncSync(dailyFd);fs.closeSync(dailyFd);dailyFd=undefined;fs.renameSync(dailyTemp,daily);}
+        finally {if(dailyFd!==undefined)fs.closeSync(dailyFd);try{fs.unlinkSync(dailyTemp)}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}}
+      }
       // Hard-link is a create-if-absent operation; rename can silently replace a file.
       try {fs.linkSync(temp,file);}catch(e){if((e as NodeJS.ErrnoException).code==='EEXIST')return {created:false,file,reason:'already_exists'};throw e;}
       return {created:true,file};

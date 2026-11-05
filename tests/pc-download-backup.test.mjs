@@ -30,12 +30,14 @@ test('downloads without a folder, remains separate per account/source, and never
   Object.defineProperty(globalThis,'fetch',{configurable:true,value:async(url,init)=>{
    url=String(url);requests++;
    if(url.endsWith('/pc-source'))return Response.json({source,localReadonly:false});
+   if(url.endsWith('/pc-local'))return Response.json({available:false});
    if(url.includes('/full-backup'))return Response.json(initial.snapshot);
    if(!tracker)return Response.json({error:'journal disabled'},{status:503});
    if(!init?.method)return Response.json(initial);
    return Response.json({reset:false,cursor:changed?'102':'101',tables:{products:{keys:[{id:'a'}],rows:[{id:'a',name:changed?'Changed':'A'}]}},sequences:{products:{}}});
   }});
   const poll=()=>{for(const key of local.keys())if(key.startsWith('sgt-pc-live-poll:'))local.delete(key)};
+  for (const name of ['owner','other-owner','unprepared']) savePcScheduleSettings(name,{...getPcScheduleSettings(name),autoActive:true});
   await runPcLiveBackup('owner');const cfg=getPcScheduleSettings('owner');assert.equal(cfg.folderName,'');assert.ok(cfg.computerId);assert.equal(downloads.length,1);
   assert.match(downloads[0],/sgt-live-primary/);assert.ok(getPcScheduleStatus('owner').live.primary.downloadRequested);
   poll();await runPcLiveBackup('owner');assert.equal(downloads.length,1,'unchanged data did not download again');
