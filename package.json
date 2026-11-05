@@ -27,7 +27,7 @@
     "test:color-twin": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/product-color-twin.test.mjs",
     "test:color-twin-api": "node --experimental-strip-types --import ./tests/api-prices-register.mjs --test tests/api-product-color-twin.test.mjs",
     "test:local-db": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/local-json-db-and-switcher.test.mjs",
-    "test": "npm run test:links && npm run test:stock && npm run test:payments && npm run test:deal-archive && npm run test:export-api && npm run test:media && npm run test:pallet && npm run test:recovery && npm run test:price-calc && npm run test:prices && npm run test:price-list && npm run test:tax && npm run test:assembly && npm run test:assembly-api && npm run test:color-twin && npm run test:color-twin-api && npm run test:local-db && npm run test:login-http && npm run test:full-backup && npm run test:pc-schedule && npm run test:merge-backup && npm run test:pc-incremental && npm run test:pc-working && npm run test:pc-local && npm run test:pc-working-live && npm run test:pc-working-live-http && npm run test:pc-reconcile-primitives && npm run test:home-empty",
+    "test": "npm run test:links && npm run test:stock && npm run test:payments && npm run test:deal-archive && npm run test:export-api && npm run test:media && npm run test:pallet && npm run test:recovery && npm run test:price-calc && npm run test:prices && npm run test:price-list && npm run test:tax && npm run test:assembly && npm run test:assembly-api && npm run test:color-twin && npm run test:color-twin-api && npm run test:local-db && npm run test:login-http && npm run test:full-backup && npm run test:pc-schedule && npm run test:merge-backup && npm run test:pc-incremental && npm run test:pc-working && npm run test:pc-local && npm run test:pc-working-live && npm run test:pc-working-live-http && npm run test:pc-reconcile-primitives && npm run test:home-empty && npm run test:admin-backup-display",
     "test:home-empty": "node --test tests/home-empty-state-http.test.mjs",
     "test:recovery": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/admin-recovery.test.mjs",
     "test:full-backup": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/full-backup.test.mjs",
@@ -47,7 +47,8 @@
     "test:pc-local": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-local-readonly.test.mjs tests/pc-local-http.test.mjs",
     "test:pc-working-live": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-working-live.test.mjs tests/pc-working-auto.test.mjs tests/pc-local-archives.test.mjs",
     "test:pc-working-live-http": "node --experimental-strip-types --import ./tests/ts-register.mjs --test --test-concurrency=1 tests/pc-working-live-http.test.mjs tests/pc-npm-dev-http.test.mjs",
-    "test:pc-reconcile-primitives": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-change-root.test.mjs tests/pc-merge-apply-sql.test.mjs tests/full-migration-install.test.mjs"
+    "test:pc-reconcile-primitives": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/pc-change-root.test.mjs tests/pc-merge-apply-sql.test.mjs tests/full-migration-install.test.mjs",
+    "test:admin-backup-display": "node --experimental-strip-types --test tests/admin-backup-display.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

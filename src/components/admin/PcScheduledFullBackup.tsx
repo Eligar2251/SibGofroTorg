@@ -1,34 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { isAdminDatabasePath } from "@/lib/admin-database-path";
 import { downloadCachedPcCopy } from "@/lib/pc-download-backup";
 import { runPcLiveBackup } from "@/lib/pc-live-backup";
 import { choosePcScheduleDirectory, confirmPcSchedulePermission, getPcScheduleSettings, getPcScheduleStatus, savePcScheduleStatus, PC_SCHEDULE_EVENT, runPcScheduledBackups, savePcCurrentBackups, savePcScheduleSettings, selectedPcSources, pcSourceLabel, type PcScheduleSettings, type PcScheduleStatus } from "@/lib/pc-scheduled-backup";
 
 /** Runs only while an owner is signed in with an admin tab open. */
-export function PcScheduledFullBackupRunner({ username }: { username: string }) {
-  const [error, setError] = useState("");
+export function PcScheduledFullBackupRunner({ username, adminPath }: { username: string; adminPath: string }) {
+  const pathname = usePathname();
+  const [scheduleError, setScheduleError] = useState("");
+  const [liveError, setLiveError] = useState("");
   useEffect(() => {
-    const refresh = () => {
-      const s = getPcScheduleStatus(username), cfg = getPcScheduleSettings(username);
-      const warnings = (["primary", "secondary"] as const).flatMap(source => {
-        if (!cfg.liveEnabled || !(cfg.autoActive ? s.activeSource === source : cfg.sources[source])) return [];
-        const detail = s.live?.[source]?.downloadError || s.live?.[source]?.error || s.live?.[source]?.trackingWarning;
-        return detail ? [`${pcSourceLabel(source)}: ${detail}`] : [];
-      });
-      setError([cfg.enabled ? s.error : "", cfg.liveEnabled ? s.sourceError : "", ...warnings].filter(Boolean).join("; "));
-    };
-    const tick = () => { runPcScheduledBackups(username).catch(e => setError(e instanceof Error ? e.message : String(e))); };
-    const liveTick = () => { runPcLiveBackup(username).catch(e => setError(e instanceof Error ? e.message : String(e))); };
-    refresh(); tick(); liveTick();
-    window.addEventListener(PC_SCHEDULE_EVENT, refresh);
-    window.addEventListener("storage", refresh);
+    // Status and per-source warnings are displayed by the database panel. Keep
+    // these timers running on every admin page, even when no warning is rendered.
+    const tick = () => { runPcScheduledBackups(username).then(() => setScheduleError("")).catch(e => setScheduleError(e instanceof Error ? e.message : String(e))); };
+    const liveTick = () => { runPcLiveBackup(username).then(() => setLiveError("")).catch(e => setLiveError(e instanceof Error ? e.message : String(e))); };
+    tick(); liveTick();
     const timer = setInterval(tick, 30_000);
     const liveTimer = setInterval(liveTick, 5_000);
-    return () => { clearInterval(timer); clearInterval(liveTimer); window.removeEventListener(PC_SCHEDULE_EVENT, refresh); window.removeEventListener("storage", refresh); };
+    return () => { clearInterval(timer); clearInterval(liveTimer); };
   }, [username]);
-  if (!error) return null;
-  return <div role="alert" style={{ padding: 10, background: "#fff4e5", color: "#762d0a" }}>Бэкап на ПК: {error} Откройте «База данных» для проверки.</div>;
+  const error = [scheduleError, liveError].filter(Boolean).join("; ");
+  if (!error || !isAdminDatabasePath(pathname, adminPath)) return null;
+  return <div role="alert" style={{ padding: 10, background: "#fff4e5", color: "#762d0a" }}>Бэкап на ПК: {error}</div>;
 }
 
 export function PcScheduledFullBackupPanel({ username }: { username: string }) {
