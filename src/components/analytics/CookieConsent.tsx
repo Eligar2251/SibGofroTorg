@@ -8,6 +8,7 @@ import { Cookie } from "lucide-react";
 import {
   COOKIE_CONSENT_ATTR,
   COOKIE_CONSENT_EVENT,
+  COOKIE_SETTINGS_EVENT,
   COOKIE_CONSENT_STORAGE_KEY,
   COOKIE_POLICY_PATH,
   PRIVACY_POLICY_PATH,
@@ -51,6 +52,7 @@ export function CookieConsent({ adminPath }: { adminPath?: string }) {
 
   const [consent, setConsent] = useState<ConsentState>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [review, setReview] = useState(false);
 
   useEffect(() => {
     setConsent(readStoredConsent());
@@ -60,27 +62,31 @@ export function CookieConsent({ adminPath }: { adminPath?: string }) {
       const detail = (ev as CustomEvent).detail;
       if (detail === "accepted" || detail === "declined") {
         setConsent(detail);
+        setReview(false);
       } else {
         setConsent(readStoredConsent());
       }
     };
+    const openSettings = () => setReview(true);
+    window.addEventListener(COOKIE_SETTINGS_EVENT, openSettings);
     window.addEventListener(COOKIE_CONSENT_EVENT, onInlineDecision);
     return () => {
+      window.removeEventListener(COOKIE_SETTINGS_EVENT, openSettings);
       window.removeEventListener(COOKIE_CONSENT_EVENT, onInlineDecision);
     };
   }, []);
 
   // На страницах админки (включая форму входа) клиентский cookie-баннер не показываем.
-  const bannerVisible = !isAdminRoute && (!hydrated || consent === null);
+  const bannerVisible = !isAdminRoute && (!hydrated || consent === null || review);
 
   useEffect(() => {
     if (!bannerVisible) return;
-    if (document.documentElement.hasAttribute(COOKIE_CONSENT_ATTR)) return;
+    if (!review && document.documentElement.hasAttribute(COOKIE_CONSENT_ATTR)) return;
     document.body.classList.add("cookie-banner-visible");
     return () => {
       document.body.classList.remove("cookie-banner-visible");
     };
-  }, [bannerVisible]);
+  }, [bannerVisible, review]);
 
   function decide(value: "accepted" | "declined") {
     try {
@@ -100,6 +106,10 @@ export function CookieConsent({ adminPath }: { adminPath?: string }) {
       /* ignore */
     }
     setConsent(value);
+    setReview(false);
+    // An already loaded analytics script cannot be reliably unloaded in-place.
+    // Reload after revocation so it is not loaded again without consent.
+    if (consent === "accepted" && value === "declined") window.location.reload();
   }
 
   const id = METRIKA_ID ? METRIKA_ID.replace(/\D/g, "") : "";
@@ -130,6 +140,7 @@ export function CookieConsent({ adminPath }: { adminPath?: string }) {
       {bannerVisible && (
         <div
           className="cookie-banner"
+          data-review={review ? "true" : undefined}
           role="dialog"
           aria-live="polite"
           aria-label="Согласие на использование cookie"

@@ -20,6 +20,7 @@ import {
   COMPANY_DIRECTOR,
 } from "@/lib/site-config";
 import { useSiteSettings } from "@/hooks/use-site-settings";
+import { COOKIE_SETTINGS_EVENT } from "@/lib/cookie-consent";
 
 const INFO_LINKS = [
   { href: "/about", label: "О компании" },
@@ -136,6 +137,7 @@ export function Footer() {
                 {l.label}
               </Link>
             ))}
+            <button type="button" className="footer-link" style={{ background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }} onClick={() => window.dispatchEvent(new Event(COOKIE_SETTINGS_EVENT))}>Настройки cookies</button>
           </div>
 
           <div>

@@ -72,10 +72,34 @@ async function syncSource(username: string, source: PcSource, computerId: string
   const dir = await getLiveDir(username,computerId,source);
   let cache = await readCache(dir,key);
   if (!cache) {
-    const backup = await initial(source);
+    let backup: PcTrackedBackup;
+    try { backup = await initial(source); }
+    catch (e) {
+      // An unavailable journal must not prevent a first full snapshot. Never
+      // overwrite a pre-existing full file or claim it tracks later changes.
+      const warning = e instanceof Error ? e.message : String(e);
+      const retry = `sgt-pc-folder-full-retry:${key}`;
+      let existing: File | null = null;
+      try { existing = await (await dir.getFileHandle("sgt-full-current.json")).getFile(); }
+      catch (err) { if ((err as Error).name !== "NotFoundError") throw err; }
+      if (!existing && Date.now() - Number(localStorage.getItem(retry) || 0) >= 60_000) {
+        localStorage.setItem(retry, String(Date.now()));
+        const res = await fetch(`/api/admin/database/full-backup?download=1&source=${source}`, { cache:"no-store", signal:AbortSignal.timeout(90_000) });
+        if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error || `HTTP ${res.status}`); }
+        const text = await res.text(); validatePublicBackup(JSON.parse(text));
+        ensureStillEnabled(username,computerId,source);
+        // Cooperating tabs hold a Web Lock. Refuse a file that appeared meanwhile.
+        try { await dir.getFileHandle("sgt-full-current.json"); throw new Error("Файл копии появился во время записи; замена отменена."); }
+        catch (err) { if ((err as Error).name !== "NotFoundError") throw err; }
+        await writePcFile(dir,"sgt-full-current.json",text);
+        saveLiveStatus(username,source,{last:new Date().toISOString()});
+      }
+      saveLiveStatus(username,source,{error:"",trackingWarning:`Сохранённый полный снимок может быть устаревшим: изменения не отслеживаются: ${warning}`});
+      return;
+    }
     ensureStillEnabled(username,computerId,source);
     cache = await writeChecked(dir,key,null,backup);
-    saveLiveStatus(username,source,{ last:new Date().toISOString(), error:"" });
+    saveLiveStatus(username,source,{ last:new Date().toISOString(), error:"", trackingWarning:"" });
     return;
   }
   const tracking = cache.backup.pcTracking;

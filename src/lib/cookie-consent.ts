@@ -18,6 +18,8 @@ export const COOKIE_CONSENT_ATTR = "data-cookie-consent";
 
 /** Пользовательское DOM-событие для синхронизации с React после гидратации. */
 export const COOKIE_CONSENT_EVENT = "sgt-cookie-consent";
+/** Open the existing choice without discarding consent until a new decision. */
+export const COOKIE_SETTINGS_EVENT = "sgt-cookie-settings";
 
 /** Страница с условиями использования cookie-файлов. */
 export const COOKIE_POLICY_PATH = "/cookie-policy";

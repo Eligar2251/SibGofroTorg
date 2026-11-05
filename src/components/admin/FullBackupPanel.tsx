@@ -8,7 +8,7 @@ type Status = { running: boolean; source: Mode; lastRunAt: string | null; error:
 const labels: Record<Mode, string> = { primary: "Supabase #1", secondary: "Supabase #2", local: "Локальная JSON-БД" };
 const modes: Mode[] = ["primary", "secondary"];
 
-export function FullBackupPanel() {
+export function FullBackupPanel({ pcLocalSite = false }: { pcLocalSite?: boolean }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
   const [targets, setTargets] = useState<Record<Mode, boolean>>({ primary: false, secondary: false, local: false });
@@ -16,6 +16,7 @@ export function FullBackupPanel() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const allInput = useRef<HTMLInputElement>(null);
 
   async function refresh(initial = false) {
     try {
@@ -84,10 +85,28 @@ export function FullBackupPanel() {
     finally { setBusy(false); }
   }
 
+  async function restoreAll(e: React.ChangeEvent<HTMLInputElement>) {
+    const file=e.target.files?.[0]; e.target.value=""; if(!file)return;
+    if(file.size>200*1024*1024){setError("Файл больше 200 МБ; восстановление остановлено.");return;}
+    if(!window.confirm("Один выбранный файл заменит ВСЕ данные Supabase №1, Supabase №2 и локального JSON на этом ПК. Новые изменения в каждой базе будут потеряны. Остановите работу пользователей и заранее сохраните отдельные резервные копии. Операция может завершиться частично. Продолжить?"))return;
+    setBusy(true);setError("");setMessage("");
+    try {
+      const snapshot=JSON.parse(await file.text());
+      const res=await fetch("/api/admin/database/pc-local",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"restore_all",snapshot,confirmReplace:true})});
+      const data=await res.json(); if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);
+      const succeeded=(data.results||[]).filter((x:{ok:boolean})=>x.ok).map((x:{target:Mode})=>labels[x.target]);
+      const failed=(data.results||[]).filter((x:{ok:boolean})=>!x.ok).map((x:{target:Mode,error?:string})=>`${labels[x.target]}: ${x.error}`);
+      if(failed.length)setError(`Частичное восстановление. Успешно: ${succeeded.join(", ") || "нет"}. Ошибки: ${failed.join("; ")}. Автоматического отката нет.`);
+      else setMessage(`Восстановлено: ${succeeded.join(", ")}. Автообновление локальной копии остановлено; подготовьте журнал заново после проверки.`);
+      window.dispatchEvent(new Event("sgt-pc-local-status")); window.dispatchEvent(new Event("sgt-pc-working-live"));
+      await refresh();
+    }catch(err){setError(err instanceof Error?err.message:String(err))}finally{setBusy(false)}
+  }
+
   return <section style={{ padding: 16, border: "1px solid var(--adm-border, #ddd)", borderRadius: 12, marginBottom: 16, display: "grid", gap: 10 }}>
     <strong>Полные копии всех таблиц приложения — только владелец</strong>
     <div style={{ fontSize: 13 }}>Рабочая база: <b>{labels[status.source]}</b>. Выбранные резервные базы периодически <b>полностью заменяются</b> её снимком. Остановка копирования не выключает сервер БД. Файлы Cloudinary и системные данные Supabase не включены.</div>
-    <div style={{ fontSize: 12 }}>Требуется migration_complete_app_backup.sql на обоих Supabase и одинаковая схема таблиц. Снимки содержат персональные данные. Серверные JSON-копии не создаются. Независимая рабочая JSON-БД на ПК пока не реализована.</div>
+    <div style={{ fontSize: 12 }}>Требуется migration_complete_app_backup.sql на обоих Supabase и одинаковая схема таблиц. Снимки содержат персональные данные. Серверные JSON-копии не создаются. Локальная JSON-копия доступна только при запуске сайта на этом ПК и предназначена для чтения.</div>
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
       {modes.map(m => <label key={m}><input type="checkbox" checked={config.targets[m]} onChange={e => setConfig({ ...config, targets: { ...config.targets, [m]: e.target.checked } })} disabled={busy || status.running} /> {labels[m]} — копирование</label>)}
       <label>Интервал (сек.): <input type="number" min={60} max={86400} value={config.intervalSec} onChange={e => setConfig({ ...config, intervalSec: Number(e.target.value) })} style={{ width: 75 }} disabled={busy || status.running} /></label>
@@ -104,6 +123,12 @@ export function FullBackupPanel() {
     <strong style={{ fontSize: 13 }}>Восстановить полный файл в выбранные базы</strong>
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{modes.map(m => <label key={m}><input type="checkbox" checked={targets[m]} onChange={e => setTargets({ ...targets, [m]: e.target.checked })} disabled={busy || status.running} /> {labels[m]}</label>)}</div>
     <div><input ref={input} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={restore} /><button className="admin-btn admin-btn--outline admin-btn--sm" disabled={busy || status.running} onClick={() => input.current?.click()}>Выбрать файл и восстановить</button></div>
+    {pcLocalSite && <div>
+      <strong style={{fontSize:13}}>Восстановить один файл во все три источника</strong>
+      <p style={{fontSize:12}}>На локальном сайте в режиме Supabase. Сначала сохраните отдельные копии обеих баз и локального JSON. Замена полная; в случае ошибки результат может быть частичным. Системные данные Supabase Auth и файлы Storage в JSON не входят.</p>
+      <input ref={allInput} type="file" accept=".json,application/json" style={{display:"none"}} onChange={restoreAll} />
+      <button className="admin-btn admin-btn--outline admin-btn--sm" disabled={busy || status.running} onClick={()=>allInput.current?.click()}>Выбрать файл и восстановить все три</button>
+    </div>}
     {message && <div role="status" style={{ fontSize: 13 }}>{message}</div>}{error && <div className="admin-error" role="alert">{error}</div>}
   </section>;
 }

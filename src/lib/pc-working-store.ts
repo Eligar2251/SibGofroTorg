@@ -160,6 +160,20 @@ export function replacePcCleanBaseline(root:string, computerId:string, expectedR
   });
 }
 
+/** Explicit restore after owner confirmation. Stops trusting any old tracking cursor. */
+export function restorePcWorkingSnapshot(root:string, computerId:string, expectedRevision:number, input:unknown):PcWorkingStore {
+  const snapshot = clone(validateSnapshot(input));
+  const file=location(root,computerId); assertWorkingDirectory(file);
+  return withLock(file,()=>{
+    const old=readExisting(file,computerId);
+    if(old.revision!==expectedRevision) throw new Error("Локальная копия изменилась во время восстановления; повторите попытку.");
+    if(old.revision===Number.MAX_SAFE_INTEGER) throw new Error("Исчерпан диапазон версий рабочей БД.");
+    const {tracking: _tracking, trackingHash: _trackingHash, ...base}=old;
+    const next:PcWorkingStore={...base,origin:{...old.origin,instanceId:null},revision:old.revision+1,base:snapshot,current:clone(snapshot),baseHash:digest(snapshot),currentHash:digest(snapshot)};
+    writeAtomic(file,next); return clone(next);
+  });
+}
+
 /** Copy the exact working store to a new manually selected root; never remove the old copy. */
 export function copyPcWorkingStore<T>(sourceRoot:string,destinationRoot:string,computerId:string,afterCopy:(store:PcWorkingStore)=>T):T {
   const src=location(sourceRoot,computerId),dst=location(destinationRoot,computerId);

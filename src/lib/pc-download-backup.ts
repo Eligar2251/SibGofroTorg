@@ -40,7 +40,7 @@ export async function writeDownloadCopy(key:string,record:DownloadCopy,expected:
   });memory.set(key,record);localStorage.setItem(revisionKey(key),record.hash);
   } catch(e) {memory.delete(key);throw e} finally {db.close()}
 }
-export function requestPcDownload(text:string,source:PcSource,computerId:string,kind:"live"|"full"|"scheduled",now=new Date()):string {
+export function requestPcDownload(text:string,source:PcSource | "local",computerId:string,kind:"live"|"full"|"scheduled",now=new Date()):string {
   if(typeof document==="undefined" || typeof URL.createObjectURL!=="function")throw new Error("Браузер не поддерживает загрузку JSON-файла.");
   const date=now.toISOString().replace(/[:.]/g,"-");
   const filename=`sgt-${kind}-${source}-${computerId.slice(0,8)}-${date}.json`;

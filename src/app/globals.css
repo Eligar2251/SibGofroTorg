@@ -8192,7 +8192,7 @@ body:has(.mobile-menu-panel) {
    сделал выбор, скрипт в <head> выставляет на <html> атрибут
    data-cookie-consent — ниже баннер прячется ещё до первой отрисовки,
    чтобы не мигал при каждой загрузке страницы. */
-html[data-cookie-consent] .cookie-banner { display: none !important; }
+html[data-cookie-consent] .cookie-banner:not([data-review="true"]) { display: none !important; }
 
 .cookie-banner {
   position: fixed;

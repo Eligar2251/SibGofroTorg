@@ -1,17 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { novosibirskSlot, choosePcScheduleDirectory, getPcScheduleSettings, getPcScheduleStatus, runPcScheduledBackups, savePcCurrentBackups, savePcScheduleSettings } from '../src/lib/pc-scheduled-backup.ts';
+import { novosibirskSlot, moscowDailySlot, choosePcScheduleDirectory, getPcScheduleSettings, getPcScheduleStatus, runPcScheduledBackups, savePcCurrentBackups, savePcScheduleSettings } from '../src/lib/pc-scheduled-backup.ts';
 
 test('schedule uses Novosibirsk civil time, not browser timezone', () => {
   assert.deepEqual(novosibirskSlot(new Date('2026-11-04T11:00:00Z')), { date:'2026-11-04', time:'18-00' });
   assert.deepEqual(novosibirskSlot(new Date('2026-11-04T16:05:00Z')), { date:'2026-11-04', time:'23-00' });
   assert.equal(novosibirskSlot(new Date('2026-11-04T16:11:00Z')), null);
   assert.equal(novosibirskSlot(new Date('2026-11-04T10:59:59Z')), null);
+  assert.deepEqual(moscowDailySlot(new Date('2026-11-04T15:00:00Z')), {date:'2026-11-04',time:'18-00-msk'});
+  assert.deepEqual(moscowDailySlot(new Date('2026-11-04T15:11:00Z')), {date:'2026-11-04',time:'18-00-msk'});
+  assert.equal(moscowDailySlot(new Date('2026-11-04T14:59:00Z')), null);
 });
 
 test('independent accounts and sources, retry failures without recording false success', async () => {
   const saved = new Map(), local = new Map(), files = new Map();
-  let fetches = []; let secondaryFails = true; let permitted = true;
+  let fetches = []; let secondaryFails = true; let permitted = true; let localReady = false; let readonly = false; let value = 1;
   const old = Object.fromEntries(['window','localStorage','indexedDB','navigator','fetch'].map(k=>[k,Object.getOwnPropertyDescriptor(globalThis,k)]));
   const makeDir = prefix => ({ name:'shared', queryPermission: async () => permitted ? 'granted' : 'prompt', requestPermission: async () => permitted ? 'granted' : 'prompt',
     getDirectoryHandle: async name => makeDir(`${prefix}/${name}`),
@@ -27,9 +30,11 @@ test('independent accounts and sources, retry failures without recording false s
       }} }; return tx } }; req.onsuccess?.() }); return req;
     } }});
     Object.defineProperty(globalThis,'fetch',{ configurable:true, value: async url => {
+      if (String(url).includes("pc-source")) return new Response(JSON.stringify({localReadonly:readonly,source:"primary"}));
+      if (String(url).endsWith("pc-local")) return new Response(JSON.stringify({available:localReady,configured:localReady,ready:localReady}));
       fetches.push(String(url));
       if (String(url).includes('secondary') && secondaryFails) return new Response(JSON.stringify({error:'unavailable'}),{status:503});
-      return new Response(JSON.stringify({app:'SibGofroTorg',backupFormat:'sgt-public-v1',tables:{},totalRows:0}),{status:200});
+      return new Response(JSON.stringify({app:'SibGofroTorg',backupFormat:'sgt-public-v1',tables:{},totalRows:0,value}),{status:200});
     }});
     const settings = await choosePcScheduleDirectory('owner');
     savePcScheduleSettings('owner',{...settings, enabled:true, autoActive:false, sources:{primary:true,secondary:true}});
@@ -37,7 +42,7 @@ test('independent accounts and sources, retry failures without recording false s
     const when = new Date('2026-11-04T11:00:00Z');
     await runPcScheduledBackups('owner',when);
     assert.equal(fetches.length,2);
-    assert.match(getPcScheduleStatus('owner').error, /secondary: unavailable/);
+    assert.match(getPcScheduleStatus('owner').error, /Supabase №2 .*: unavailable/);
     assert.equal(getPcScheduleStatus('owner').completed.primary,'2026-11-04_18-00_primary');
     assert.equal(getPcScheduleStatus('owner').completed.secondary,undefined);
     assert.equal(files.size,1);
@@ -50,7 +55,7 @@ test('independent accounts and sources, retry failures without recording false s
     await runPcScheduledBackups('owner',when);
     assert.equal(fetches.length,3);
     const manual = await savePcCurrentBackups('owner');
-    assert.deepEqual(manual, ['primary: сохранено', 'secondary: сохранено']);
+    assert.deepEqual(manual, ['Supabase №1 (SUPABASE_URL): сохранено', 'Supabase №2 (SUPABASE_SECONDARY_URL): сохранено', 'Локальная JSON-БД: доступна только при запуске сайта на этом ПК.']);
     assert.equal(files.size,4);
     const currentKey = [...files.keys()].find(x => x.endsWith('/primary/sgt-full-current.json'));
     const currentFile = files.get(currentKey);
@@ -58,12 +63,29 @@ test('independent accounts and sources, retry failures without recording false s
     const secondaryFile = files.get(secondaryKey);
     secondaryFails = true;
     const result = await savePcCurrentBackups('owner');
-    assert.match(result[1], /secondary: unavailable/);
+    assert.match(result[1], /Supabase №2 .*: unavailable/);
     assert.equal(files.get(currentKey), currentFile);
     assert.equal(files.get(secondaryKey), secondaryFile);
     permitted=false;
     await runPcScheduledBackups('owner',new Date('2026-11-04T16:00:00Z'));
     assert.match(getPcScheduleStatus('owner').error, /Нет доступа/);
     assert.equal(files.size,4);
+    // Catch up after 18:00 Moscow, preserve both prior Novosibirsk slots and
+    // overwrite the same daily file on the next Moscow day.
+    permitted=true;secondaryFails=false;localReady=true;
+    await runPcScheduledBackups('owner',new Date('2026-11-04T15:30:00Z'));
+    const dailyKeys=[...files.keys()].filter(x=>x.endsWith('/scheduled/sgt-full-daily-msk.json'));
+    assert.equal(dailyKeys.length,3);assert.ok(dailyKeys.some(x=>x.includes('/local/')));
+    const before=files.size,count=fetches.length;
+    await runPcScheduledBackups('owner',new Date('2026-11-04T15:59:00Z'));assert.equal(fetches.length,count);
+    await runPcScheduledBackups('owner',new Date('2026-11-04T16:00:00Z'));
+    const oldSlotCount=fetches.length;
+    await runPcScheduledBackups('owner',new Date('2026-11-04T16:12:00Z'));assert.equal(fetches.length,oldSlotCount,'Moscow slot not repeated after 23:00 Novosibirsk');
+    value=2;await runPcScheduledBackups('owner',new Date('2026-11-05T15:30:00Z'));
+    assert.equal(files.size,before+3);assert.ok(dailyKeys.every(k=>JSON.parse(files.get(k)).value===2));
+    readonly=true;fetches=[];
+    const localOnly=await savePcCurrentBackups('owner');
+    assert.deepEqual(localOnly,['Локальная JSON-БД: сохранено']);
+    assert.deepEqual(fetches,['/api/admin/database/pc-local?download=1']);
   } finally { for (const [key, desc] of Object.entries(old)) desc ? Object.defineProperty(globalThis,key,desc) : delete globalThis[key]; }
 });
