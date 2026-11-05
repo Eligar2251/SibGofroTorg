@@ -25,7 +25,15 @@ if [ -f server.js ]; then
 fi
 
 if [ -f .next/standalone/server.js ]; then
-  # Образ, собранный без flatten (например, cloudpacks поверх репозитория).
+  # Образ, собранный без flatten (например, cloudpacks поверх репозитория):
+  # гарантируем, что статика .next/static и public подключены, иначе /_next/static/*.js вернут 404!
+  if [ -d .next/static ] && [ ! -e .next/standalone/.next/static ]; then
+    mkdir -p .next/standalone/.next
+    ln -s "$(pwd)/.next/static" .next/standalone/.next/static 2>/dev/null || cp -R .next/static .next/standalone/.next/static
+  fi
+  if [ -d public ] && [ ! -e .next/standalone/public ]; then
+    ln -s "$(pwd)/public" .next/standalone/public 2>/dev/null || cp -R public .next/standalone/public
+  fi
   exec node .next/standalone/server.js
 fi
 

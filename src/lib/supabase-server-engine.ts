@@ -1,3 +1,5 @@
+import { pcLocalRoute } from "./pc-local-runtime";
+import { activePcQuery } from "./pc-readonly-query";
 // =========================================================
 // FILE: src/lib/supabase-server-engine.ts
 // Серверное ядро маршрутизации БД (только Node.js):
@@ -8,6 +10,7 @@
 //   • Фоновое зеркалирование изменений в локальную JSON-БД
 // =========================================================
 
+import { readFullBackupSettings } from "./full-backup-settings";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   clearDbFailoverState,
@@ -18,10 +21,8 @@ import {
   type DbBackendMode,
 } from "./db-runtime-config";
 import {
-  cacheRowsIntoLocalDb,
   getLocalDbSummary,
   getLocalJsonDbClient,
-  replayPendingMutationsToRemoteSupabase,
   type LocalJsonSupabaseClient,
 } from "./local-json-db";
 
@@ -39,7 +40,11 @@ function getActiveCircuitFallback(): DbBackendMode | null {
   const st = getDbFailoverState();
   if (!st.activeFallbackBackend || !st.failedAt) return null;
   const elapsed = Date.now() - new Date(st.failedAt).getTime();
-  if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < FAILOVER_CIRCUIT_COOLDOWN_MS) {
+  // Never silently switch back from a different remote database: writes made
+  // there are not replicated to the original. Local pending writes also need
+  // explicit reconciliation before returning to a remote database.
+  if (st.activeFallbackBackend !== "local" || getLocalDbSummary().pendingMutationsCount > 0 ||
+      (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < FAILOVER_CIRCUIT_COOLDOWN_MS)) {
     return st.activeFallbackBackend;
   }
   return null;
@@ -49,13 +54,31 @@ function fetchWithTimeout(
   timeoutMs = SUPABASE_FETCH_TIMEOUT_MS
 ): typeof fetch {
   return (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (init?.signal) return fetch(input, init);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    return fetch(input, { ...init, signal: controller.signal }).finally(() =>
-      clearTimeout(timer)
-    );
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, controller.signal])
+      : controller.signal;
+    return fetch(input, { ...init, signal }).finally(() => clearTimeout(timer));
   };
+}
+
+
+function localServerUnavailable() {
+  return { data: null, error: { code: "LOCAL_SERVER_DISABLED", message: "Серверная JSON-БД переведена в режим чтения для сохранения старых данных; рабочая БД на ПК ещё не подключена." } };
+}
+
+function remoteUnavailable(message: string) {
+  return { data: null, error: { code: "DB_UNAVAILABLE", message } };
+}
+
+// A timeout or dropped connection does not prove the first database rolled
+// back. Replaying a write or an RPC elsewhere could create it twice.
+function unconfirmedFailoverWrite() {
+  return {data:null,error:{code:"DB_FAILOVER_READ_ONLY",message:"Резервная БД выбрана автоматически только для чтения. Проверьте актуальность и явно переключите источник перед записью."}};
+}
+function uncertainWrite() {
+  return { data: null, error: { code: "DB_WRITE_OUTCOME_UNKNOWN", message: "Связь прервалась во время записи. Она могла сохраниться в исходной БД; проверьте результат перед повтором или переключением. Автоматический повтор в другой БД отменён." } };
 }
 
 const clientCache = new Map<string, SupabaseClient>();
@@ -239,69 +262,27 @@ class SmartQueryProxy implements PromiseLike<any> {
     return q;
   }
 
-  private mirrorToLocal(remoteResult: any): void {
-    try {
-      const localClient = getLocalJsonDbClient();
-
-      if (!this.mutationOp) {
-        if (this.table === "admins" && remoteResult?.data) {
-          const rows = Array.isArray(remoteResult.data)
-            ? remoteResult.data
-            : [remoteResult.data];
-          cacheRowsIntoLocalDb("admins", rows);
-        }
-        return;
-      }
-
-      if (this.mutationOp === "insert" || this.mutationOp === "upsert") {
-        const payloadArr = Array.isArray(this.mutationPayload)
-          ? this.mutationPayload
-          : this.mutationPayload
-            ? [this.mutationPayload]
-            : [];
-        const returnedArr = Array.isArray(remoteResult?.data)
-          ? remoteResult.data
-          : remoteResult?.data && typeof remoteResult.data === "object"
-            ? [remoteResult.data]
-            : [];
-
-        if (returnedArr.length > 0) {
-          const merged = returnedArr.map((retRow: any, idx: number) => ({
-            ...(payloadArr[idx] || {}),
-            ...retRow,
-          }));
-          cacheRowsIntoLocalDb(this.table, merged);
-          return;
-        }
-      }
-
-      const localQuery = this.replayOn(localClient, false);
-      if (localQuery && typeof localQuery.executeSync === "function") {
-        if (typeof localQuery.markMirrorReplay === "function") {
-          localQuery.markMirrorReplay();
-        }
-        localQuery.executeSync();
-      }
-    } catch {
-      /* ignore mirror errors */
-    }
-  }
-
   private async execute(): Promise<any> {
+    const pc = pcLocalRoute();
+    if (pc.kind === "error") return remoteUnavailable(pc.message);
+    if (pc.kind === "readonly") {
+      try { const local = activePcQuery(this.table,this.calls); return local.error || await this.replayOn(local.client,false); }
+      catch (e) { return remoteUnavailable(`Локальная копия недоступна: ${e instanceof Error ? e.message : String(e)}`); }
+    }
     const cfg = getDbRuntimeConfig();
 
     if (cfg.activeBackend === "local") {
-      return await this.replayOn(getLocalJsonDbClient(), false);
+      if (this.mutationOp) return localServerUnavailable();
+      return await this.replayOn(getLocalJsonDbClient(), false); // legacy recovery, read-only
     }
 
     // Если основная БД недавно упала — в течение 20 сек мгновенно направляем
     // запросы в резерв (без задержек и зависаний страниц админки!)
     if (cfg.autoFailover) {
       const fastFallback = getActiveCircuitFallback();
-      if (fastFallback === "local") {
-        return await this.replayOn(getLocalJsonDbClient(), false);
-      }
+      if (fastFallback === "local") return localServerUnavailable();
       if (fastFallback === "primary" || fastFallback === "secondary") {
+        if (this.mutationOp) return unconfirmedFailoverWrite();
         const fbCreds = resolveSupabaseCredentials(fastFallback);
         if (fbCreds.configured) {
           try {
@@ -309,17 +290,14 @@ class SmartQueryProxy implements PromiseLike<any> {
               fbCreds.url,
               fbCreds.serviceRoleKey
             );
-            const fbRes = await this.replayOn(fbClient, cfg.mirrorWritesToLocal);
-            if (!fbRes?.error || !isRemoteServerFailure(fbRes.error)) {
-              if (!fbRes?.error && cfg.mirrorWritesToLocal) {
-                this.mirrorToLocal(fbRes);
-              }
-              return fbRes;
-            }
-          } catch {
-            /* fallback to local */
+            const fbRes = await this.replayOn(fbClient, false);
+            if (this.mutationOp && fbRes?.error && isRemoteServerFailure(fbRes.error)) return uncertainWrite();
+            return fbRes;
+          } catch (e) {
+            if (this.mutationOp) return uncertainWrite();
           }
         }
+        return remoteUnavailable("Резервный Supabase недоступен; запись в серверный JSON отключена.");
       }
     }
 
@@ -333,16 +311,7 @@ class SmartQueryProxy implements PromiseLike<any> {
           creds.serviceRoleKey
         );
 
-        // Если после падения основной сервер снова ответил, но в локалке накопились
-        // офлайн-правки — сначала досылаем их в Supabase, чтобы ничего не пропало!
-        if (
-          getDbFailoverState().activeFallbackBackend === "local" &&
-          getLocalDbSummary().pendingMutationsCount > 0
-        ) {
-          await replayPendingMutationsToRemoteSupabase(client);
-        }
-
-        const res = await this.replayOn(client, cfg.mirrorWritesToLocal);
+        const res = await this.replayOn(client, false);
         if (res?.error && isRemoteServerFailure(res.error)) {
           throw new Error(res.error.message || "Supabase server unavailable");
         }
@@ -350,12 +319,10 @@ class SmartQueryProxy implements PromiseLike<any> {
           if (getDbFailoverState().activeFallbackBackend) {
             clearDbFailoverState();
           }
-          if (cfg.mirrorWritesToLocal || this.table === "admins") {
-            this.mirrorToLocal(res);
-          }
         }
         return res;
       } catch (primaryErr: any) {
+        if (this.mutationOp && isRemoteServerFailure(primaryErr)) return uncertainWrite();
         if (!cfg.autoFailover || !isRemoteServerFailure(primaryErr)) {
           return {
             data: null,
@@ -371,7 +338,7 @@ class SmartQueryProxy implements PromiseLike<any> {
         const altTarget: "primary" | "secondary" =
           activeTarget === "primary" ? "secondary" : "primary";
         const altCreds = resolveSupabaseCredentials(altTarget);
-        if (altCreds.configured && altCreds.url !== creds.url) {
+        if (!readFullBackupSettings().enabled && altCreds.configured && altCreds.url !== creds.url) {
           try {
             const altClient = createDirectSupabaseClient(
               altCreds.url,
@@ -379,13 +346,10 @@ class SmartQueryProxy implements PromiseLike<any> {
             );
             const altRes = await this.replayOn(
               altClient,
-              cfg.mirrorWritesToLocal
+              false
             );
-            if (!altRes?.error || !isRemoteServerFailure(altRes.error)) {
+            if (!altRes?.error) {
               recordDbFailover(altTarget, errMsg);
-              if (!altRes?.error && cfg.mirrorWritesToLocal) {
-                this.mirrorToLocal(altRes);
-              }
               return altRes;
             }
           } catch {
@@ -393,23 +357,23 @@ class SmartQueryProxy implements PromiseLike<any> {
           }
         }
 
-        recordDbFailover("local", errMsg);
-        return await this.replayOn(getLocalJsonDbClient(), false);
+        return remoteUnavailable(errMsg);
       }
     }
 
+    if (this.mutationOp) return remoteUnavailable(`${creds.label}: параметры подключения не заданы. Запись в другую базу без проверки копии отменена.`);
     if (cfg.autoFailover) {
       const altTarget: "primary" | "secondary" =
         activeTarget === "primary" ? "secondary" : "primary";
       const altCreds = resolveSupabaseCredentials(altTarget);
-      if (altCreds.configured) {
+      if (!readFullBackupSettings().enabled && altCreds.configured) {
         try {
           const altClient = createDirectSupabaseClient(
             altCreds.url,
             altCreds.serviceRoleKey
           );
-          const altRes = await this.replayOn(altClient, cfg.mirrorWritesToLocal);
-          if (!altRes?.error || !isRemoteServerFailure(altRes.error)) {
+          const altRes = await this.replayOn(altClient, false);
+          if (!altRes?.error) {
             recordDbFailover(
               altTarget,
               `${creds.label}: не указаны URL или service_role ключ`
@@ -420,11 +384,7 @@ class SmartQueryProxy implements PromiseLike<any> {
           /* fallback to local */
         }
       }
-      recordDbFailover(
-        "local",
-        `${creds.label}: не заданы параметры подключения`
-      );
-      return await this.replayOn(getLocalJsonDbClient(), false);
+      return remoteUnavailable(`${creds.label}: не заданы параметры подключения`);
     }
 
     return {
@@ -450,13 +410,18 @@ class SmartAdminSupabaseClient {
   }
 
   async rpc(fnName: string, args?: Record<string, any>): Promise<any> {
+    const pc = pcLocalRoute();
+    if (pc.kind === "error") return remoteUnavailable(pc.message);
+    if (pc.kind === "readonly") return { data:null, error:{code:"PC_READ_ONLY",message:"RPC отключены в режиме чтения локальной копии."} };
     const cfg = getDbRuntimeConfig();
     if (cfg.activeBackend === "local") {
-      return getLocalJsonDbClient().rpc(fnName, args);
+      return localServerUnavailable();
     }
 
-    if (cfg.autoFailover && getActiveCircuitFallback() === "local") {
-      return getLocalJsonDbClient().rpc(fnName, args);
+    if (cfg.autoFailover) {
+      const fallback = getActiveCircuitFallback();
+      if (fallback === "local") return localServerUnavailable();
+      if (fallback === "primary" || fallback === "secondary") return unconfirmedFailoverWrite();
     }
 
     const activeTarget = cfg.activeBackend;
@@ -472,57 +437,15 @@ class SmartAdminSupabaseClient {
         if (res?.error && isRemoteServerFailure(res.error)) {
           throw new Error(res.error.message || "RPC unavailable");
         }
-        if (
-          !res?.error &&
-          cfg.mirrorWritesToLocal &&
-          fnName === "fn_next_counter" &&
-          args?.p_key &&
-          Number.isFinite(Number(res.data))
-        ) {
-          cacheRowsIntoLocalDb("doc_counters", [
-            { key: String(args.p_key), value: Number(res.data) },
-          ]);
-        }
         return res;
       } catch (err: any) {
-        if (!cfg.autoFailover || !isRemoteServerFailure(err)) {
-          return {
-            data: null,
-            error: {
-              code: "DB_UNAVAILABLE",
-              message: err?.message || String(err),
-            },
-          };
-        }
-        const altTarget: "primary" | "secondary" =
-          activeTarget === "primary" ? "secondary" : "primary";
-        const altCreds = resolveSupabaseCredentials(altTarget);
-        if (altCreds.configured && altCreds.url !== creds.url) {
-          try {
-            const altClient = createDirectSupabaseClient(
-              altCreds.url,
-              altCreds.serviceRoleKey
-            );
-            const altRes = await altClient.rpc(fnName, args);
-            if (!altRes?.error || !isRemoteServerFailure(altRes.error)) {
-              recordDbFailover(altTarget, err?.message || String(err));
-              return altRes;
-            }
-          } catch {
-            /* fallback to local */
-          }
-        }
-        recordDbFailover("local", err?.message || String(err));
-        return getLocalJsonDbClient().rpc(fnName, args);
+        if (isRemoteServerFailure(err)) return uncertainWrite();
+        return { data: null, error: { code: "DB_UNAVAILABLE", message: err?.message || String(err) } };
       }
     }
 
     if (cfg.autoFailover) {
-      recordDbFailover(
-        "local",
-        `${creds.label}: не заданы параметры подключения`
-      );
-      return getLocalJsonDbClient().rpc(fnName, args);
+      return remoteUnavailable(`${creds.label}: не заданы параметры подключения`);
     }
 
     return {
@@ -542,9 +465,11 @@ export function getAdminDb(): SupabaseClient {
 }
 
 export function getPublicDb(): SupabaseClient {
+  const pc = pcLocalRoute();
+  if (pc.kind === "readonly" || pc.kind === "error") return smartAdminClient as unknown as SupabaseClient;
   const cfg = getDbRuntimeConfig();
   if (cfg.activeBackend === "local") {
-    return getLocalJsonDbClient() as unknown as SupabaseClient;
+    return smartAdminClient as unknown as SupabaseClient;
   }
   if (cfg.autoFailover) {
     return smartAdminClient as unknown as SupabaseClient;
@@ -556,7 +481,7 @@ export function getPublicDb(): SupabaseClient {
       creds.anonKey || creds.serviceRoleKey
     );
   }
-  return getLocalJsonDbClient() as unknown as SupabaseClient;
+  return smartAdminClient as unknown as SupabaseClient;
 }
 
 export function getSupabaseUrl_pub(): string {
@@ -587,6 +512,8 @@ export function getActiveDatabaseConnectionInfo(): {
   serviceRoleKey: string;
 } {
   const cfg = getDbRuntimeConfig();
+  const pc = pcLocalRoute();
+  if (pc.kind === "readonly" || pc.kind === "error") return { configuredMode:cfg.activeBackend, effectiveMode:"local", label:"Локальная копия ПК (только чтение)", url:"", serviceRoleKey:"" };
   const failover = getDbFailoverState();
   const effectiveMode = failover.activeFallbackBackend || cfg.activeBackend;
 
@@ -624,6 +551,13 @@ export async function probeDatabaseBackend(
   const started = Date.now();
 
   if (target === "local") {
+    const pc = pcLocalRoute();
+    if (pc.kind === "error") return { target, label:"Локальная копия ПК", configured:true, reachable:false, latencyMs:Date.now()-started, productsCount:null, error:pc.message };
+    if (pc.kind === "readonly") {
+      try { const q=activePcQuery("products",[{method:"select",args:["id",{count:"exact",head:true}]}]); const res=q.error || await q.client.from("products").select("id",{count:"exact",head:true});
+        return {target,label:"Локальная копия ПК (только чтение)",configured:true,reachable:!res.error,latencyMs:Date.now()-started,productsCount:("count" in res ? res.count??null : null),error:res.error?.message||null};
+      } catch(e) {return {target,label:"Локальная копия ПК",configured:true,reachable:false,latencyMs:Date.now()-started,productsCount:null,error:e instanceof Error?e.message:String(e)};}
+    }
     try {
       const res = await getLocalJsonDbClient()
         .from("products")

@@ -67,9 +67,10 @@ export const OWNER_ONLY_PERMISSIONS: readonly AdminPermission[] = [
 ];
 
 export function parseAdminRole(value: unknown): AdminRole | null {
-  return typeof value === "string" &&
-    (ADMIN_ROLES as readonly string[]).includes(value)
-    ? (value as AdminRole)
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return (ADMIN_ROLES as readonly string[]).includes(normalized)
+    ? (normalized as AdminRole)
     : null;
 }
 

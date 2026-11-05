@@ -30,7 +30,8 @@ export type AdminSessionSecretState = "ok" | "missing" | "too_short" | "dev_fall
 export function adminSessionSecretState(): AdminSessionSecretState {
   const fromEnv = process.env.ADMIN_SESSION_SECRET;
   if (fromEnv && fromEnv.length >= 32) return "ok";
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" || process.env.SGT_PC_LOCAL_SERVER === "1") {
+    // npm run dev is used for real PC data; never accept the public dev secret.
     return fromEnv ? "too_short" : "missing";
   }
   return "dev_fallback";
@@ -43,10 +44,10 @@ export function adminSessionSecretState(): AdminSessionSecretState {
 export function adminSessionSecret(): Uint8Array | null {
   const state = adminSessionSecretState();
   if (state === "ok") {
-    return new TextEncoder().encode(process.env.ADMIN_SESSION_SECRET);
+    return new TextEncoder().encode(process.env.ADMIN_SESSION_SECRET + (process.env.SGT_PC_LOCAL_SERVER === "1" ? "\0sibgofrotorg-pc-session-v1" : ""));
   }
   if (state === "dev_fallback") {
-    return new TextEncoder().encode(DEV_SECRET);
+    return new TextEncoder().encode(DEV_SECRET + (process.env.SGT_PC_LOCAL_SERVER === "1" ? "\0sibgofrotorg-pc-session-v1" : ""));
   }
   return null;
 }
@@ -70,6 +71,7 @@ export type AdminSessionToken = {
   username: string;
   role: AdminRole;
   displayName: string;
+  pcMode?: "remote" | "readonly";
   /** Выдан (мс). */
   issuedAt: number;
   /** Истекает (мс) или null, если в токене нет exp. */
@@ -81,6 +83,7 @@ export async function signAdminSession(data: {
   username: string;
   role: AdminRole;
   displayName?: string;
+  pcMode?: "remote" | "readonly";
 }): Promise<string> {
   const secret = adminSessionSecret();
   if (!secret) {
@@ -94,6 +97,7 @@ export async function signAdminSession(data: {
     username: data.username,
     role: data.role,
     displayName: data.displayName || data.username,
+    pcMode: data.pcMode,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -127,6 +131,7 @@ export async function verifyAdminSessionToken(
         typeof payload.displayName === "string" && payload.displayName
           ? payload.displayName
           : username,
+      pcMode: payload.pcMode === "remote" || payload.pcMode === "readonly" ? payload.pcMode : undefined,
       issuedAt: typeof payload.iat === "number" ? payload.iat * 1000 : 0,
       expiresAt: typeof payload.exp === "number" ? payload.exp * 1000 : null,
     };
@@ -142,10 +147,13 @@ export function adminSessionNeedsRenewal(session: AdminSessionToken): boolean {
 }
 
 /** Параметры cookie сессии — один набор на вход и на продление. */
-export function adminSessionCookieOptions() {
+export function adminSessionCookieOptions(isHttps?: boolean) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure:
+      typeof isHttps === "boolean"
+        ? isHttps
+        : process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     maxAge: ADMIN_SESSION_TTL_SEC,
     path: "/",

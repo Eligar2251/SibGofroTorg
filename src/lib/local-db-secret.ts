@@ -58,6 +58,7 @@ function resolveMasterSecret(): string {
   const fromEnv = String(
     process.env.SGT_LOCAL_DB_SECRET_KEY ||
       process.env.ADMIN_SESSION_SECRET ||
+      process.env.SUPABASE_SECRET_KEY ||
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
       ""
   ).trim();

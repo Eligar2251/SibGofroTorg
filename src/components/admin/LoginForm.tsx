@@ -11,7 +11,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   CircleAlert,
@@ -27,15 +26,17 @@ import { getAdminLandingPath, parseAdminRole } from "@/lib/admin-rbac";
 export function LoginForm({
   adminPath,
   expired = false,
+  initialError = "",
 }: {
   adminPath: string;
   expired?: boolean;
+  initialError?: string;
 }) {
-  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+  const [error, setError] = useState(initialError);
   const [dbError, setDbError] = useState<{
     message: string;
     detail?: string;
@@ -89,6 +90,7 @@ export function LoginForm({
   );
 
   useEffect(() => {
+    setHydrated(true);
     checkPrimaryStatus(true);
   }, [checkPrimaryStatus]);
 
@@ -204,8 +206,7 @@ export function LoginForm({
       }
 
       const role = parseAdminRole(data.role);
-      router.push(getAdminLandingPath(role, adminPath));
-      router.refresh();
+      window.location.assign(getAdminLandingPath(role, adminPath));
     } catch (err) {
       setEmergencyError(
         err instanceof Error
@@ -226,17 +227,20 @@ export function LoginForm({
     const username = formData.get("username") as string;
     const password = formData.get("password") as string;
 
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45_000);
     try {
       const res = await fetch(`/${adminPath}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ username, password }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        if (res.status === 503 || data.code === "db_unavailable") {
+        if (data.code === "db_unavailable" || (res.status === 503 && !data.code)) {
           setDbError({
             message: data.error || "Основная база данных не отвечает",
             detail: data.detail || data.hint,
@@ -246,17 +250,20 @@ export function LoginForm({
           setLoading(false);
           return;
         }
-        throw new Error(data.error || "Ошибка входа");
+        throw new Error([data.error || "Ошибка входа", data.hint].filter(Boolean).join(". "));
       }
 
       const role = parseAdminRole(data.role);
-      router.push(getAdminLandingPath(role, adminPath));
-      router.refresh();
+      window.location.assign(getAdminLandingPath(role, adminPath));
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Неверный логин или пароль"
+        controller.signal.aborted
+          ? "Сервер не ответил вовремя. Проверьте соединение и состояние базы данных."
+          : err instanceof Error ? err.message : "Не удалось связаться с сервером"
       );
       setLoading(false);
+    } finally {
+      window.clearTimeout(timeout);
     }
   }
 
@@ -305,10 +312,7 @@ export function LoginForm({
             {dbError.message}
           </div>
           <div style={{ marginTop: 6 }}>
-            Основная БД не отвечает — вы можете войти <b>без пароля</b>, выбрав
-            локальный файл БД ниже (сайт проверит встроенный секретный код и
-            полный путь файла, после чего админка продолжит спокойно работать на
-            локальной базе).
+            Проверьте доступность Supabase. Вход с локальной БД ПК пока не реализован.
           </div>
           {dbError.detail ? (
             <div
@@ -325,189 +329,14 @@ export function LoginForm({
         </div>
       ) : null}
 
-      {/* Аварийный вход без пароля по локальному файлу БД (активен, когда не отвечает основная БД) */}
-      {(showEmergencyPanel || primaryUnreachable) && (
-        <div
-          style={{
-            marginBottom: 20,
-            padding: 14,
-            borderRadius: 12,
-            border: "1.5px solid rgba(16, 185, 129, 0.45)",
-            background: "rgba(16, 185, 129, 0.06)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 11,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontWeight: 700,
-                fontSize: 13.5,
-              }}
-            >
-              <HardDrive size={17} style={{ color: "#059669", flexShrink: 0 }} />
-              Вход по локальному файлу БД (без пароля)
-            </div>
-            <button
-              type="button"
-              onClick={() => checkPrimaryStatus(false)}
-              disabled={checkingPrimaryDb}
-              title="Повторно проверить доступность основной БД"
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                padding: 4,
-                opacity: 0.75,
-              }}
-            >
-              <RefreshCw
-                size={14}
-                className={checkingPrimaryDb ? "animate-spin" : ""}
-              />
-            </button>
+      <form method="post" action={`/${adminPath}/api/login`} onSubmit={handleSubmit}>
+        {!hydrated && (
+          <div className="admin-error" role="status" style={{ marginBottom: 16 }}>
+            Интерактивный интерфейс ещё не загрузился. Вход по логину и паролю
+            доступен через обычную отправку формы, но для переключения базы
+            и работы админки необходим JavaScript.
           </div>
-
-          <div style={{ fontSize: 12.5, lineHeight: 1.45, opacity: 0.88 }}>
-            Выберите сохранённый локальный файл БД (
-            <code>sibgofrotorg-latest.json</code> или{" "}
-            <code>local-db.json</code>). Сайт считает секретный код документа и
-            полный путь файла.
-          </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const rawVal = e.target.value;
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (f) processPickedFile(f, rawVal);
-            }}
-          />
-
-          <button
-            type="button"
-            onClick={handleOpenFileDialog}
-            disabled={emergencyLoading}
-            className="admin-btn admin-btn--outline"
-            style={{
-              width: "100%",
-              justifyContent: "center",
-              gap: 8,
-              padding: "10px 14px",
-              fontWeight: 600,
-            }}
-          >
-            <FolderOpen size={16} />
-            {selectedFileName
-              ? `Выбран файл: ${selectedFileName}`
-              : "Выбрать локальный файл БД (.json)…"}
-          </button>
-
-          <div className="admin-field" style={{ marginBottom: 0 }}>
-            <label
-              htmlFor="emergency-file-path"
-              className="admin-label"
-              style={{ fontSize: 12 }}
-            >
-              Полный путь локального файла БД
-            </label>
-            <input
-              id="emergency-file-path"
-              type="text"
-              className="admin-input"
-              style={{ fontSize: 12.5 }}
-              placeholder="Например: D:\SibGofroBackup\sibgofrotorg-latest.json"
-              value={fileFullPath}
-              onChange={(e) => setFileFullPath(e.target.value)}
-            />
-          </div>
-
-          {fileSecretPreview && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                fontSize: 12,
-                padding: "7px 10px",
-                borderRadius: 8,
-                background: fileSecretPreview.hasSecret
-                  ? "rgba(16, 185, 129, 0.12)"
-                  : "rgba(239, 68, 68, 0.12)",
-                color: fileSecretPreview.hasSecret ? "#065f46" : "#991b1b",
-                fontWeight: 600,
-              }}
-            >
-              {fileSecretPreview.hasSecret ? (
-                <>
-                  <CheckCircle2 size={15} />
-                  <span>
-                    Секретный код найден ({fileSecretPreview.rowsCount} записей в
-                    файле)
-                  </span>
-                </>
-              ) : (
-                <>
-                  <CircleAlert size={15} />
-                  <span>В файле отсутствует стандартный секретный код</span>
-                </>
-              )}
-            </div>
-          )}
-
-          {emergencyError && (
-            <div className="admin-error" style={{ margin: 0, fontSize: 12.5 }}>
-              {emergencyError}
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={handleEmergencyFileLogin}
-            disabled={
-              emergencyLoading ||
-              (!selectedFileContent && !fileFullPath.trim()) ||
-              (fileSecretPreview !== null && !fileSecretPreview.hasSecret)
-            }
-            className="admin-btn admin-btn--primary"
-            style={{
-              width: "100%",
-              justifyContent: "center",
-              gap: 8,
-              padding: "12px 18px",
-              fontWeight: 700,
-            }}
-          >
-            {emergencyLoading ? (
-              <>
-                <Loader2 size={17} className="animate-spin" /> Проверка кода и
-                вход…
-              </>
-            ) : (
-              <>
-                <KeyRound size={17} /> Войти в админку без пароля по файлу БД
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit}>
+        )}
         <div className="admin-field" style={{ marginBottom: 16 }}>
           <label htmlFor="username" className="admin-label">
             Логин
@@ -562,28 +391,7 @@ export function LoginForm({
         </button>
       </form>
 
-      {!showEmergencyPanel && !primaryUnreachable && (
-        <div style={{ marginTop: 14, textAlign: "center" }}>
-          <button
-            type="button"
-            onClick={async () => {
-              await checkPrimaryStatus(true);
-              setShowEmergencyPanel(true);
-            }}
-            style={{
-              background: "transparent",
-              border: "none",
-              fontSize: 12,
-              opacity: 0.72,
-              textDecoration: "underline",
-              cursor: "pointer",
-              color: "inherit",
-            }}
-          >
-            Не отвечает основная БД? Войти по локальному файлу БД
-          </button>
-        </div>
-      )}
+
     </div>
   );
 }

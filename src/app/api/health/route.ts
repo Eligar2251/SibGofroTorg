@@ -8,7 +8,13 @@ export async function GET() {
   // Короткий неблокирующий probe БД — чисто информационно.
   // Ошибка не влияет на статус ответа (всегда 200), только на поле db.
   let db: "up" | "down" | "unconfigured" = "unconfigured";
-  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const hasSupabaseUrl = Boolean(
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+  );
+  const hasSupabaseSecret = Boolean(
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (hasSupabaseUrl && hasSupabaseSecret) {
     try {
       const { getAdminDb } = await import("@/lib/supabase");
       const controller = new AbortController();

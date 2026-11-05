@@ -4,21 +4,20 @@
 //
 // Единый источник правды для cookie-баннера (152-ФЗ):
 //  • ключ, под которым хранится решение пользователя;
-//  • inline-скрипт, который отрабатывает ДО первой отрисовки и помечает
-//    <html> атрибутом data-cookie-consent, если выбор уже был сделан.
-//
-// Зачем атрибут: баннер теперь рендерится на сервере (см.
-// CookieConsent.tsx) и присутствует в исходном HTML каждой страницы —
-// иначе его не видят ни посетители без JS, ни сканеры соответствия
-// 152-ФЗ/РКН, которые читают только HTML и не выполняют скрипты.
-// Тем, кто уже нажал «Принять»/«Отклонить», баннер прячет CSS-правило
-// (globals.css), поэтому он не мигает до гидратации React.
+//  • inline-скрипт, который отрабатывает ДО первой отрисовки:
+//      1) помечает <html> атрибутом data-cookie-consent, если выбор уже сделан;
+//      2) вешает мгновенный делегированный обработчик клика на кнопки
+//         «Принять» и «Отклонить», чтобы кнопки срабатывали с первого клика
+//         даже ДО завершения гидратации React или при медленной сети.
 
-/** Ключ localStorage с решением пользователя (accepted | declined). */
+/** Ключ localStorage и технической cookie с решением пользователя (accepted | declined). */
 export const COOKIE_CONSENT_STORAGE_KEY = "sibgofrotorg_cookie_consent";
 
 /** Атрибут <html>, выставляемый до отрисовки при уже принятом решении. */
 export const COOKIE_CONSENT_ATTR = "data-cookie-consent";
+
+/** Пользовательское DOM-событие для синхронизации с React после гидратации. */
+export const COOKIE_CONSENT_EVENT = "sgt-cookie-consent";
 
 /** Страница с условиями использования cookie-файлов. */
 export const COOKIE_POLICY_PATH = "/cookie-policy";
@@ -27,20 +26,35 @@ export const COOKIE_POLICY_PATH = "/cookie-policy";
 export const PRIVACY_POLICY_PATH = "/privacy";
 
 /**
- * Скрипт для <head>: если пользователь уже принял/отклонил cookie,
- * помечаем <html> — CSS спрячет баннер ещё до первой отрисовки,
- * и он не «мигнёт» при каждой загрузке страницы.
+ * Скрипт для <head>:
+ * 1) читает сохранённый выбор из localStorage или cookie и ставит атрибут на <html>;
+ * 2) обрабатывает клик по кнопкам `.cookie-banner__accept` / `.cookie-banner__decline`
+ *    напрямую на уровне документа, не дожидаясь гидратации бандлов.
  */
 export function cookieConsentInitScript(): string {
+  const key = JSON.stringify(COOKIE_CONSENT_STORAGE_KEY);
+  const attr = JSON.stringify(COOKIE_CONSENT_ATTR);
+  const evt = JSON.stringify(COOKIE_CONSENT_EVENT);
+
   return (
     "(function(){try{" +
-    "var v=localStorage.getItem(" +
-    JSON.stringify(COOKIE_CONSENT_STORAGE_KEY) +
-    ");" +
-    'if(v==="accepted"||v==="declined"){' +
-    "document.documentElement.setAttribute(" +
-    JSON.stringify(COOKIE_CONSENT_ATTR) +
-    ",v);" +
-    "}}catch(e){}})();"
+    "var K=" + key + ",A=" + attr + ",E=" + evt + ";" +
+    "function readCookie(){" +
+    "var m=document.cookie.match(new RegExp('(?:^|;\\\\s*)'+K+'=(accepted|declined)(?:;|$)'));" +
+    "return m?m[1]:null;}" +
+    "var v=null;try{v=localStorage.getItem(K);}catch(e){}" +
+    "if(v!=='accepted'&&v!=='declined'){v=readCookie();}" +
+    "if(v==='accepted'||v==='declined'){document.documentElement.setAttribute(A,v);}" +
+    "document.addEventListener('click',function(ev){" +
+    "var t=ev.target&&ev.target.closest?ev.target.closest('[data-cookie-action],.cookie-banner__accept,.cookie-banner__decline'):null;" +
+    "if(!t)return;" +
+    "var c=t.getAttribute('data-cookie-action')||(t.classList.contains('cookie-banner__accept')?'accepted':'declined');" +
+    "try{localStorage.setItem(K,c);}catch(e){}" +
+    "try{document.cookie=K+'='+c+'; Path=/; Max-Age=31536000; SameSite=Lax';}catch(e){}" +
+    "document.documentElement.setAttribute(A,c);" +
+    "if(document.body)document.body.classList.remove('cookie-banner-visible');" +
+    "try{window.dispatchEvent(new CustomEvent(E,{detail:c}));}catch(e){}" +
+    "},true);" +
+    "}catch(e){}})();"
   );
 }

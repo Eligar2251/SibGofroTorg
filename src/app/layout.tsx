@@ -27,6 +27,7 @@ import {
   buildWebSiteJsonLd,
 } from "@/lib/seo";
 import { adminThemeInitScript } from "@/lib/admin-theme";
+import { ADMIN_PATH } from "@/lib/admin-path";
 import { cookieConsentInitScript } from "@/lib/cookie-consent";
 import { localizeMediaDeep } from "@/lib/media";
 
@@ -129,7 +130,12 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="ru" data-scroll-behavior="smooth" suppressHydrationWarning>
+    <html
+      lang="ru"
+      data-scroll-behavior="smooth"
+      data-admin-path={ADMIN_PATH}
+      suppressHydrationWarning
+    >
       <head>
         {/* Ранние подключения источников (экономия на handshake/TLS).
             Внешних CDN здесь больше нет: изображения отдаются с нашего
@@ -174,13 +180,14 @@ export default async function RootLayout({
       <body>
         <CartProvider>
           <ConditionalChrome
+            adminPath={ADMIN_PATH}
             popupCampaigns={popupCampaigns}
             categories={headerCategories}
           >
             {children}
           </ConditionalChrome>
         </CartProvider>
-        <CookieConsent />
+        <CookieConsent adminPath={ADMIN_PATH} />
         <PhoneClickTracking />
         {/* PWA: регистрируем /sw.js, чтобы браузер предложил установить
             сайт на домашний экран и открывал его без адресной строки.

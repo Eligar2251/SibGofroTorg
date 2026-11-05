@@ -16,6 +16,7 @@
 // =========================================================
 
 import { NextResponse } from "next/server";
+import { pcLocalRoute } from "@/lib/pc-local-runtime";
 import type { NextRequest } from "next/server";
 import {
   ADMIN_PATH,
@@ -35,7 +36,17 @@ import {
   type AdminSessionToken,
 } from "@/lib/admin-session-token";
 
-function buildCsp(): string {
+function isHttpsRequest(request: NextRequest): boolean {
+  const fwdProto = (request.headers.get("x-forwarded-proto") || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  if (fwdProto === "https") return true;
+  if (fwdProto === "http") return false;
+  return request.nextUrl.protocol === "https:";
+}
+
+function buildCsp(isHttps: boolean): string {
   const isDev = process.env.NODE_ENV === "development";
 
   const scriptSrc = [
@@ -57,28 +68,28 @@ function buildCsp(): string {
     "img-src 'self' data: blob: https://mc.yandex.ru https://*.yandex.ru https://*.yandex.net https://yandex.ru https://yandex.com",
     "font-src 'self' data:",
     // Метрика открывает WebSocket wss://mc.yandex.ru/solid.ws — схема wss://
-    "connect-src 'self' https://mc.yandex.ru https://mc.yandex.com https://botapi.max.ru https://*.yandex.ru https://yandex.ru wss://mc.yandex.ru wss://mc.yandex.com wss://*.yandex.ru https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in",
+    `connect-src 'self' ${isDev ? "ws: wss: " : ""}https://mc.yandex.ru https://mc.yandex.com https://botapi.max.ru https://*.yandex.ru https://yandex.ru wss://mc.yandex.ru wss://mc.yandex.com wss://*.yandex.ru https://*.supabase.co https://*.supabase.in wss://*.supabase.co wss://*.supabase.in`,
     "frame-src 'self' https://yandex.ru https://*.yandex.ru https://yandex.com https://*.yandex.com https://mc.yandex.ru",
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'self'",
-    "upgrade-insecure-requests",
   ];
 
-  if (isDev) {
-    return directives
-      .filter((d) => d !== "upgrade-insecure-requests")
-      .join("; ");
+  // Включаем upgrade-insecure-requests ТОЛЬКО на реальном HTTPS:
+  // иначе при локальном/аварийном запуске по http:// браузер принудительно
+  // переписывает /_next/static/chunks/*.js на https:// и блокирует весь JS сайта!
+  if (!isDev && isHttps) {
+    directives.push("upgrade-insecure-requests");
   }
   return directives.join("; ");
 }
 
-function applySecurityHeaders(response: NextResponse) {
+function applySecurityHeaders(response: NextResponse, isHttps: boolean) {
   const isProd = process.env.NODE_ENV === "production";
 
-  response.headers.set("Content-Security-Policy", buildCsp());
+  response.headers.set("Content-Security-Policy", buildCsp(isHttps));
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "SAMEORIGIN");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -92,7 +103,7 @@ function applySecurityHeaders(response: NextResponse) {
   response.headers.set("X-DNS-Prefetch-Control", "on");
   response.headers.set("X-Permitted-Cross-Domain-Policies", "none");
 
-  if (isProd) {
+  if (isProd && isHttps) {
     response.headers.set(
       "Strict-Transport-Security",
       "max-age=63072000; includeSubDomains; preload"
@@ -123,6 +134,7 @@ function isPublicAdminAuthPath(pathname: string): boolean {
   return (
     pathname === `/${ADMIN_PATH}/login` ||
     pathname === `/${ADMIN_PATH}/api/login` ||
+    pathname === `/${ADMIN_PATH}/api/login/local-file` ||
     pathname === `/${ADMIN_PATH}/api/logout`
   );
 }
@@ -130,7 +142,8 @@ function isPublicAdminAuthPath(pathname: string): boolean {
 /** Продлить сессию: выдаём свежую cookie, если текущая «состарилась». */
 async function maybeRenewSession(
   response: NextResponse,
-  session: AdminSessionToken
+  session: AdminSessionToken,
+  isHttps: boolean
 ): Promise<void> {
   if (!adminSessionNeedsRenewal(session)) return;
   try {
@@ -138,15 +151,57 @@ async function maybeRenewSession(
       username: session.username,
       role: session.role,
       displayName: session.displayName,
+      pcMode: session.pcMode,
     });
-    response.cookies.set(ADMIN_SESSION_COOKIE, token, adminSessionCookieOptions());
+    response.cookies.set(
+      ADMIN_SESSION_COOKIE,
+      token,
+      adminSessionCookieOptions(isHttps)
+    );
   } catch (error) {
     console.error("[proxy] не удалось продлить сессию:", error);
   }
 }
 
 export async function proxy(request: NextRequest) {
+  if (process.env.SGT_PC_LOCAL_SERVER === "1") {
+    // Also defend against DNS rebinding and accidentally binding the local
+    // server to a network interface. Do not trust X-Forwarded-Host here.
+    try {
+      const hostname = new URL(`http://${request.headers.get("host") || ""}`).hostname.toLowerCase();
+      if (!["localhost", "127.0.0.1", "[::1]"].includes(hostname)) return new NextResponse("Local server only", {status:403});
+    } catch { return new NextResponse("Local server only", {status:403}); }
+  }
   const { pathname } = request.nextUrl;
+  if (process.env.SGT_PC_LOCAL_SERVER === "1") {
+    const local = pcLocalRoute();
+    if (local.kind === "readonly" || local.kind === "error") {
+      const allowedAction = pathname === "/api/admin/database/pc-local" || pathname === `/${ADMIN_PATH}/api/login` || pathname === `/${ADMIN_PATH}/api/logout`;
+      const unsafe = !["GET", "HEAD", "OPTIONS"].includes(request.method) && !allowedAction;
+      const changeJournal = pathname.startsWith("/api/admin/database/pc-incremental");
+      // An offline session is authorized by a PC file. It must never use the
+      // server's service-role credentials to fetch another database's data.
+      const normalizedPath = pathname.replace(/\/+$/, "");
+      const remoteExport = normalizedPath === "/api/admin/database/full-backup" && request.nextUrl.searchParams.get("download") === "1";
+      const remoteProbe = normalizedPath === "/api/admin/database/backend" && request.nextUrl.searchParams.get("probe") === "1";
+      const legacyExport = normalizedPath === "/api/admin/database/backup" && request.nextUrl.searchParams.get("format") !== "sql";
+      if (unsafe || changeJournal || remoteExport || remoteProbe || legacyExport) return NextResponse.json({error:"Локальная копия доступна только для чтения; операции записи отключены.",code:"PC_READ_ONLY"},{status:403,headers:{"Cache-Control":"no-store"}});
+    }
+  }
+  const isHttps = isHttpsRequest(request);
+
+  // Старые версии формы отправляли пароль в URL через GET. Удаляем его из
+  // адресной строки при повторном открытии старой ссылки (уже записанные логи
+  // это не очищает — пароль необходимо сменить).
+  if (request.method === "GET" && pathname === `/${ADMIN_PATH}/login` &&
+      (request.nextUrl.searchParams.has("password") || request.nextUrl.searchParams.has("username"))) {
+    const cleanUrl = request.nextUrl.clone();
+    cleanUrl.search = "";
+    const response = NextResponse.redirect(cleanUrl, 303);
+    response.headers.set("Cache-Control", "no-store");
+    applySecurityHeaders(response, isHttps);
+    return response;
+  }
 
   // ── Короткие QR-ссылки /q/{code} ──
   const shortQr = pathname.match(/^\/[Qq]\/(.+)$/);
@@ -154,7 +209,7 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = `/q/${shortQr[1]}`;
     const res = NextResponse.rewrite(url);
-    applySecurityHeaders(res);
+    applySecurityHeaders(res, isHttps);
     return res;
   }
 
@@ -162,7 +217,8 @@ export async function proxy(request: NextRequest) {
 
   if (scope) {
     const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
-    const session = await verifyAdminSessionToken(token);
+    let session = await verifyAdminSessionToken(token);
+    if (process.env.SGT_PC_LOCAL_SERVER === "1" && session && session.pcMode !== pcLocalRoute().kind) session = null;
 
     if (scope === "api") {
       if (!session) {
@@ -173,7 +229,7 @@ export async function proxy(request: NextRequest) {
           },
           { status: 401 }
         );
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, isHttps);
         return res;
       }
       if (!canAccessAdminApi(session.role, pathname, request.method)) {
@@ -181,12 +237,12 @@ export async function proxy(request: NextRequest) {
           { error: "Недостаточно прав" },
           { status: 403 }
         );
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, isHttps);
         return res;
       }
       const res = NextResponse.next();
-      applySecurityHeaders(res);
-      await maybeRenewSession(res, session);
+      applySecurityHeaders(res, isHttps);
+      await maybeRenewSession(res, session, isHttps);
       return res;
     }
 
@@ -195,7 +251,7 @@ export async function proxy(request: NextRequest) {
         const loginUrl = new URL(`/${ADMIN_PATH}/login`, request.url);
         loginUrl.searchParams.set("expired", "1");
         const res = NextResponse.redirect(loginUrl);
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, isHttps);
         return res;
       }
       if (!canAccessAdminPage(session.role, pathname, ADMIN_PATH)) {
@@ -203,19 +259,19 @@ export async function proxy(request: NextRequest) {
         const res = NextResponse.redirect(
           new URL(getAdminLandingPath(session.role, ADMIN_PATH), request.url)
         );
-        applySecurityHeaders(res);
+        applySecurityHeaders(res, isHttps);
         return res;
       }
     }
 
     const res = NextResponse.next();
-    applySecurityHeaders(res);
-    if (session) await maybeRenewSession(res, session);
+    applySecurityHeaders(res, isHttps);
+    if (session) await maybeRenewSession(res, session, isHttps);
     return res;
   }
 
   const response = NextResponse.next();
-  applySecurityHeaders(response);
+  applySecurityHeaders(response, isHttps);
   return response;
 }
 

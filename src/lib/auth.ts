@@ -7,7 +7,8 @@
 // layout нет» больше невозможно. Здесь только работа с cookie и React.
 // =========================================================
 
-import { cookies } from "next/headers";
+import { pcLocalRoute } from "@/lib/pc-local-runtime";
+import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import {
   hasAdminPermission,
@@ -45,10 +46,34 @@ export async function createSession(data: {
     throw new Error(problem);
   }
 
-  const token = await signAdminSession(data);
+  const pc = pcLocalRoute();
+  if (pc.kind === "error") throw new Error(pc.message);
+  const token = await signAdminSession({ ...data, pcMode: pc.kind === "remote" || pc.kind === "readonly" ? pc.kind : undefined });
+
+  // Определяем реальную схему запроса (HTTPS или HTTP), чтобы при локальном
+  // прод-запуске или аварийном доступе по HTTP-адресу браузер не отбрасывал
+  // cookie из-за флага `Secure`, а на боевом HTTPS всегда выставлял `Secure`.
+  let isHttps = process.env.NODE_ENV === "production";
+  try {
+    const hdrs = await headers();
+    const fwdProto = (hdrs.get("x-forwarded-proto") || "")
+      .split(",")[0]
+      .trim()
+      .toLowerCase();
+    const origin = (hdrs.get("origin") || hdrs.get("referer") || "")
+      .trim()
+      .toLowerCase();
+    if (fwdProto === "https" || origin.startsWith("https://")) {
+      isHttps = true;
+    } else if (fwdProto === "http" || origin.startsWith("http://")) {
+      isHttps = false;
+    }
+  } catch {
+    /* вне контекста запроса оставляем дефолт по NODE_ENV */
+  }
 
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE, token, adminSessionCookieOptions());
+  cookieStore.set(COOKIE, token, adminSessionCookieOptions(isHttps));
 }
 
 /**
@@ -68,6 +93,7 @@ export async function verifySession(): Promise<AdminSession | null> {
     return null;
   }
 
+  if (process.env.SGT_PC_LOCAL_SERVER === "1" && session.pcMode !== pcLocalRoute().kind) return null;
   return {
     username: session.username,
     role: session.role,

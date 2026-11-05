@@ -1,0 +1,33 @@
+// Actual npm run dev, isolated files and a synthetic PostgREST; no real DB credentials.
+import assert from 'node:assert/strict';import {scryptSync} from 'node:crypto';import {spawn,spawnSync} from 'node:child_process';import fs from 'node:fs';import http from 'node:http';import net from 'node:net';import os from 'node:os';import path from 'node:path';import test from 'node:test';
+const temp=fs.mkdtempSync(path.join(os.tmpdir(),'sgt-npm-dev-')),root=path.join(temp,'Downloads'),config=path.join(temp,'config');fs.mkdirSync(root);
+const cols=names=>names.map(name=>({name,type:'text',generated:'',identity:''}));
+const owner={id:'o',username:'owner',password_hash:`0123456789abcdef0123456789abcdef:${scryptSync('pc-test-password','0123456789abcdef0123456789abcdef',64).toString('hex')}`,role:'owner',is_active:true,display_name:'Owner'};
+const snapshot={app:'SibGofroTorg',backupFormat:'sgt-public-v1',version:1,exportedAt:'2026-01-01T00:00:00Z',totalRows:2,tables:{admins:[owner],products:[{id:'p',name:'before'}]},columns:{admins:cols(Object.keys(owner)),products:cols(['id','name'])},sequences:{admins:{},products:{}}};
+const initial={snapshot,instance:'a'.repeat(32),cursor:'10',catalogHash:'b'.repeat(32),catalog:{admins:{pk:['id'],columns:snapshot.columns.admins},products:{pk:['id'],columns:snapshot.columns.products}}};
+async function port(){const s=net.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const n=s.address().port;await new Promise(r=>s.close(r));return n}
+test('npm run dev creates one PC file, updates it and reads it without Supabase',{timeout:120000},async()=>{
+ let calls=[];const fake=http.createServer((req,res)=>{req.resume();req.on('end',()=>{res.setHeader('content-type','application/json');if(req.url.startsWith('/rest/v1/rpc/sgt_pc_backup_snapshot')){calls.push('snapshot');res.end(JSON.stringify(initial));}else if(req.url.startsWith('/rest/v1/rpc/sgt_pc_backup_changes')){calls.push('changes');res.end(JSON.stringify({reset:false,cursor:'11',tables:{products:{keys:[{id:'p'}],rows:[{id:'p',name:'after'}]}},sequences:snapshot.sequences}));}else if(req.url.startsWith('/rest/v1/admins'))res.end(JSON.stringify([owner]));else res.end('[]');});});await new Promise(r=>fake.listen(0,'127.0.0.1',r));
+ const remote=`http://127.0.0.1:${fake.address().port}`,p=await port(),base=`http://127.0.0.1:${p}`;let logs='';
+ const env={...process.env,SGT_PC_CONFIG_DIR:config,SGT_PC_DOWNLOADS_DIR:root,ADMIN_SECRET_PATH:'admin',NEXT_PUBLIC_ADMIN_PATH:'admin',ADMIN_SESSION_SECRET:'test-only-admin-session-secret-123456789',SUPABASE_URL:remote,NEXT_PUBLIC_SUPABASE_URL:remote,SUPABASE_SECRET_KEY:'',SUPABASE_SERVICE_ROLE_KEY:'fake-key',SUPABASE_SECONDARY_URL:'',SGT_ALLOWED_DEV_ORIGINS:''};delete env.SGT_PC_LOCAL_SERVER;
+ const child=spawn(process.platform==='win32'?'npm.cmd':'npm',['run','dev','--','-p',String(p)],{cwd:process.cwd(),detached:process.platform!=='win32',env,stdio:['ignore','pipe','pipe']});
+ let fakeClosed=false;
+ try {
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error(logs)),45000);const data=x=>{logs+=x.toString();if(logs.includes('Ready in')){clearTimeout(timer);resolve()}};child.stdout.on('data',data);child.stderr.on('data',data);child.once('exit',code=>{clearTimeout(timer);reject(new Error(`exit ${code}: ${logs}`))})});
+  assert.equal((await fetch(`${base}/admin/login`)).status,200);
+  const login=async()=>{const r=await fetch(`${base}/admin/api/login`,{method:'POST',headers:{'content-type':'application/json',origin:base},body:JSON.stringify({username:'owner',password:'pc-test-password'})});assert.equal(r.status,200,`${logs} ${await r.clone().text()}`);return r.headers.get('set-cookie').split(';')[0]};
+  const unauth=await fetch(`${base}/api/admin/database/pc-local`,{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({action:'auto_prepare'})});assert.equal(unauth.status,401);assert.deepEqual(calls,[]);
+  let cookie=await login();
+  const cross=await fetch(`${base}/api/admin/database/pc-local`,{method:'POST',headers:{cookie,origin:'http://evil.example','content-type':'application/json'},body:JSON.stringify({action:'auto_prepare'})});assert.equal(cross.status,403);assert.deepEqual(calls,[]);assert.deepEqual(fs.readdirSync(root),[]);
+  const post=body=>fetch(`${base}/api/admin/database/pc-local`,{method:'POST',headers:{cookie,origin:base,'content-type':'application/json'},body:JSON.stringify(body)});
+  const prep=await post({action:'auto_prepare'});assert.equal(prep.status,200,`${logs} ${await prep.clone().text()}`);const result=await prep.json();assert.equal(result.status.liveEnabled,true);assert.equal(result.status.root,root);
+  const file=path.join(root,`pc-${result.status.computerId}`,'sgt-working-db.json');assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).current.tables.products[0].name,'before');
+  const tick=await post({action:'live_tick'});assert.equal(tick.status,200,await tick.clone().text());assert.deepEqual(await tick.json(),{changed:true});assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).current.tables.products[0].name,'after');
+  const denied=await new Promise((resolve,reject)=>{const req=http.request(`${base}/admin/login`,{headers:{host:'evil.example'}},r=>{r.resume();resolve(r.statusCode)});req.on('error',reject);req.end()});assert.equal(denied,403);
+  assert.equal((await post({action:'mode',mode:'readonly'})).status,200);fake.closeAllConnections();await new Promise(r=>fake.close(r));fakeClosed=true;
+  cookie=await login();const readonly=await fetch(`${base}/api/admin/database/pc-local`,{headers:{cookie}});assert.equal((await readonly.json()).mode,'readonly');
+  const rows=await fetch(`${base}/api/admin/database/products`,{headers:{cookie}});assert.equal(rows.status,200,await rows.clone().text());assert.equal((await rows.json()).rows[0].name,'after');
+  const blocked=await fetch(`${base}/api/admin/database/products`,{method:'PATCH',headers:{cookie,origin:base,'content-type':'application/json'},body:'{}'});assert.equal(blocked.status,403);assert.deepEqual(calls,['snapshot','changes']);
+ }finally{if(child.exitCode===null){try{process.platform==='win32'?child.kill():process.kill(-child.pid,'SIGTERM')}catch{}await new Promise(r=>{child.once('exit',r);setTimeout(r,5000).unref()})}if(!fakeClosed){fake.closeAllConnections();await new Promise(r=>fake.close(r))}fs.rmSync(temp,{recursive:true,force:true});}
+});
+test('local launcher rejects network hostname overrides',()=>{const env={...process.env};delete env.SGT_PC_LOCAL_SERVER;const result=spawnSync(process.execPath,['scripts/dev.mjs','-H=0.0.0.0'],{cwd:process.cwd(),env,encoding:'utf8',timeout:10000});assert.equal(result.status,1);assert.match(result.stderr,/localhost/)});

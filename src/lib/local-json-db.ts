@@ -254,7 +254,7 @@ function normalizeStore(raw: any): LocalDbFileEnvelope {
 
   for (const [tableName, rows] of Object.entries(srcTables)) {
     if (
-      tableName === "version" ||
+      srcTables === raw && (tableName === "version" ||
       tableName === "app" ||
       tableName === "updatedAt" ||
       tableName === "lastSyncedAt" ||
@@ -265,7 +265,7 @@ function normalizeStore(raw: any): LocalDbFileEnvelope {
       tableName === "fileFullPath" ||
       tableName === "sgtEmergencyAuth" ||
       tableName === "pendingMutations" ||
-      tableName === "totalRows"
+      tableName === "totalRows")
     ) {
       continue;
     }
@@ -337,16 +337,14 @@ function loadStore(): LocalDbFileEnvelope {
             fs.readFileSync(candidatePath, "utf8")
           );
           const recovered = normalizeStore(recoveredRaw);
-          persistStore(recovered);
           return recovered;
         }
       }
     } catch {
       /* ignore recovery errors */
     }
-    const fresh = createEmptyStore();
-    persistStore(fresh);
-    return fresh;
+    // Reading status must never create a server-side database file.
+    return createEmptyStore();
   }
 }
 
@@ -426,10 +424,6 @@ function recordOfflineMutations(
     }
   }
 
-  // Разумный лимит очереди, чтобы файл не раздувался годами без синхронизации
-  if (store.pendingMutations.length > 10_000) {
-    store.pendingMutations = store.pendingMutations.slice(-10_000);
-  }
 }
 
 export function resetLocalJsonDbCache(): void {
@@ -761,7 +755,9 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
   private singleMode: "none" | "single" | "maybeSingle" = "none";
   private isMirrorReplay = false;
 
-  constructor(table: string) {
+  private readonly readOnlyStore?: LocalDbFileEnvelope;
+  constructor(table: string, readOnlyStore?: LocalDbFileEnvelope) {
+    this.readOnlyStore = readOnlyStore;
     this.table = table;
   }
 
@@ -902,13 +898,13 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
 
   like(column: string, pattern: string): this {
     const re = sqlLikeToRegex(pattern, false);
-    this.predicates.push((row) => re.test(String(row[column] ?? "")));
+    this.predicates.push((row) => row[column] != null && re.test(String(row[column])));
     return this;
   }
 
   ilike(column: string, pattern: string): this {
     const re = sqlLikeToRegex(pattern, true);
-    this.predicates.push((row) => re.test(String(row[column] ?? "")));
+    this.predicates.push((row) => row[column] != null && re.test(String(row[column])));
     return this;
   }
 
@@ -930,7 +926,7 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
     this.orders.push({
       column,
       ascending: options?.ascending !== false,
-      nullsFirst: options?.nullsFirst,
+      nullsFirst: options?.nullsFirst ?? options?.ascending === false,
     });
     return this;
   }
@@ -1002,13 +998,13 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
     }
 
     if (this.singleMode === "single") {
-      if (projected.length === 0) {
+      if (projected.length !== 1) {
         return {
           data: null,
           error: {
             code: "PGRST116",
             message:
-              "JSON object requested, multiple (or no) rows returned (0 rows)",
+              `JSON object requested, multiple (or no) rows returned (${projected.length} rows)`,
           },
           count: this.wantCount ? exactCount : undefined,
           status: 406,
@@ -1025,6 +1021,7 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
     }
 
     if (this.singleMode === "maybeSingle") {
+      if (projected.length > 1) return { data:null, error:{code:"PGRST116",message:`JSON object requested, multiple rows returned (${projected.length} rows)`}, status:406 };
       return {
         data: projected[0] ?? null,
         error: null,
@@ -1044,7 +1041,8 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
   }
 
   executeSync(): PostgrestLikeResult {
-    const store = loadStore();
+    if (this.readOnlyStore && this.operation !== "select") return { data:null, error:{code:"PC_READ_ONLY",message:"Локальная копия доступна только для чтения."} };
+    const store = this.readOnlyStore ? deepClone(this.readOnlyStore) : loadStore();
 
     if (this.table === "die_calc_job_stats" && this.operation === "select") {
       const viewRows = computeDieCalcJobStatsView(store).filter((r) =>
@@ -1237,14 +1235,17 @@ export class LocalJsonQueryBuilder implements PromiseLike<PostgrestLikeResult> {
 }
 
 export class LocalJsonSupabaseClient {
+  private readonly readOnlyStore?: LocalDbFileEnvelope;
+  constructor(readOnlyStore?: LocalDbFileEnvelope) { this.readOnlyStore = readOnlyStore; }
   from(table: string): LocalJsonQueryBuilder {
-    return new LocalJsonQueryBuilder(table);
+    return new LocalJsonQueryBuilder(table, this.readOnlyStore);
   }
 
   async rpc(
     fnName: string,
     args?: Record<string, any>
   ): Promise<PostgrestLikeResult> {
+    if (this.readOnlyStore) return { data:null, error:{code:"PC_READ_ONLY",message:"RPC в режиме чтения локальной копии отключены."} };
     const store = loadStore();
 
     if (fnName === "fn_next_counter") {
@@ -1494,7 +1495,7 @@ export async function replayPendingMutationsToRemoteSupabase(
 }> {
   const store = loadStore();
   const queue = Array.isArray(store.pendingMutations)
-    ? [...store.pendingMutations]
+    ? deepClone(store.pendingMutations)
     : [];
 
   if (queue.length === 0) {
@@ -1558,7 +1559,7 @@ export async function replayPendingMutationsToRemoteSupabase(
           code === "PGRST205" ||
           /does not exist|Could not find the table/i.test(msg)
         ) {
-          succeededKeys.add(item.key);
+          failedMutations.push({ key: item.key, table: item.table, error: msg || code });
           continue;
         }
         failedMutations.push({
@@ -1599,7 +1600,7 @@ export async function replayPendingMutationsToRemoteSupabase(
           code === "PGRST205" ||
           /does not exist|Could not find the table/i.test(msg)
         ) {
-          succeededKeys.add(item.key);
+          failedMutations.push({ key: item.key, table: item.table, error: msg || code });
           continue;
         }
         failedMutations.push({
@@ -1620,13 +1621,19 @@ export async function replayPendingMutationsToRemoteSupabase(
     }
   }
 
-  store.pendingMutations = queue.filter((m) => !succeededKeys.has(m.key));
-  persistStore(store);
+  // Preserve writes made while network requests were in flight, including a
+  // newer change to the same row. Never replace the live queue with a snapshot.
+  const latest = loadStore();
+  const attempted = new Map(queue.map((m) => [m.key, JSON.stringify(m)]));
+  latest.pendingMutations = (latest.pendingMutations || []).filter(
+    (m) => !succeededKeys.has(m.key) || attempted.get(m.key) !== JSON.stringify(m)
+  );
+  persistStore(latest);
 
   return {
     replayedUpserts,
     replayedDeletes,
-    remainingMutations: store.pendingMutations.length,
+    remainingMutations: latest.pendingMutations.length,
     failedMutations,
   };
 }
@@ -1656,9 +1663,16 @@ export async function syncRemoteSupabaseToLocal(
     const preSync = await replayPendingMutationsToRemoteSupabase(remoteDb);
     replayedUpserts = preSync.replayedUpserts;
     replayedDeletes = preSync.replayedDeletes;
+    if (preSync.remainingMutations > 0) {
+      throw new Error("Не все локальные изменения синхронизированы; снимок не перезаписан.");
+    }
   }
 
   const current = loadStore();
+  const initialState = JSON.stringify(current);
+  if ((current.pendingMutations || []).length > 0) {
+    throw new Error("Есть несинхронизированные локальные изменения; снимок не перезаписан.");
+  }
   const nextTables: Record<string, LocalRow[]> = { ...current.tables };
   const skippedMissingTables: string[] = [];
   const failedTables: Array<{ table: string; error: string }> = [];
@@ -1732,14 +1746,17 @@ export async function syncRemoteSupabaseToLocal(
     );
   }
 
+  if (JSON.stringify(loadStore()) !== initialState) {
+    throw new Error("Локальная база изменилась во время синхронизации; снимок не перезаписан. Повторите попытку.");
+  }
   const nextStore: LocalDbFileEnvelope = {
+    ...current,
     version: 1,
     app: "SibGofroTorg",
     updatedAt: new Date().toISOString(),
     lastSyncedAt: new Date().toISOString(),
     lastSyncSource: sourceLabel,
-    pendingMutations:
-      options?.replayPendingFirst === false ? [] : current.pendingMutations || [],
+    pendingMutations: current.pendingMutations || [],
     tables: nextTables,
   };
   persistStore(nextStore);
@@ -1768,7 +1785,7 @@ export async function pushLocalDbToRemoteSupabase(
   skippedEmptyTables: number;
   failedTables: Array<{ table: string; error: string }>;
 }> {
-  const store = loadStore();
+  const store = deepClone(loadStore());
   let pushedTables = 0;
   let pushedRows = 0;
   let replayedDeletes = 0;
@@ -1862,35 +1879,12 @@ export async function pushLocalDbToRemoteSupabase(
   }
 
   // Также воспроизводим накопленные офлайн-удаления в обратном порядке FK
-  const pendingDeletes = (store.pendingMutations || []).filter(
-    (m) => m.op === "delete"
-  );
-  if (pendingDeletes.length > 0) {
-    const orderIndex = (t: string) => {
-      const idx = ORDERED_BACKUP_TABLES.indexOf(t);
-      return idx >= 0 ? idx : 999;
-    };
-    const sortedDeletes = [...pendingDeletes].sort(
-      (a, b) => orderIndex(b.table) - orderIndex(a.table)
-    );
-    for (const del of sortedDeletes) {
-      try {
-        let q = remoteDb.from(del.table).delete();
-        for (const [col, val] of Object.entries(del.pkValues || {})) {
-          q = q.eq(col, val);
-        }
-        const { error } = await q;
-        if (!error) replayedDeletes++;
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
+  // Replay through the same guarded queue mechanism; never drop newer writes or
+  // failed deletes just because the full-table upload succeeded.
   if (failedTables.length === 0) {
-    store.pendingMutations = [];
-    store.lastSyncedAt = new Date().toISOString();
-    persistStore(store);
+    const replay = await replayPendingMutationsToRemoteSupabase(remoteDb);
+    replayedDeletes = replay.replayedDeletes;
+    failedTables.push(...replay.failedMutations.map((m) => ({ table: m.table, error: m.error })));
   }
 
   return {

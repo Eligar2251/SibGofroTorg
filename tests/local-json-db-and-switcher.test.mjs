@@ -23,6 +23,7 @@ const {
   getLocalJsonDbClient,
   importLocalDbSnapshot,
   pushLocalDbToRemoteSupabase,
+  replayPendingMutationsToRemoteSupabase,
   resetLocalJsonDbCache,
   syncBidirectionalSupabaseAndLocal,
   syncRemoteSupabaseToLocal,
@@ -37,6 +38,7 @@ const {
   getDbFailoverState,
   getDbRuntimeConfig,
   resetDbRuntimeConfigCache,
+  resolveSupabaseCredentials,
   saveDbRuntimeConfig,
   toPublicDbConfigView,
 } = await import("../src/lib/db-runtime-config.ts");
@@ -176,8 +178,14 @@ test("Экспорт/импорт JSON-бэкапа и двусторонняя 
             },
           };
         },
-        async upsert(batch) {
-          remoteMemory[table] = [...(remoteMemory[table] || []), ...batch];
+        async upsert(batch, options) {
+          const keys = (options?.onConflict || "id").split(",");
+          remoteMemory[table] ||= [];
+          for (const row of batch) {
+            const index = remoteMemory[table].findIndex((existing) => keys.every((key) => existing[key] === row[key]));
+            if (index === -1) remoteMemory[table].push(row);
+            else remoteMemory[table][index] = row;
+          }
           return { data: batch, error: null };
         },
       };
@@ -212,7 +220,7 @@ test("Экспорт/импорт JSON-бэкапа и двусторонняя 
   assert.ok(getLocalDbSummary().exists);
 });
 
-test("Переключатель БД + Auto-Failover: при падении Supabase getAdminDb() прозрачно работает через локальную JSON-БД", async () => {
+test("При отказе Supabase серверный локальный файл не становится рабочей БД и доступен только для чтения", async () => {
   resetDbRuntimeConfigCache();
 
   // 1. Включаем режим Primary с заведомо недоступным портом (имитация упавшего сервера БД)
@@ -245,22 +253,37 @@ test("Переключатель БД + Auto-Failover: при падении Sup
     .from("products")
     .select("id, name");
 
-  assert.equal(error, null);
-  assert.equal(products.length, 2);
-  assert.equal(getDbFailoverState().activeFallbackBackend, "local");
-
-  // 2. Переключаем явно в режим "local" — прямое чтение/запись в JSON-БД без сети
+  assert.equal(error.code, "DB_UNAVAILABLE");
+  assert.equal(products, null);
+  assert.notEqual(getDbFailoverState().activeFallbackBackend, "local");
   saveDbRuntimeConfig({ activeBackend: "local" });
-  assert.equal(getDbRuntimeConfig().activeBackend, "local");
-  assert.equal(getDbFailoverState().activeFallbackBackend, null);
+  const read = await adminDb.from("products").select("id, name");
+  assert.equal(read.error, null);
+  assert.equal(read.data.length, 2);
+  const prior = fs.readFileSync(path.join(tmpDir, "local-db.json"), "utf8");
+  const write = await adminDb.from("settings").upsert({ key: "company_name", value: "СибГофроТорг" });
+  assert.equal(write.error.code, "LOCAL_SERVER_DISABLED");
+  assert.equal(fs.readFileSync(path.join(tmpDir, "local-db.json"), "utf8"), prior);
+});
 
-  const { data: insertedSetting, error: setErr } = await adminDb
-    .from("settings")
-    .upsert({ key: "company_name", value: "СибГофроТорг" })
-    .select("*")
-    .single();
-  assert.equal(setErr, null);
-  assert.equal(insertedSetting.value, "СибГофроТорг");
+test("Successful remote reads and writes never mirror into old server JSON", async () => {
+  const oldFetch = globalThis.fetch;
+  const names = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECONDARY_URL"];
+  const previous = names.map(n => process.env[n]);
+  try {
+    names.forEach(n => delete process.env[n]);
+    saveDbRuntimeConfig({ activeBackend:"primary", autoFailover:false, mirrorWritesToLocal:true,
+      primary:{url:"https://example.test",serviceRoleKey:"synthetic-key"} });
+    const file = path.join(tmpDir, "local-db.json");
+    const before = fs.readFileSync(file, "utf8");
+    globalThis.fetch = async () => new Response(JSON.stringify([{id:"new",name:"changed"}]), {status:200,headers:{"content-type":"application/json"}});
+    assert.equal((await getAdminDb().from("admins").select("*")).error, null);
+    assert.equal((await getAdminDb().from("products").insert({id:"new",name:"changed"})).error, null);
+    assert.equal(fs.readFileSync(file, "utf8"), before);
+  } finally {
+    globalThis.fetch = oldFetch;
+    names.forEach((n,i) => previous[i] === undefined ? delete process.env[n] : process.env[n] = previous[i]);
+  }
 });
 
 test("supabase/FULL_DATABASE_MIGRATION.sql содержит все 58 таблиц проекта и дублирует ВСЕ migration_*.sql", () => {
@@ -302,89 +325,22 @@ test("supabase/FULL_DATABASE_MIGRATION.sql содержит все 58 табли
   assert.match(sql, /CREATE\s+OR\s+REPLACE\s+VIEW\s+die_calc_job_stats/i);
 });
 
-test("Автоматическая локальная копия каждые 2–3 минуты на указанный пользователем диск: запись, ротация и автовосстановление", async () => {
-  // 1. Проверяем настройку по умолчанию (150 сек = 2,5 минуты) и привязку внешнего диска
-  const check = validateBackupDirectory(customUserDiskDir);
-  assert.equal(check.ok, true);
-
-  const cfg = saveDbRuntimeConfig({
-    activeBackend: "local",
-    autoBackupEnabled: true,
-    autoBackupIntervalSec: 150, // 2,5 минуты
-    customBackupDir: customUserDiskDir,
-    maxBackupSnapshots: 3,
-  });
-
-  assert.equal(cfg.autoBackupEnabled, true);
-  assert.equal(cfg.autoBackupIntervalSec, 150);
-  assert.equal(cfg.customBackupDir, customUserDiskDir);
-
-  // 2. Создаём 5 архивных копий подряд и проверяем, что ротация оставила ровно 3 свежих файла
-  const snapshotsDir = path.join(customUserDiskDir, "snapshots");
-  fs.mkdirSync(snapshotsDir, { recursive: true });
-  for (let i = 1; i <= 4; i++) {
-    const fakeSnapPath = path.join(
-      snapshotsDir,
-      `sibgofrotorg-2026-11-03_10-0${i}-00.json`
-    );
-    fs.writeFileSync(
-      fakeSnapPath,
-      JSON.stringify(exportLocalDbSnapshot(), null, 2),
-      "utf8"
-    );
-    const ts = new Date(Date.now() - (10 - i) * 60_000);
-    fs.utimesSync(fakeSnapPath, ts, ts);
-  }
-
-  const runRes = await runServerAutoBackupNow({ force: true });
-  assert.equal(runRes.ok, true);
-  assert.equal(
-    fs.existsSync(path.join(customUserDiskDir, "sibgofrotorg-latest.json")),
-    true
-  );
-  assert.equal(
-    fs.existsSync(path.join(customUserDiskDir, "local-db.json")),
-    true
-  );
-
-  const status = getAutoBackupStatus();
-  assert.equal(status.targetDir, path.resolve(customUserDiskDir));
-  assert.equal(status.intervalSec, 150);
-  assert.equal(
-    status.snapshotsCount,
-    3,
-    "Ротация должна оставить ровно maxBackupSnapshots = 3 последних снимка"
-  );
-
-  // 3. Удаляем все товары в рабочей БД, затем восстанавливаем из архивного снимка с диска
-  const db = getLocalJsonDbClient();
-  await db.from("products").delete().neq("id", "none");
-  assert.equal((getLocalDbSummary().tableCounts.products || 0), 0);
-
-  const restoredSummary = restoreDiskBackupSnapshot(
-    status.recentSnapshots[0].filename,
-    "replace"
-  );
-  assert.equal(restoredSummary.tableCounts.products, 2);
-
-  // 4. Имитируем полную потерю папки приложения (.sgt-data/local-db.json удалён),
-  //    но внешний диск пользователя с автобэкапом подключён — база должна подняться сама!
-  const mainDbPath = path.join(tmpDir, "local-db.json");
-  fs.unlinkSync(mainDbPath);
-  resetLocalJsonDbCache();
-
-  const { data: autoRecoveredProducts, error: recErr } = await db
-    .from("products")
-    .select("id, name");
-  assert.equal(recErr, null);
-  assert.equal(
-    autoRecoveredProducts.length,
-    2,
-    "Локальная БД должна автоматически восстановиться с указанного пользователем диска бэкапа"
-  );
+test("Серверные плановые и ручные бэкапы отключены без удаления старых файлов", async () => {
+  fs.mkdirSync(customUserDiskDir, { recursive: true });
+  const existing = path.join(customUserDiskDir, "old.json");
+  fs.writeFileSync(existing, "legacy-data");
+  saveDbRuntimeConfig({ activeBackend:"local", autoBackupEnabled:true, customBackupDir:customUserDiskDir });
+  const result = await runServerAutoBackupNow({ force:true });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /отключены/);
+  assert.equal(getAutoBackupStatus().enabled, false);
+  assert.equal(fs.readFileSync(existing, "utf8"), "legacy-data");
+  assert.equal(fs.existsSync(path.join(customUserDiskDir, "sibgofrotorg-latest.json")), false);
 });
 
 test("Двусторонняя синхронизация Supabase ↔ Локалка: очередь офлайн-правок/удалений не теряется при восстановлении БД", async () => {
+  // Independent initial state: earlier tests deliberately leave offline writes.
+  importLocalDbSnapshot({ tables: {}, pendingMutations: [] }, "replace");
   const localDb = getLocalJsonDbClient();
 
   // Создаём изолированный «удалённый сервер Supabase» на базе второго экземпляра памяти
@@ -568,3 +524,198 @@ test("Аварийный беспарольный вход по локально
   assert.equal(tamperedCheck.valid, false);
 });
 
+test("Новые ключи Supabase (Publishable key sb_publishable_… и Secret key sb_secret_…) поддерживаются наравне с legacy", () => {
+  const prevUrl = process.env.SUPABASE_URL;
+  const prevPub = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const prevSec = process.env.SUPABASE_SECRET_KEY;
+  const prevLegacyAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const prevLegacyService = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  try {
+    saveDbRuntimeConfig({
+      primary: { url: "", anonKey: "", serviceRoleKey: "" },
+    });
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_URL = "https://new-cloud-project.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test_key_12345";
+    process.env.SUPABASE_SECRET_KEY = "sb_secret_test_key_67890";
+    resetDbRuntimeConfigCache();
+
+    const resolved = resolveSupabaseCredentials("primary");
+    assert.equal(resolved.configured, true);
+    assert.equal(resolved.url, "https://new-cloud-project.supabase.co");
+    assert.equal(resolved.anonKey, "sb_publishable_test_key_12345");
+    assert.equal(resolved.serviceRoleKey, "sb_secret_test_key_67890");
+  } finally {
+    if (prevUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = prevUrl;
+    if (prevPub === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = prevPub;
+    if (prevSec === undefined) delete process.env.SUPABASE_SECRET_KEY;
+    else process.env.SUPABASE_SECRET_KEY = prevSec;
+    if (prevLegacyAnon === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = prevLegacyAnon;
+    if (prevLegacyService === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = prevLegacyService;
+    resetDbRuntimeConfigCache();
+  }
+});
+
+test("Вьюха die_calc_job_stats использует security_invoker = true, а аварийный баннер Beget подключён в макет", () => {
+  const fixSql = fs.readFileSync(
+    path.join(process.cwd(), "supabase", "migration_fix_die_calc_view_security_invoker.sql"),
+    "utf8"
+  );
+  const fullSql = fs.readFileSync(
+    path.join(process.cwd(), "supabase", "FULL_DATABASE_MIGRATION.sql"),
+    "utf8"
+  );
+
+  assert.match(fixSql, /security_invoker\s*=\s*true/i);
+  assert.match(fullSql, /CREATE OR REPLACE VIEW (?:public\.)?die_calc_job_stats\s+WITH\s*\(\s*security_invoker\s*=\s*true\s*\)/i);
+  assert.doesNotMatch(fullSql, /CREATE OR REPLACE VIEW (?:public\.)?die_calc_job_stats\s+AS\b/i);
+  assert.match(fullSql, /ALTER FUNCTION public\.fn_next_counter\(TEXT\) SET search_path = public/i);
+
+  const bannerSrc = fs.readFileSync(
+    path.join(process.cwd(), "src", "components", "layout", "BegetEmergencyBanner.tsx"),
+    "utf8"
+  );
+  const chromeSrc = fs.readFileSync(
+    path.join(process.cwd(), "src", "components", "layout", "ConditionalChrome.tsx"),
+    "utf8"
+  );
+  assert.match(bannerSrc, /Beget/i);
+  assert.match(bannerSrc, /\+7 913 915 81 46/);
+  assert.match(bannerSrc, /sk2-tdstm@mail\.ru/);
+  assert.match(chromeSrc, /<BegetEmergencyBanner\s*\/>/);
+});
+
+
+
+
+test("VPS credentials come from current environment even after saving settings", () => {
+  const names = ["SUPABASE_SECONDARY_URL", "SUPABASE_SECONDARY_SECRET_KEY", "SUPABASE_SECONDARY_PUBLISHABLE_KEY"];
+  const before = names.map((n) => process.env[n]);
+  try {
+    saveDbRuntimeConfig({ secondary: { url: "https://old.example", serviceRoleKey: "old-key" } });
+    process.env.SUPABASE_SECONDARY_URL = "https://vps.example/";
+    process.env.SUPABASE_SECONDARY_SECRET_KEY = "vps-secret-1";
+    process.env.SUPABASE_SECONDARY_PUBLISHABLE_KEY = "vps-pub";
+    saveDbRuntimeConfig({ autoFailover: true });
+    assert.equal(resolveSupabaseCredentials("secondary").url, "https://vps.example");
+    process.env.SUPABASE_SECONDARY_SECRET_KEY = "vps-secret-2";
+    assert.equal(resolveSupabaseCredentials("secondary").serviceRoleKey, "vps-secret-2");
+    delete process.env.SUPABASE_SECONDARY_SECRET_KEY;
+    assert.equal(resolveSupabaseCredentials("secondary").configured, false);
+    assert.equal(resolveSupabaseCredentials("secondary").serviceRoleKey, "");
+  } finally {
+    names.forEach((n, i) => before[i] === undefined ? delete process.env[n] : process.env[n] = before[i]);
+  }
+});
+
+test("failed and concurrent offline changes are retained during replay", async () => {
+  importLocalDbSnapshot({ tables: {}, pendingMutations: [] }, "replace");
+  const db = getLocalJsonDbClient();
+  await db.from("products").insert({ id: "pending-race", name: "first" });
+  const missing = { from: () => ({ upsert: async () => ({ error: { code: "PGRST205", message: "table missing" } }) }) };
+  const fail = await replayPendingMutationsToRemoteSupabase(missing);
+  assert.equal(fail.remainingMutations, 1);
+  await assert.rejects(syncRemoteSupabaseToLocal(missing, "missing"), /не все локальные изменения/i);
+  assert.equal(getLocalDbSummary().pendingMutationsCount, 1);
+  const concurrent = { from: () => ({ upsert: async () => {
+    await db.from("products").update({ name: "newer" }).eq("id", "pending-race");
+    return { error: null };
+  } }) };
+  const res = await replayPendingMutationsToRemoteSupabase(concurrent);
+  assert.equal(res.remainingMutations, 1);
+  const snapshot = exportLocalDbSnapshot();
+  assert.equal(snapshot.pendingMutations[0].row.name, "newer");
+});
+
+test("timeout still applies when Supabase supplies an AbortSignal", async () => {
+  const { createDirectSupabaseClient } = await import("../src/lib/supabase-server-engine.ts");
+  const originalFetch = globalThis.fetch;
+  let seenSignal = false;
+  globalThis.fetch = (_url, options) => new Promise((_resolve, reject) => {
+    seenSignal = !!options.signal;
+    options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+  });
+  try {
+    const client = createDirectSupabaseClient("https://timeout.example", "some-key", 30);
+    const start = Date.now();
+    const result = await client.from("products").select("*").abortSignal(new AbortController().signal);
+    assert.ok(seenSignal);
+    assert.ok(result.error);
+    assert.ok(Date.now() - start < 3000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("remote failover is read-only until explicitly promoted, including RPC", async () => {
+  const { recordDbFailover, clearDbFailoverState } = await import("../src/lib/db-runtime-config.ts");
+  const names = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECONDARY_URL"];
+  const previous = names.map((n) => process.env[n]);
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  try {
+    names.forEach((n) => delete process.env[n]);
+    saveDbRuntimeConfig({ activeBackend: "primary", autoFailover: true,
+      primary: { url: "https://primary.example", serviceRoleKey: "primary-key" },
+      secondary: { url: "https://secondary.example", serviceRoleKey: "secondary-key" } });
+    recordDbFailover("secondary", "primary unavailable");
+    globalThis.__sgtDbFailoverState = undefined;
+    assert.equal(getDbFailoverState().activeFallbackBackend, "secondary");
+    globalThis.__sgtDbFailoverState.failedAt = "2000-01-01T00:00:00.000Z";
+    globalThis.fetch = async (url) => {
+      requests.push(String(url));
+      return new Response(JSON.stringify([{ id: "secondary" }]), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const rows = await getAdminDb().from("products").select("*");
+    const rpc = await getAdminDb().rpc("some_test_function");
+    assert.equal(rows.error, null);
+    assert.equal(rpc.error.code, "DB_FAILOVER_READ_ONLY");
+    const mutation = await getAdminDb().from("products").update({name:"x"}).eq("id","secondary");
+    assert.equal(mutation.error.code, "DB_FAILOVER_READ_ONLY");
+    assert.equal(requests.length, 1);
+    assert.ok(requests.every((url) => url.startsWith("https://secondary.example/")));
+  } finally {
+    clearDbFailoverState();
+    globalThis.fetch = originalFetch;
+    names.forEach((n, i) => previous[i] === undefined ? delete process.env[n] : process.env[n] = previous[i]);
+  }
+});
+
+test("ambiguous remote writes and RPC are never replayed to another database", async () => {
+  const { clearDbFailoverState } = await import("../src/lib/db-runtime-config.ts");
+  const names = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SECONDARY_URL"];
+  const previous = names.map((n) => process.env[n]);
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  try {
+    names.forEach((n) => delete process.env[n]);
+    saveDbRuntimeConfig({ activeBackend:"primary", autoFailover:true,
+      primary:{url:"https://uncertain-primary.example",serviceRoleKey:"key-primary"},
+      secondary:{url:"https://uncertain-secondary.example",serviceRoleKey:"key-secondary"} });
+    clearDbFailoverState();
+    globalThis.fetch = async (url) => {
+      requests.push(String(url));
+      if (String(url).startsWith("https://uncertain-primary.example/")) throw new Error("fetch failed: connection reset after send");
+      return new Response(JSON.stringify([{id:"duplicate"}]),{status:200,headers:{"content-type":"application/json"}});
+    };
+    const inserted=await getAdminDb().from("products").insert({id:"one",name:"test"});
+    assert.equal(inserted.error.code,"DB_WRITE_OUTCOME_UNKNOWN");
+    assert.match(inserted.error.message,/могла сохраниться/);
+    assert.equal(requests.length,1);
+    assert.equal(getDbFailoverState().activeFallbackBackend,null);
+    requests.length=0;
+    const rpc=await getAdminDb().rpc("fn_next_counter",{p_key:"deal"});
+    assert.equal(rpc.error.code,"DB_WRITE_OUTCOME_UNKNOWN");
+    assert.equal(requests.length,1);
+    assert.equal(getDbFailoverState().activeFallbackBackend,null);
+  } finally {
+    clearDbFailoverState(); globalThis.fetch=originalFetch;
+    names.forEach((n,i)=>previous[i]===undefined ? delete process.env[n] : process.env[n]=previous[i]);
+  }
+});

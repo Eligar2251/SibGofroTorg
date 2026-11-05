@@ -4,3 +4,5 @@ allowBuilds:
   '@firebase/util': false
   protobufjs: false
   sharp: false
+minimumReleaseAgeExclude:
+  - '@electric-sql/pglite@0.5.15'

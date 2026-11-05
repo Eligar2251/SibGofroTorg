@@ -22,11 +22,17 @@ const {
   signAdminSession,
   verifyAdminSessionToken,
   adminSessionNeedsRenewal,
+  adminSessionCookieOptions,
   ADMIN_SESSION_TTL_SEC,
 } = await import("@/lib/admin-session-token");
 const { normalizeAdminPath, ADMIN_PATH, adminPathReport, isAdminPath } =
   await import("@/lib/admin-path");
 const { isDbUnavailable } = await import("@/lib/api-errors");
+const { parseAdminRole } = await import("@/lib/admin-rbac");
+const { cookieConsentInitScript } = await import("@/lib/cookie-consent");
+const { hashPassword, verifyAdminStoredPassword } = await import(
+  "@/lib/user-auth"
+);
 
 // ── Единый путь админки ─────────────────────────────────────
 test("путь админки нормализуется", () => {
@@ -101,3 +107,28 @@ test("истёкший токен отклоняется", async () => {
     .sign(new TextEncoder().encode(process.env.ADMIN_SESSION_SECRET));
   assert.equal(await verifyAdminSessionToken(expired), null);
 });
+
+test("владелец, созданный через Supabase Table Editor (пароль текстом), входит и помечается на авто-шифрование scrypt", () => {
+  const plainCheck = verifyAdminStoredPassword("MySecretPass123", "MySecretPass123");
+  assert.deepEqual(plainCheck, { valid: true, needsRehash: true });
+
+  const wrongPlain = verifyAdminStoredPassword("WrongPass", "MySecretPass123");
+  assert.deepEqual(wrongPlain, { valid: false, needsRehash: false });
+
+  const hashed = hashPassword("MySecretPass123");
+  const scryptCheck = verifyAdminStoredPassword("MySecretPass123", hashed);
+  assert.deepEqual(scryptCheck, { valid: true, needsRehash: false });
+
+  assert.equal(parseAdminRole("Owner"), "owner");
+  assert.equal(parseAdminRole("  owner  "), "owner");
+});
+
+test("cookie сессии админки и inline-скрипт cookie-баннера корректно работают и по HTTP, и до гидратации", () => {
+  assert.equal(adminSessionCookieOptions(false).secure, false);
+  assert.equal(adminSessionCookieOptions(true).secure, true);
+
+  const script = cookieConsentInitScript();
+  assert.match(script, /\.cookie-banner__accept/);
+  assert.match(script, /addEventListener\('click'/);
+});
+

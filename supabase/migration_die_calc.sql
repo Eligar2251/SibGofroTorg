@@ -145,7 +145,8 @@ CREATE TRIGGER trg_die_calc_settings_updated BEFORE UPDATE ON die_calc_settings
 ALTER TABLE die_calc_settings ENABLE ROW LEVEL SECURITY;
 
 -- ── 4. Сводка для дашборда админки (материализуем лень, смотрим вьюхой) ──
-CREATE OR REPLACE VIEW die_calc_job_stats AS
+CREATE OR REPLACE VIEW die_calc_job_stats
+WITH (security_invoker = true) AS
 SELECT
   j.construction,
   j.closure,

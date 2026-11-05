@@ -9,6 +9,8 @@ import { hasPermission, verifySession } from "@/lib/auth";
 import { canAccessDatabase } from "@/lib/admin-rbac";
 import { DatabaseBrowser } from "@/components/admin/DatabaseBrowser";
 import { DatabaseBackendSwitcher } from "@/components/admin/DatabaseBackendSwitcher";
+import { isPcLocalServer } from "@/lib/pc-local-runtime";
+import { PcLocalReadOnlyPanel } from "@/components/admin/PcLocalReadOnlyPanel";
 import { ADMIN_PATH } from "@/lib/admin-path";
 
 
@@ -34,13 +36,14 @@ export default async function AdminDatabasePage({
       <p className="admin-muted" style={{ marginTop: -6, marginBottom: 16 }}>
         Все таблицы с данными собраны в одном месте. Без SQL и без выдачи прав:
         просмотр уже созданных записей, правка значений прямо в таблице и удаление
-        строки кнопкой <span style={{ display: "inline-flex", verticalAlign: "-2px" }}>🗑</span> с подтверждением (удаляется и из Supabase параллельно).
+        строки кнопкой <span style={{ display: "inline-flex", verticalAlign: "-2px" }}>🗑</span> с подтверждением в выбранной рабочей базе. Другие базы автоматически не обновляются.
         Строки не создаются — только правка и удаление существующих.
         {session.role === "owner" && (
           <> Правки денежных правок владельца видит только роль «Владелец».</>
         )}
       </p>
-      <DatabaseBackendSwitcher />
+      {session.role === "owner" && <PcLocalReadOnlyPanel adminPath={ADMIN_PATH} />}
+      <DatabaseBackendSwitcher pcLocalSite={isPcLocalServer()} ownerUsername={session.role === "owner" ? session.username : undefined} />
       <DatabaseBrowser />
     </div>
   );

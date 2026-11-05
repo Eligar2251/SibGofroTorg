@@ -6,20 +6,25 @@
 --   Полное развёртывание ИЛИ обновление схемы БД в 1 запуск для переезда
 --   на облачный Supabase (Supabase Cloud) или любой self-hosted Supabase.
 --
--- Включает абсолютно ВСЕ миграции проекта (schema.sql + все 72 файла
+-- Включает абсолютно ВСЕ миграции проекта (schema.sql + все 77 файла
 -- migration_*.sql, включая прошлые и текущие пул-реквесты/мержи):
 --   • Все 58 таблиц проекта (каталог, связки карточек product_link_groups,
 --     заказы, склад, поставки, КМП-комплектации warehouse_assemblies,
 --     перевозки, банк, касса, зарплаты, табели, штанцформы, аренда,
 --     макулатура, журнал синхронизации локальной БД db_sync_runs и др.)
---   • Все представления (die_calc_job_stats), индексы и GIN-индексы
+--   • Все представления с security_invoker = true (die_calc_job_stats), индексы и GIN-индексы
 --   • Все функции и RPC (fn_next_counter, increment_review_helpful,
 --     sync_product_in_stock, calculate_product_box_volume, fn_update_product_rating,
 --     fn_increment_view_count, update_updated_at_column)
 --   • Все триггеры, RLS-политики безопасности (152-ФЗ) и публикации Realtime
 --
--- Скрипт на 100% ИДЕМПОТЕНТЕН: безопасно запускать как на чистой БД,
--- так и поверх существующей базы данных.
+-- Для полной копии и журнала изменений ПК включены отдельные миграции:
+--   migration_complete_app_backup.sql и migration_pc_incremental_backup.sql.
+-- Их порядок сохранён; журнал дополнительно включается владельцем в админке.
+-- migration_pc_merge_apply.sql включена как историческая экспериментальная
+-- миграция, но для локальной копии и чтения она не требуется.
+-- Перед применением к рабочей БД создайте резервную копию и проверьте миграцию
+-- на тестовой копии; поведение на конкретной Supabase не гарантируется.
 --
 -- Как применить в облачном Supabase:
 --   1. Откройте Supabase Dashboard → SQL Editor → New query
@@ -1127,6 +1132,44 @@ ALTER TABLE client_requests ENABLE ROW LEVEL SECURITY;
 
 
 -- =====================================================================
+-- МИГРАЦИЯ: migration_transports.sql
+-- =====================================================================
+-- Миграция: система перевозок (transports)
+-- Перевозка = группа заказов на одну дату с одним водителем
+
+CREATE TABLE IF NOT EXISTS transports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  number INT NOT NULL,
+  date TEXT NOT NULL DEFAULT '',
+  planned_date DATE,
+  driver_id UUID,
+  driver_name TEXT,
+  driver_phone TEXT,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'completed', 'archived')),
+  note TEXT,
+  -- items: [{dealId, dealNumber, customerName, address, items: [{productId, name, qty}], totalSum}]
+  items JSONB DEFAULT '[]'::jsonb,
+  total_items INT DEFAULT 0,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_transports_status ON transports(status);
+CREATE INDEX IF NOT EXISTS idx_transports_date ON transports(planned_date);
+DROP TRIGGER IF EXISTS trg_transports_updated ON transports;
+CREATE TRIGGER trg_transports_updated BEFORE UPDATE ON transports FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Row Level Security.
+-- Схема public целиком публикуется наружу через PostgREST, а ключ anon
+-- лежит в JS-бандле сайта — без RLS таблицу можно было бы прочитать
+-- обычным HTTP-запросом (маршруты, водители, адреса клиентов).
+-- Политики не нужны: приложение ходит сюда только через service_role
+-- (getAdminDb), а он RLS обходит. См. migration_rls_public_tables.sql.
+ALTER TABLE transports ENABLE ROW LEVEL SECURITY;
+
+
+-- =====================================================================
 -- МИГРАЦИЯ: migration_rbac_logs.sql
 -- =====================================================================
 -- =========================================================
@@ -1227,7 +1270,7 @@ ALTER TABLE admins ALTER COLUMN role SET NOT NULL;
 
 ALTER TABLE admins
   ADD CONSTRAINT admins_role_check
-  CHECK (role IN ('admin', 'manager', 'lawyer'));
+  CHECK (role IN ('owner', 'admin', 'manager', 'lawyer', 'wastepaper'));
 
 COMMENT ON COLUMN admins.role IS
   'admin — полный доступ; manager — всё кроме настроек сайта и логов; lawyer — только финансовый дашборд и перевозки';
@@ -1965,7 +2008,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_delivery_planned ON orders(delivery_planne
 ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
 ALTER TABLE orders
   ADD CONSTRAINT orders_status_check
-  CHECK (status IN ('new', 'in_progress', 'ready', 'completed', 'rejected'));
+  CHECK (status IN ('new', 'confirmed', 'processing', 'in_progress', 'ready', 'in_delivery', 'shipped', 'issued', 'completed', 'cancelled', 'rejected'));
 
 -- Индекс по статусу уже есть (idx_orders_status) — доп. действий не нужно.
 
@@ -1990,15 +2033,7 @@ ALTER TABLE orders
 
 ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
 ALTER TABLE orders ADD CONSTRAINT orders_status_check
-  CHECK (status IN (
-    'new',
-    'in_progress',
-    'ready',
-    'in_delivery',
-    'issued',
-    'completed',
-    'rejected'
-  ));
+  CHECK (status IN ('new', 'confirmed', 'processing', 'in_progress', 'ready', 'in_delivery', 'shipped', 'issued', 'completed', 'cancelled', 'rejected'));
 
 -- Индекс по статусу уже есть (idx_orders_status) — доп. действий не нужно.
 
@@ -2032,7 +2067,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_issued_at ON orders(issued_at)
 -- ── статус 'issued' в CHECK-ограничении ──
 ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
 ALTER TABLE orders ADD CONSTRAINT orders_status_check
-  CHECK (status IN ('new', 'in_progress', 'ready', 'issued', 'completed', 'rejected'));
+  CHECK (status IN ('new', 'confirmed', 'processing', 'in_progress', 'ready', 'in_delivery', 'shipped', 'issued', 'completed', 'cancelled', 'rejected'));
 
 
 -- =====================================================================
@@ -2166,44 +2201,6 @@ COMMENT ON COLUMN warehouse_receipts.received_items IS
 
 ALTER TABLE customer_deals
   ADD COLUMN IF NOT EXISTS shipped_items JSONB DEFAULT '[]'::jsonb;
-
-
--- =====================================================================
--- МИГРАЦИЯ: migration_transports.sql
--- =====================================================================
--- Миграция: система перевозок (transports)
--- Перевозка = группа заказов на одну дату с одним водителем
-
-CREATE TABLE IF NOT EXISTS transports (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  number INT NOT NULL,
-  date TEXT NOT NULL DEFAULT '',
-  planned_date DATE,
-  driver_id UUID,
-  driver_name TEXT,
-  driver_phone TEXT,
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'completed', 'archived')),
-  note TEXT,
-  -- items: [{dealId, dealNumber, customerName, address, items: [{productId, name, qty}], totalSum}]
-  items JSONB DEFAULT '[]'::jsonb,
-  total_items INT DEFAULT 0,
-  completed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_transports_status ON transports(status);
-CREATE INDEX IF NOT EXISTS idx_transports_date ON transports(planned_date);
-DROP TRIGGER IF EXISTS trg_transports_updated ON transports;
-CREATE TRIGGER trg_transports_updated BEFORE UPDATE ON transports FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Row Level Security.
--- Схема public целиком публикуется наружу через PostgREST, а ключ anon
--- лежит в JS-бандле сайта — без RLS таблицу можно было бы прочитать
--- обычным HTTP-запросом (маршруты, водители, адреса клиентов).
--- Политики не нужны: приложение ходит сюда только через service_role
--- (getAdminDb), а он RLS обходит. См. migration_rls_public_tables.sql.
-ALTER TABLE transports ENABLE ROW LEVEL SECURITY;
 
 
 -- =====================================================================
@@ -3214,7 +3211,8 @@ CREATE TRIGGER trg_die_calc_settings_updated BEFORE UPDATE ON die_calc_settings
 ALTER TABLE die_calc_settings ENABLE ROW LEVEL SECURITY;
 
 -- ── 4. Сводка для дашборда админки (материализуем лень, смотрим вьюхой) ──
-CREATE OR REPLACE VIEW die_calc_job_stats AS
+CREATE OR REPLACE VIEW die_calc_job_stats
+WITH (security_invoker = true) AS
 SELECT
   j.construction,
   j.closure,
@@ -3730,7 +3728,7 @@ END $$;
 ALTER TABLE admins DROP CONSTRAINT IF EXISTS admins_role_check;
 ALTER TABLE admins
   ADD CONSTRAINT admins_role_check
-  CHECK (role IN ('admin', 'manager', 'lawyer', 'wastepaper'));
+  CHECK (role IN ('owner', 'admin', 'manager', 'lawyer', 'wastepaper'));
 
 COMMENT ON COLUMN admins.role IS
   'admin — полный доступ; manager — всё кроме настроек сайта и логов; lawyer — только финансовый дашборд; wastepaper — только отдельный учёт макулатуры';
@@ -4448,6 +4446,682 @@ END $$;
 
 
 -- =====================================================================
+-- МИГРАЦИЯ: migration_fix_die_calc_view_security_invoker.sql
+-- =====================================================================
+-- =========================================================
+-- FILE: supabase/migration_fix_die_calc_view_security_invoker.sql
+-- Исправление замечаний Supabase Security Advisor:
+--   1. [ERROR] View `public.die_calc_job_stats` is defined with the
+--      SECURITY DEFINER property → переводим представление в режим
+--      `security_invoker = true`, чтобы при запросах через PostgREST
+--      действовали RLS-права вызывающей роли, а не владельца схемы.
+--   2. [WARN] Фиксируем `search_path = public` у всех серверных и
+--      триггерных функций схемы `public`, чтобы в Security Advisor
+--      не было предупреждений `Function Search Path Mutable`.
+-- Идемпотентно — безопасно запускать повторно.
+-- =========================================================
+
+-- 1. Пересоздаём и явно переключаем вьюху статистики расчётов штанцформ
+--    в режим SECURITY INVOKER (PostgreSQL 15+ / Supabase Cloud).
+CREATE OR REPLACE VIEW public.die_calc_job_stats
+WITH (security_invoker = true) AS
+SELECT
+  j.construction,
+  j.closure,
+  j.profile_id,
+  COUNT(*)::INT AS jobs,
+  COUNT(*) FILTER (WHERE j.fact_blank_w IS NOT NULL AND j.fact_blank_h IS NOT NULL)::INT AS with_fact_geom,
+  COUNT(*) FILTER (WHERE j.fact_price_per_pcs IS NOT NULL OR j.fact_price_batch IS NOT NULL)::INT AS with_fact_price,
+  ROUND(AVG(
+    (ABS(j.fact_blank_w - j.blank_w) + ABS(j.fact_blank_h - j.blank_h)) / 2
+  ) FILTER (WHERE j.fact_blank_w IS NOT NULL AND j.fact_blank_h IS NOT NULL), 1) AS mean_blank_err_mm,
+  ROUND(AVG(j.fact_price_per_pcs / NULLIF(j.price_per_pcs, 0))
+    FILTER (WHERE j.fact_price_per_pcs > 0 AND j.price_per_pcs > 0), 4) AS mean_price_k,
+  SUM(j.price_batch) AS sum_price_batch,
+  SUM(j.fact_price_batch) AS sum_fact_price_batch
+FROM public.die_calc_jobs j
+WHERE j.learned = TRUE
+GROUP BY j.construction, j.closure, j.profile_id;
+
+ALTER VIEW public.die_calc_job_stats SET (security_invoker = true);
+
+-- Запрещаем прямой доступ к представлению для ролей anon/authenticated
+-- (чтение статистики штанцформ выполняется только серверным ключом админки)
+REVOKE ALL ON public.die_calc_job_stats FROM anon, authenticated;
+
+-- 2. Фиксируем безопасный `search_path = public` для всех функций проекта
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'update_updated_at_column') THEN
+    ALTER FUNCTION public.update_updated_at_column() SET search_path = public;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'sync_product_in_stock') THEN
+    ALTER FUNCTION public.sync_product_in_stock() SET search_path = public;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'calculate_product_box_volume') THEN
+    ALTER FUNCTION public.calculate_product_box_volume() SET search_path = public;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'fn_update_product_rating') THEN
+    ALTER FUNCTION public.fn_update_product_rating() SET search_path = public;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'fn_next_counter') THEN
+    ALTER FUNCTION public.fn_next_counter(TEXT) SET search_path = public;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'fn_increment_view_count') THEN
+    ALTER FUNCTION public.fn_increment_view_count() SET search_path = public;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'increment_review_helpful') THEN
+    ALTER FUNCTION public.increment_review_helpful(UUID) SET search_path = public;
+  END IF;
+END $$;
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- =====================================================================
+-- МИГРАЦИЯ: migration_complete_app_backup.sql
+-- =====================================================================
+-- Full public application-table snapshots and transactional restore.
+-- Only the trusted server service role may call these functions. This does not
+-- include auth, storage files, extensions, database roles or schema definitions.
+CREATE OR REPLACE FUNCTION public.sgt_export_app_data()
+RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  t record;
+  rows_json jsonb;
+  cols_json jsonb;
+  all_rows jsonb := '{}'::jsonb;
+  all_columns jsonb := '{}'::jsonb;
+  all_sequences jsonb := '{}'::jsonb;
+  seqs jsonb;
+  seq_name text;
+  seq_last bigint;
+  seq_called boolean;
+  seq_col record;
+  row_total bigint := 0;
+BEGIN
+  FOR t IN
+    SELECT c.oid, c.relname FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')
+    ORDER BY c.relname
+  LOOP
+    EXECUTE format('SELECT COALESCE(jsonb_agg(to_jsonb(r)), ''[]''::jsonb) FROM public.%I r', t.relname) INTO rows_json;
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('name', a.attname, 'type', format_type(a.atttypid, a.atttypmod), 'generated', a.attgenerated, 'identity', a.attidentity) ORDER BY a.attnum), '[]'::jsonb)
+      INTO cols_json FROM pg_attribute a WHERE a.attrelid = t.oid AND a.attnum > 0 AND NOT a.attisdropped;
+    seqs := '{}'::jsonb;
+    FOR seq_col IN SELECT attname FROM pg_attribute WHERE attrelid = t.oid AND attnum > 0 AND NOT attisdropped LOOP
+      seq_name := pg_get_serial_sequence(format('public.%I', t.relname), seq_col.attname);
+      IF seq_name IS NOT NULL THEN
+        EXECUTE format('SELECT last_value, is_called FROM %s', seq_name::regclass) INTO seq_last, seq_called;
+        seqs := seqs || jsonb_build_object(seq_col.attname, jsonb_build_object('last', seq_last::text, 'called', seq_called));
+      END IF;
+    END LOOP;
+    all_sequences := all_sequences || jsonb_build_object(t.relname, seqs);
+    all_rows := all_rows || jsonb_build_object(t.relname, rows_json);
+    all_columns := all_columns || jsonb_build_object(t.relname, cols_json);
+    row_total := row_total + jsonb_array_length(rows_json);
+  END LOOP;
+  IF all_rows = '{}'::jsonb THEN RAISE EXCEPTION 'No application tables found in public'; END IF;
+  RETURN jsonb_build_object('app', 'SibGofroTorg', 'backupFormat', 'sgt-public-v1', 'version', 1,
+    'exportedAt', statement_timestamp(), 'totalRows', row_total, 'tables', all_rows, 'columns', all_columns, 'sequences', all_sequences);
+END;
+$$;
+
+-- Replaces only matching public tables; one PostgreSQL transaction rolls back on
+-- failure. Schema mismatch, external FKs and cyclic FK graphs fail closed.
+-- Intended exclusively for an explicitly authorised, inactive replica/restore.
+CREATE OR REPLACE FUNCTION public.sgt_restore_app_data(p_snapshot jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  t record;
+  tr record;
+  seq_col record;
+  names text[];
+  pending text[];
+  current_name text;
+  qualified_tables text;
+  writable_columns text;
+  expected_columns jsonb;
+  seq_name text;
+  seq_last bigint;
+  max_value bigint;
+  trigger_states jsonb := '[]'::jsonb;
+  trigger_state jsonb;
+  total bigint := 0;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext('sgt_restore_app_data'));
+  IF p_snapshot->>'app' IS DISTINCT FROM 'SibGofroTorg'
+     OR p_snapshot->>'backupFormat' IS DISTINCT FROM 'sgt-public-v1'
+     OR jsonb_typeof(p_snapshot->'tables') IS DISTINCT FROM 'object'
+     OR jsonb_typeof(p_snapshot->'columns') IS DISTINCT FROM 'object'
+     OR jsonb_typeof(p_snapshot->'sequences') IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'Invalid or incomplete SGT public backup';
+  END IF;
+  SELECT array_agg(c.relname::text ORDER BY c.relname) INTO names
+  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
+    AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e');
+  IF names IS NULL OR names IS DISTINCT FROM ARRAY(SELECT jsonb_object_keys(p_snapshot->'tables') ORDER BY 1)
+     OR names IS DISTINCT FROM ARRAY(SELECT jsonb_object_keys(p_snapshot->'columns') ORDER BY 1)
+     OR names IS DISTINCT FROM ARRAY(SELECT jsonb_object_keys(p_snapshot->'sequences') ORDER BY 1) THEN
+    RAISE EXCEPTION 'Backup and target public table lists differ; no data changed';
+  END IF;
+  FOR t IN SELECT unnest(names) AS name LOOP
+    IF jsonb_typeof(p_snapshot->'tables'->t.name) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid rows for %', t.name; END IF;
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('name', a.attname, 'type', format_type(a.atttypid, a.atttypmod), 'generated', a.attgenerated, 'identity', a.attidentity) ORDER BY a.attnum), '[]'::jsonb)
+      INTO expected_columns FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = t.name AND a.attnum > 0 AND NOT a.attisdropped;
+    IF expected_columns IS DISTINCT FROM p_snapshot->'columns'->t.name THEN
+      RAISE EXCEPTION 'Schema differs for table %; no data changed', t.name;
+    END IF;
+    -- Reject truncated or manually modified rows instead of silently writing NULLs.
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_snapshot->'tables'->t.name) r
+      WHERE jsonb_typeof(r) <> 'object' OR NOT (r ?& ARRAY(SELECT x->>'name' FROM jsonb_array_elements(expected_columns) x))
+        OR EXISTS (SELECT 1 FROM jsonb_object_keys(CASE WHEN jsonb_typeof(r) = 'object' THEN r ELSE '{}'::jsonb END) key_name WHERE NOT key_name = ANY(ARRAY(SELECT x->>'name' FROM jsonb_array_elements(expected_columns) x)))) THEN
+      RAISE EXCEPTION 'Incomplete row in table %', t.name;
+    END IF;
+  END LOOP;
+
+  SELECT string_agg(format('public.%I', name), ', ' ORDER BY name) INTO qualified_tables FROM unnest(names) AS name;
+  -- Prevent updated_at, derived-table and other user triggers from mutating the
+  -- restored rows. Transaction rollback also restores trigger states on error.
+  FOR tr IN SELECT c.relname, tg.tgname, tg.tgenabled FROM pg_trigger tg
+    JOIN pg_class c ON c.oid = tg.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = ANY(names) AND NOT tg.tgisinternal AND tg.tgenabled <> 'D'
+  LOOP
+    trigger_states := trigger_states || jsonb_build_array(jsonb_build_object('table', tr.relname, 'name', tr.tgname, 'mode', tr.tgenabled));
+    EXECUTE format('ALTER TABLE public.%I DISABLE TRIGGER %I', tr.relname, tr.tgname);
+  END LOOP;
+
+  -- Disable user triggers before TRUNCATE too: an ON TRUNCATE trigger could
+  -- otherwise modify unrelated data or make a supposedly exact restore unsafe.
+  -- RESTRICT is deliberate: never silently truncate a table in another schema.
+  EXECUTE 'TRUNCATE TABLE ' || qualified_tables || ' RESTRICT';
+
+  pending := names;
+  WHILE cardinality(pending) > 0 LOOP
+    current_name := NULL;
+    SELECT candidate INTO current_name FROM unnest(pending) candidate
+      WHERE NOT EXISTS (
+        SELECT 1 FROM pg_constraint fk JOIN pg_class child ON child.oid = fk.conrelid
+        JOIN pg_namespace cn ON cn.oid = child.relnamespace
+        JOIN pg_class parent ON parent.oid = fk.confrelid
+        JOIN pg_namespace pn ON pn.oid = parent.relnamespace
+        WHERE fk.contype = 'f' AND cn.nspname = 'public' AND pn.nspname = 'public'
+          AND child.relname = candidate AND parent.relname = ANY(pending) AND parent.relname <> candidate
+      ) ORDER BY candidate LIMIT 1;
+    IF current_name IS NULL THEN RAISE EXCEPTION 'Cyclic foreign keys require manual restore'; END IF;
+    SELECT string_agg(format('%I', a.attname), ', ' ORDER BY a.attnum) INTO writable_columns
+      FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = current_name AND a.attnum > 0 AND NOT a.attisdropped AND a.attgenerated = '';
+    IF writable_columns IS NULL THEN RAISE EXCEPTION 'No writable columns for %', current_name; END IF;
+    EXECUTE format('INSERT INTO public.%I (%s) OVERRIDING SYSTEM VALUE SELECT %s FROM jsonb_populate_recordset(NULL::public.%I, $1)',
+      current_name, writable_columns, writable_columns, current_name) USING p_snapshot->'tables'->current_name;
+    total := total + jsonb_array_length(p_snapshot->'tables'->current_name);
+    pending := array_remove(pending, current_name);
+  END LOOP;
+
+  FOR trigger_state IN SELECT value FROM jsonb_array_elements(trigger_states) LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE %s TRIGGER %I', trigger_state->>'table',
+      CASE trigger_state->>'mode' WHEN 'R' THEN 'REPLICA' WHEN 'A' THEN 'ALWAYS' ELSE '' END,
+      trigger_state->>'name');
+  END LOOP;
+  -- Advance serial/identity sequences at least to their old and restored values.
+  FOR t IN SELECT unnest(names) AS name LOOP
+    FOR seq_col IN SELECT attname FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = t.name AND a.attnum > 0 AND NOT a.attisdropped LOOP
+      seq_name := pg_get_serial_sequence(format('public.%I', t.name), seq_col.attname);
+      IF seq_name IS NOT NULL THEN
+        EXECUTE format('SELECT last_value FROM %s', seq_name::regclass) INTO seq_last;
+        EXECUTE format('SELECT max(%I) FROM public.%I', seq_col.attname, t.name) INTO max_value;
+        IF max_value IS NOT NULL OR p_snapshot->'sequences'->t.name->seq_col.attname->>'last' IS NOT NULL THEN
+          PERFORM setval(seq_name::regclass, greatest(seq_last, coalesce(max_value, seq_last),
+            coalesce((p_snapshot->'sequences'->t.name->seq_col.attname->>'last')::bigint, seq_last)), true);
+        END IF;
+      END IF;
+    END LOOP;
+  END LOOP;
+  -- Notify browser-side copies atomically when the optional incremental migration is installed.
+  IF to_regprocedure('public.sgt_pc_backup_mark_reset()') IS NOT NULL THEN
+    EXECUTE 'SELECT public.sgt_pc_backup_mark_reset()';
+  END IF;
+  RETURN jsonb_build_object('tables', cardinality(names), 'rows', total);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.sgt_export_app_data() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sgt_restore_app_data(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sgt_export_app_data() TO service_role;
+GRANT EXECUTE ON FUNCTION public.sgt_restore_app_data(jsonb) TO service_role;
+
+
+-- =====================================================================
+-- МИГРАЦИЯ: migration_pc_incremental_backup.sql
+-- =====================================================================
+-- Change metadata for browser-side incremental copies. Application rows are
+-- stored only in public tables; this private schema records changed primary
+-- keys, not full rows. Apply after the updated migration_complete_app_backup.sql.
+CREATE SCHEMA IF NOT EXISTS sgt_pc_backup;
+REVOKE ALL ON SCHEMA sgt_pc_backup FROM PUBLIC, anon, authenticated;
+CREATE TABLE IF NOT EXISTS sgt_pc_backup.state (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  instance_id text NOT NULL,
+  pruned_before bigint NOT NULL DEFAULT 0
+);
+INSERT INTO sgt_pc_backup.state(singleton, instance_id)
+VALUES (true, md5(random()::text || clock_timestamp()::text)) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS sgt_pc_backup.changes (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  xid bigint NOT NULL,
+  changed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  table_name text NOT NULL,
+  key_data jsonb,
+  needs_snapshot boolean NOT NULL DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS sgt_pc_backup_changes_xid ON sgt_pc_backup.changes(xid);
+CREATE INDEX IF NOT EXISTS sgt_pc_backup_changes_age ON sgt_pc_backup.changes(changed_at);
+REVOKE ALL ON ALL TABLES IN SCHEMA sgt_pc_backup FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA sgt_pc_backup FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION sgt_pc_backup.track_row() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+DECLARE
+  rel oid := coalesce(pg_partition_root(TG_RELID), TG_RELID);
+  rel_name text;
+  keys text[];
+  key_old jsonb;
+  key_new jsonb;
+  key_args text;
+BEGIN
+  SELECT relname INTO rel_name FROM pg_class WHERE oid=rel;
+  SELECT array_agg(a.attname ORDER BY k.ordinality) INTO keys
+    FROM pg_index i JOIN unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality) ON true
+    JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum
+    WHERE i.indrelid=rel AND i.indisprimary;
+  IF keys IS NULL THEN
+    INSERT INTO sgt_pc_backup.changes(xid,table_name,needs_snapshot) VALUES(txid_current(),rel_name,true);
+  ELSE
+    SELECT string_agg(format('%L, ($1).%I', k, k), ', ') INTO key_args FROM unnest(keys) k;
+    IF TG_OP IN ('UPDATE','DELETE') THEN
+      EXECUTE 'SELECT jsonb_build_object(' || key_args || ')' INTO key_old USING OLD;
+      INSERT INTO sgt_pc_backup.changes(xid,table_name,key_data) VALUES(txid_current(),rel_name,key_old);
+    END IF;
+    IF TG_OP IN ('UPDATE','INSERT') THEN
+      EXECUTE 'SELECT jsonb_build_object(' || key_args || ')' INTO key_new USING NEW;
+      IF key_old IS NULL OR key_old IS DISTINCT FROM key_new THEN
+        INSERT INTO sgt_pc_backup.changes(xid,table_name,key_data) VALUES(txid_current(),rel_name,key_new);
+      END IF;
+    END IF;
+  END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END $$;
+CREATE OR REPLACE FUNCTION sgt_pc_backup.track_truncate() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+BEGIN
+  INSERT INTO sgt_pc_backup.changes(xid,table_name,needs_snapshot) VALUES(txid_current(),TG_TABLE_NAME,true);
+  RETURN NULL;
+END $$;
+-- A full restore disables user triggers. The restore function invokes this
+-- within its transaction after completing the data replacement.
+CREATE OR REPLACE FUNCTION public.sgt_pc_backup_mark_reset() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+BEGIN INSERT INTO sgt_pc_backup.changes(xid,table_name,needs_snapshot) VALUES(txid_current(),'*',true); END $$;
+REVOKE ALL ON FUNCTION public.sgt_pc_backup_mark_reset() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.sgt_pc_backup_enable() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup SET lock_timeout='5s' AS $$
+DECLARE t record; BEGIN
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT c.relispartition
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+    ORDER BY c.relname
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS sgt_pc_backup_rows ON public.%I',t.relname);
+    EXECUTE format('CREATE TRIGGER sgt_pc_backup_rows AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION sgt_pc_backup.track_row()',t.relname);
+    EXECUTE format('DROP TRIGGER IF EXISTS sgt_pc_backup_truncate ON public.%I',t.relname);
+    EXECUTE format('CREATE TRIGGER sgt_pc_backup_truncate AFTER TRUNCATE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION sgt_pc_backup.track_truncate()',t.relname);
+  END LOOP;
+  -- TRUNCATE can target a partition directly. Row triggers are cloned by
+  -- PostgreSQL from the parent, but TRUNCATE triggers are not.
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relispartition AND c.relkind IN ('r','p') ORDER BY c.relname
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS sgt_pc_backup_truncate ON public.%I',t.relname);
+    EXECUTE format('CREATE TRIGGER sgt_pc_backup_truncate AFTER TRUNCATE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION sgt_pc_backup.track_truncate()',t.relname);
+  END LOOP;
+  PERFORM public.sgt_pc_backup_mark_reset();
+END $$;
+REVOKE ALL ON FUNCTION public.sgt_pc_backup_enable() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sgt_pc_backup_enable() TO service_role;
+
+-- Stopping is global to this source; it leaves existing journal and PC files intact.
+-- The next enable adds a reset marker, so all clients must take a fresh snapshot.
+CREATE OR REPLACE FUNCTION public.sgt_pc_backup_disable() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup SET lock_timeout='5s' AS $$
+DECLARE t record; BEGIN
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT c.relispartition
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e') ORDER BY c.relname
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS sgt_pc_backup_rows ON public.%I',t.relname);
+    EXECUTE format('DROP TRIGGER IF EXISTS sgt_pc_backup_truncate ON public.%I',t.relname);
+  END LOOP;
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relispartition AND c.relkind IN ('r','p') ORDER BY c.relname
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS sgt_pc_backup_truncate ON public.%I',t.relname);
+  END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION public.sgt_pc_backup_disable() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sgt_pc_backup_disable() TO service_role;
+
+CREATE OR REPLACE FUNCTION sgt_pc_backup.catalog() RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+  SELECT coalesce(jsonb_object_agg(t.relname, jsonb_build_object(
+    'columns', (SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'generated',a.attgenerated,'identity',a.attidentity) ORDER BY a.attnum)
+      FROM pg_attribute a WHERE a.attrelid=t.oid AND a.attnum>0 AND NOT a.attisdropped),
+    'pk', coalesce((SELECT jsonb_agg(a.attname ORDER BY k.ordinality) FROM pg_index i
+      JOIN unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality) ON true
+      JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum WHERE i.indrelid=t.oid AND i.indisprimary),'[]'::jsonb)
+  )), '{}'::jsonb)
+  FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
+  WHERE n.nspname='public' AND t.relkind IN ('r','p') AND NOT t.relispartition
+    AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=t.oid AND d.deptype='e')
+$$;
+CREATE OR REPLACE FUNCTION sgt_pc_backup.assert_ready() RETURNS void
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+BEGIN
+  IF to_regprocedure('public.sgt_restore_app_data(jsonb)') IS NULL OR position('sgt_pc_backup_mark_reset' IN pg_get_functiondef('public.sgt_restore_app_data(jsonb)'::regprocedure))=0 THEN
+    RAISE EXCEPTION 'Install updated migration_complete_app_backup.sql before incremental backups';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT c.relispartition
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+      AND (NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid=c.oid AND t.tgname='sgt_pc_backup_rows' AND t.tgenabled IN ('O','A'))
+        OR NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid=c.oid AND t.tgname='sgt_pc_backup_truncate' AND t.tgenabled IN ('O','A')))) THEN
+    RAISE EXCEPTION 'Incremental triggers missing or disabled; enable tracking or update triggers from the owner interface';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relispartition AND c.relkind IN ('r','p')
+      AND NOT EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid=c.oid AND t.tgname='sgt_pc_backup_truncate' AND t.tgenabled IN ('O','A'))) THEN
+    RAISE EXCEPTION 'Incremental partition trigger missing; update triggers from the owner interface';
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION sgt_pc_backup.sequences() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+DECLARE t record; a record; seq_name text; seq_last bigint; seq_called boolean; seqs jsonb; all_seqs jsonb := '{}'::jsonb;
+BEGIN
+  FOR t IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT c.relispartition
+    AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e') LOOP
+    seqs := '{}'::jsonb;
+    FOR a IN SELECT attname FROM pg_attribute WHERE attrelid=t.oid AND attnum>0 AND NOT attisdropped LOOP
+      seq_name := pg_get_serial_sequence(format('public.%I',t.relname),a.attname);
+      IF seq_name IS NOT NULL THEN
+        EXECUTE format('SELECT last_value,is_called FROM %s',seq_name::regclass) INTO seq_last,seq_called;
+        seqs := seqs || jsonb_build_object(a.attname,jsonb_build_object('last',seq_last::text,'called',seq_called));
+      END IF;
+    END LOOP;
+    all_seqs := all_seqs || jsonb_build_object(t.relname,seqs);
+  END LOOP;
+  RETURN all_seqs;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.sgt_pc_backup_snapshot() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+DECLARE meta jsonb; base jsonb; instance text; BEGIN
+  PERFORM sgt_pc_backup.assert_ready();
+  meta := sgt_pc_backup.catalog();
+  base := public.sgt_export_app_data();
+  SELECT instance_id INTO instance FROM sgt_pc_backup.state WHERE singleton;
+  RETURN jsonb_build_object('instance',instance,'cursor',txid_snapshot_xmin(txid_current_snapshot())::text,'catalog',meta,'catalogHash',md5(meta::text),'snapshot',base);
+END $$;
+
+DROP FUNCTION IF EXISTS public.sgt_pc_backup_changes(text,text,jsonb);
+CREATE OR REPLACE FUNCTION public.sgt_pc_backup_changes(p_instance text, p_cursor text, p_catalog_hash text) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+DECLARE c bigint; floor_xid bigint; instance text; meta jsonb; item record; keys jsonb; values_json jsonb; conditions text; result jsonb := '{}'::jsonb; rows_changed bigint;
+BEGIN
+  IF p_cursor !~ '^[0-9]{1,20}$' THEN RAISE EXCEPTION 'Invalid backup cursor'; END IF;
+  c := p_cursor::bigint;
+  PERFORM sgt_pc_backup.assert_ready();
+  SELECT instance_id,pruned_before INTO instance,floor_xid FROM sgt_pc_backup.state WHERE singleton;
+  meta := sgt_pc_backup.catalog();
+  IF instance IS DISTINCT FROM p_instance THEN RETURN jsonb_build_object('reset',true,'reason','instance_changed'); END IF;
+  IF md5(meta::text) IS DISTINCT FROM p_catalog_hash OR c < floor_xid OR c > txid_snapshot_xmin(txid_current_snapshot()) THEN
+    RETURN jsonb_build_object('reset',true,'reason','resnapshot');
+  END IF;
+  SELECT count(*) INTO rows_changed FROM (SELECT 1 FROM sgt_pc_backup.changes WHERE xid>=c LIMIT 5001) recent;
+  IF rows_changed>5000 THEN RETURN jsonb_build_object('reset',true,'reason','backlog'); END IF;
+  IF EXISTS (SELECT 1 FROM sgt_pc_backup.changes WHERE xid>=c AND needs_snapshot) THEN RETURN jsonb_build_object('reset',true,'reason','resnapshot'); END IF;
+  FOR item IN SELECT table_name FROM sgt_pc_backup.changes WHERE xid>=c GROUP BY table_name ORDER BY table_name LOOP
+    IF NOT (meta ? item.table_name) OR jsonb_array_length(meta->item.table_name->'pk')=0 THEN RETURN jsonb_build_object('reset',true); END IF;
+    SELECT jsonb_agg(key_data) INTO keys FROM (SELECT DISTINCT key_data FROM sgt_pc_backup.changes WHERE xid>=c AND table_name=item.table_name) unique_keys;
+    SELECT string_agg(format('r.%1$I = v.%1$I',name),' AND ' ORDER BY name)
+      INTO conditions FROM jsonb_array_elements_text(meta->item.table_name->'pk') name;
+    EXECUTE format('SELECT coalesce(jsonb_agg(DISTINCT to_jsonb(r)), ''[]''::jsonb) FROM jsonb_array_elements($1) k CROSS JOIN LATERAL jsonb_populate_record(NULL::public.%1$I, k.value) v JOIN public.%1$I r ON %2$s', item.table_name,conditions) INTO values_json USING keys;
+    result := result || jsonb_build_object(item.table_name,jsonb_build_object('keys',keys,'rows',values_json));
+  END LOOP;
+  RETURN jsonb_build_object('reset',false,'cursor',txid_snapshot_xmin(txid_current_snapshot())::text,'tables',result, 'sequences', CASE WHEN rows_changed>0 THEN sgt_pc_backup.sequences() ELSE NULL END);
+END $$;
+REVOKE ALL ON FUNCTION public.sgt_pc_backup_snapshot() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sgt_pc_backup_changes(text,text,text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sgt_pc_backup_snapshot() TO service_role;
+GRANT EXECUTE ON FUNCTION public.sgt_pc_backup_changes(text,text,text) TO service_role;
+
+-- Safe retention: do not prune transactions still visible to an older snapshot.
+-- A lagging browser receives reset=true and obtains a new full snapshot.
+CREATE OR REPLACE FUNCTION public.sgt_pc_backup_prune() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+DECLARE safe_xid bigint := txid_snapshot_xmin(txid_current_snapshot()); removed_max bigint;
+BEGIN
+  WITH removed AS (
+    DELETE FROM sgt_pc_backup.changes WHERE ctid IN (
+      SELECT ctid FROM sgt_pc_backup.changes
+      WHERE changed_at < clock_timestamp() - interval '7 days' AND xid < safe_xid
+      ORDER BY changed_at LIMIT 2000
+    ) RETURNING xid
+  ) SELECT max(xid) INTO removed_max FROM removed;
+  IF removed_max IS NOT NULL THEN
+    UPDATE sgt_pc_backup.state SET pruned_before=greatest(pruned_before,removed_max+1) WHERE singleton;
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION public.sgt_pc_backup_prune() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sgt_pc_backup_prune() TO service_role;
+NOTIFY pgrst, 'reload schema';
+
+
+-- =====================================================================
+-- МИГРАЦИЯ: migration_pc_merge_apply.sql
+-- =====================================================================
+-- Experimental, owner-mediated, single-target merge primitive.
+-- Depends on migration_complete_app_backup.sql and migration_pc_incremental_backup.sql.
+-- This migration does not enable replication or modify application rows.
+-- Only a service-role server may call it. The caller must establish a common
+-- ancestor, check the PC's source identity and present a conflict-free plan.
+-- This RPC cannot make a transaction atomic across different Supabase servers.
+CREATE TABLE IF NOT EXISTS sgt_pc_backup.merge_receipts (
+  operation_id uuid PRIMARY KEY,
+  instance_id text NOT NULL,
+  payload_hash text NOT NULL,
+  applied_count integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+REVOKE ALL ON sgt_pc_backup.merge_receipts FROM PUBLIC, anon, authenticated;
+
+-- Build an indexed, typed primary-key predicate from server catalog metadata.
+CREATE OR REPLACE FUNCTION sgt_pc_backup.merge_key_predicate(p_table text) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,sgt_pc_backup AS $$
+  SELECT string_agg(format('x.%1$I = k.%1$I',a.attname),' AND ' ORDER BY kx.ordinality)
+  FROM pg_index i JOIN pg_class r ON r.oid=i.indrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+  JOIN unnest(i.indkey) WITH ORDINALITY kx(attnum,ordinality) ON true
+  JOIN pg_attribute a ON a.attrelid=r.oid AND a.attnum=kx.attnum
+  WHERE n.nspname='public' AND r.relname=p_table AND i.indisprimary AND i.indnkeyatts=i.indnatts
+$$;
+REVOKE ALL ON FUNCTION sgt_pc_backup.merge_key_predicate(text) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.sgt_pc_apply_changes(
+  p_instance text, p_catalog_hash text, p_operation_id uuid, p_changes jsonb
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path=pg_catalog,public,sgt_pc_backup
+SET lock_timeout='5s'
+AS $$
+DECLARE
+  current_instance text; previous sgt_pc_backup.merge_receipts%ROWTYPE;
+  payload_hash text; c jsonb; t record; tbl text; key_data jsonb;
+  old_row jsonb; new_row jsonb; actual jsonb; row_count integer;
+  expected_keys text[]; supplied_keys text[]; columns text[]; before_columns text[]; after_columns text[];
+  col_list text; val_list text; set_list text; key_pred text; has_seq boolean; affected integer;
+BEGIN
+  SELECT instance_id INTO current_instance FROM sgt_pc_backup.state WHERE singleton FOR SHARE;
+  IF p_instance IS NULL OR p_instance !~ '^[a-f0-9]{32}$' OR current_instance IS DISTINCT FROM p_instance OR p_catalog_hash IS NULL OR p_catalog_hash !~ '^[a-f0-9]{32}$' OR p_operation_id IS NULL THEN
+    RAISE EXCEPTION 'PC merge: source identity does not match' USING ERRCODE='22023';
+  END IF;
+  IF jsonb_typeof(p_changes) IS DISTINCT FROM 'array' OR jsonb_array_length(p_changes)=0 OR jsonb_array_length(p_changes)>500 OR octet_length(p_changes::text)>10485760 THEN
+    RAISE EXCEPTION 'PC merge: invalid or oversized changeset' USING ERRCODE='22023';
+  END IF;
+  payload_hash:=encode(sha256(convert_to(p_instance || ':' || p_catalog_hash || ':' || p_changes::text,'UTF8')),'hex');
+  -- Share the restore lock so a restore cannot race the compare-and-swap.
+  PERFORM pg_advisory_xact_lock(hashtext('sgt_restore_app_data'));
+  SELECT * INTO previous FROM sgt_pc_backup.merge_receipts WHERE operation_id=p_operation_id;
+  IF FOUND THEN
+    IF previous.instance_id IS DISTINCT FROM p_instance OR previous.payload_hash IS DISTINCT FROM payload_hash THEN
+      RAISE EXCEPTION 'PC merge: operation id already used for different data' USING ERRCODE='22023';
+    END IF;
+    RETURN jsonb_build_object('applied',previous.applied_count,'alreadyApplied',true);
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(p_changes) x GROUP BY x->>'table',x->'key' HAVING count(*)>1) THEN
+    RAISE EXCEPTION 'PC merge: duplicate row key' USING ERRCODE='22023';
+  END IF;
+  -- Lock all app tables in a deterministic order: triggers can update tables
+  -- other than the target. The lock is bounded and no trigger is disabled.
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT c.relispartition
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+    ORDER BY c.relname
+  LOOP EXECUTE format('LOCK TABLE public.%I IN SHARE ROW EXCLUSIVE MODE',t.relname); END LOOP;
+  IF md5(sgt_pc_backup.catalog()::text) IS DISTINCT FROM p_catalog_hash THEN
+    RAISE EXCEPTION 'PC merge: source catalog changed' USING ERRCODE='40001';
+  END IF;
+
+  -- Validate every record and compare the complete current rows before doing
+  -- anything. A mismatch aborts the entire PostgreSQL transaction.
+  FOR c IN SELECT value FROM jsonb_array_elements(p_changes) LOOP
+    tbl:=c->>'table'; key_data:=c->'key'; old_row:=c->'before'; new_row:=c->'after';
+    IF jsonb_typeof(c) IS DISTINCT FROM 'object' OR jsonb_typeof(key_data) IS DISTINCT FROM 'object'
+      OR old_row IS NULL OR new_row IS NULL OR (old_row='null'::jsonb AND new_row='null'::jsonb)
+      OR (old_row<>'null'::jsonb AND jsonb_typeof(old_row)<>'object')
+      OR (new_row<>'null'::jsonb AND jsonb_typeof(new_row)<>'object') THEN
+      RAISE EXCEPTION 'PC merge: invalid record' USING ERRCODE='22023';
+    END IF;
+    -- Do not allow offline promotion or credential changes through merge.
+    IF tbl IS NULL OR tbl IN ('admins','users') OR NOT EXISTS (
+      SELECT 1 FROM pg_class r JOIN pg_namespace n ON n.oid=r.relnamespace
+      WHERE n.nspname='public' AND r.relname=tbl AND r.relkind IN ('r','p') AND NOT r.relispartition
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=r.oid AND d.deptype='e')
+    ) THEN RAISE EXCEPTION 'PC merge: table not allowed: %',tbl USING ERRCODE='22023'; END IF;
+    SELECT array_agg(a.attname::text ORDER BY a.attname::text) INTO expected_keys FROM pg_index i
+      JOIN pg_class r ON r.oid=i.indrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+      JOIN unnest(i.indkey) k(attnum) ON true JOIN pg_attribute a ON a.attrelid=r.oid AND a.attnum=k.attnum
+      WHERE n.nspname='public' AND r.relname=tbl AND i.indisprimary AND i.indnkeyatts=i.indnatts;
+    SELECT array_agg(k ORDER BY k) INTO supplied_keys FROM jsonb_object_keys(key_data) k;
+    IF expected_keys IS NULL OR expected_keys IS DISTINCT FROM supplied_keys OR EXISTS (SELECT 1 FROM jsonb_each(key_data) k WHERE k.value='null'::jsonb) THEN
+      RAISE EXCEPTION 'PC merge: missing or invalid primary key for %',tbl USING ERRCODE='22023';
+    END IF;
+    SELECT array_agg(a.attname::text ORDER BY a.attname::text) INTO columns FROM pg_attribute a
+      JOIN pg_class r ON r.oid=a.attrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+      WHERE n.nspname='public' AND r.relname=tbl AND a.attnum>0 AND NOT a.attisdropped;
+    IF old_row<>'null'::jsonb THEN SELECT array_agg(k ORDER BY k) INTO before_columns FROM jsonb_object_keys(old_row) k; ELSE before_columns:=NULL; END IF;
+    IF new_row<>'null'::jsonb THEN SELECT array_agg(k ORDER BY k) INTO after_columns FROM jsonb_object_keys(new_row) k; ELSE after_columns:=NULL; END IF;
+    IF (old_row<>'null'::jsonb AND (before_columns IS DISTINCT FROM columns OR key_data IS DISTINCT FROM (SELECT jsonb_object_agg(k,old_row->k) FROM jsonb_object_keys(key_data) k)))
+      OR (new_row<>'null'::jsonb AND (after_columns IS DISTINCT FROM columns OR key_data IS DISTINCT FROM (SELECT jsonb_object_agg(k,new_row->k) FROM jsonb_object_keys(key_data) k))) THEN
+      RAISE EXCEPTION 'PC merge: incomplete row or changed primary key in %',tbl USING ERRCODE='22023';
+    END IF;
+    -- Sequence values are not transactional and independently-created numeric
+    -- ids require a separate allocation protocol. Stop rather than guess.
+    SELECT EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_class r ON r.oid=a.attrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+      WHERE n.nspname='public' AND r.relname=tbl AND a.attnum>0 AND NOT a.attisdropped
+        AND (a.attidentity<>'' OR pg_get_serial_sequence(format('public.%I',tbl),a.attname) IS NOT NULL)) INTO has_seq;
+    IF has_seq THEN RAISE EXCEPTION 'PC merge: sequence-bearing table % requires manual reconciliation',tbl USING ERRCODE='22023'; END IF;
+    key_pred:=sgt_pc_backup.merge_key_predicate(tbl);
+    EXECUTE format('SELECT count(*)::int, (jsonb_agg(to_jsonb(x))->0) FROM public.%1$I x CROSS JOIN jsonb_populate_record(NULL::public.%1$I,$1) k WHERE %2$s',tbl,key_pred)
+      INTO row_count,actual USING key_data;
+    IF row_count>1 OR (row_count=0 AND old_row<>'null'::jsonb) OR (row_count=1 AND (old_row='null'::jsonb OR actual IS DISTINCT FROM old_row)) THEN
+      RAISE EXCEPTION 'PC merge conflict: current row changed in %',tbl USING ERRCODE='40001';
+    END IF;
+  END LOOP;
+
+  FOR c IN SELECT value FROM jsonb_array_elements(p_changes) LOOP
+    tbl:=c->>'table';key_data:=c->'key';old_row:=c->'before';new_row:=c->'after';
+    -- Triggers from earlier operations may have touched this row in the same
+    -- transaction. Recheck and roll back rather than overwrite that change.
+    key_pred:=sgt_pc_backup.merge_key_predicate(tbl);
+    EXECUTE format('SELECT count(*)::int, (jsonb_agg(to_jsonb(x))->0) FROM public.%1$I x CROSS JOIN jsonb_populate_record(NULL::public.%1$I,$1) k WHERE %2$s',tbl,key_pred) INTO row_count,actual USING key_data;
+    IF row_count>1 OR (row_count=0 AND old_row<>'null'::jsonb) OR (row_count=1 AND (old_row='null'::jsonb OR actual IS DISTINCT FROM old_row)) THEN
+      RAISE EXCEPTION 'PC merge conflict: row changed by a trigger in %',tbl USING ERRCODE='40001';
+    END IF;
+    IF new_row='null'::jsonb THEN
+      EXECUTE format('DELETE FROM public.%1$I x USING jsonb_populate_record(NULL::public.%1$I,$1) k WHERE %2$s',tbl,key_pred) USING key_data;
+    ELSE
+      SELECT string_agg(format('%I',a.attname),',' ORDER BY a.attnum),
+             string_agg(format('r.%I',a.attname),',' ORDER BY a.attnum),
+             string_agg(format('%1$I = r.%1$I',a.attname),',' ORDER BY a.attnum)
+      INTO col_list,val_list,set_list FROM pg_attribute a JOIN pg_class r ON r.oid=a.attrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+      WHERE n.nspname='public' AND r.relname=tbl AND a.attnum>0 AND NOT a.attisdropped AND a.attgenerated='' AND a.attidentity='';
+      IF old_row='null'::jsonb THEN
+        EXECUTE format('INSERT INTO public.%1$I (%2$s) SELECT %3$s FROM jsonb_populate_record(NULL::public.%1$I,$1) r',tbl,col_list,val_list) USING new_row;
+      ELSE
+        EXECUTE format('UPDATE public.%1$I x SET %2$s FROM jsonb_populate_record(NULL::public.%1$I,$1) r, jsonb_populate_record(NULL::public.%1$I,$2) k WHERE %3$s',tbl,set_list,key_pred) USING new_row,key_data;
+      END IF;
+    END IF;
+    GET DIAGNOSTICS affected = ROW_COUNT;
+    IF affected <> 1 THEN RAISE EXCEPTION 'PC merge: trigger suppressed or multiplied a change in %',tbl USING ERRCODE='40001'; END IF;
+    IF new_row<>'null'::jsonb THEN
+      key_pred:=sgt_pc_backup.merge_key_predicate(tbl);
+      EXECUTE format('SELECT count(*)::int, (jsonb_agg(to_jsonb(x))->0) FROM public.%1$I x CROSS JOIN jsonb_populate_record(NULL::public.%1$I,$1) k WHERE %2$s',tbl,key_pred) INTO row_count,actual USING key_data;
+      -- A normal BEFORE UPDATE trigger supplies the remote timestamp. All
+      -- other requested values, including computed fields, must survive.
+      IF row_count<>1 OR (actual-'updated_at') IS DISTINCT FROM (new_row-'updated_at') THEN
+        RAISE EXCEPTION 'PC merge: trigger or generated value changed data in %',tbl USING ERRCODE='40001';
+      END IF;
+    END IF;
+  END LOOP;
+  -- A later trigger may have modified an earlier row. Verify the final
+  -- transaction state for every requested key, including deletions.
+  FOR c IN SELECT value FROM jsonb_array_elements(p_changes) LOOP
+    tbl:=c->>'table';key_data:=c->'key';new_row:=c->'after';
+    key_pred:=sgt_pc_backup.merge_key_predicate(tbl);
+    EXECUTE format('SELECT count(*)::int, (jsonb_agg(to_jsonb(x))->0) FROM public.%1$I x CROSS JOIN jsonb_populate_record(NULL::public.%1$I,$1) k WHERE %2$s',tbl,key_pred) INTO row_count,actual USING key_data;
+    IF (new_row='null'::jsonb AND row_count<>0) OR (new_row<>'null'::jsonb AND (row_count<>1 OR (actual-'updated_at') IS DISTINCT FROM (new_row-'updated_at'))) THEN
+      RAISE EXCEPTION 'PC merge: final row differs after trigger in %',tbl USING ERRCODE='40001';
+    END IF;
+  END LOOP;
+  INSERT INTO sgt_pc_backup.merge_receipts(operation_id,instance_id,payload_hash,applied_count)
+    VALUES(p_operation_id,p_instance,payload_hash,jsonb_array_length(p_changes));
+  RETURN jsonb_build_object('applied',jsonb_array_length(p_changes),'alreadyApplied',false);
+END $$;
+REVOKE ALL ON FUNCTION public.sgt_pc_apply_changes(text,text,uuid,jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.sgt_pc_apply_changes(text,text,uuid,jsonb) TO service_role;
+
+
+-- =====================================================================
 -- МИГРАЦИЯ: migration_realtime_admin.sql
 -- =====================================================================
 -- =========================================================
@@ -4574,6 +5248,7 @@ CREATE OR REPLACE FUNCTION increment_review_helpful(review_id_param UUID)
 RETURNS INT
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   new_count INT;

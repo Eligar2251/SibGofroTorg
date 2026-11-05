@@ -17,6 +17,8 @@ const OUTPUT_PATH = path.join(SUPABASE_DIR, "FULL_DATABASE_MIGRATION.sql");
 
 // Строгий топологический порядок миграций после базовой schema.sql
 const ORDERED_MIGRATIONS = [
+  // transports is referenced by migration_rbac_logs; create it first on a fresh DB.
+  "migration_transports.sql",
   // 1. Роли, сотрудники, навигация, журнал, синхронизация локалки и права владельца
   "migration_rbac_logs.sql",
   "migration_admin_nav_layouts.sql",
@@ -51,7 +53,6 @@ const ORDERED_MIGRATIONS = [
   "migration_consignment_manual.sql",
   "migration_partial_receipts.sql",
   "migration_partial_shipping.sql",
-  "migration_transports.sql",
   "migration_receipt_transport_link.sql",
   "migration_receipt_debts.sql",
   "migration_deal_delivery_vat.sql",
@@ -103,9 +104,13 @@ const ORDERED_MIGRATIONS = [
   "migration_wp_transport_link.sql",
   "migration_wp_transport_done.sql",
 
-  // 9. Безопасность RLS и публикация Realtime
+  // 9. Безопасность RLS, Security Invoker для вьюх и публикация Realtime
   "migration_rls_public_tables.sql",
   "migration_rls_users_orders.sql",
+  "migration_fix_die_calc_view_security_invoker.sql",
+  "migration_complete_app_backup.sql",
+  "migration_pc_incremental_backup.sql",
+  "migration_pc_merge_apply.sql",
   "migration_realtime_admin.sql",
 ];
 
@@ -168,6 +173,18 @@ function stripDiagnosticSelects(sql, filename) {
   return sql;
 }
 
+// Historical incremental migrations temporarily installed narrower checks.
+// In the consolidated script use the final union at every intermediate step;
+// otherwise a rerun fails on legitimate owner/wastepaper or later order rows.
+// The individual migration files remain unchanged for separate refinement.
+function keepFinalCheckValues(sql) {
+  return sql
+    .replace(/(ADD\s+CONSTRAINT\s+admins_role_check\s+CHECK\s*\(role\s+IN\s*)\([^)]*\)\s*\)/gi,
+      "$1('owner', 'admin', 'manager', 'lawyer', 'wastepaper'))")
+    .replace(/(ADD\s+CONSTRAINT\s+orders_status_check\s+CHECK\s*\(status\s+IN\s*)\([^)]*\)\s*\)/gi,
+      "$1('new', 'confirmed', 'processing', 'in_progress', 'ready', 'in_delivery', 'shipped', 'issued', 'completed', 'cancelled', 'rejected'))");
+}
+
 const chunks = [];
 
 chunks.push(`-- =====================================================================
@@ -178,20 +195,25 @@ chunks.push(`-- ================================================================
 --   Полное развёртывание ИЛИ обновление схемы БД в 1 запуск для переезда
 --   на облачный Supabase (Supabase Cloud) или любой self-hosted Supabase.
 --
--- Включает абсолютно ВСЕ миграции проекта (schema.sql + все 72 файла
+-- Включает абсолютно ВСЕ миграции проекта (schema.sql + все ${ORDERED_MIGRATIONS.length} файла
 -- migration_*.sql, включая прошлые и текущие пул-реквесты/мержи):
 --   • Все 58 таблиц проекта (каталог, связки карточек product_link_groups,
 --     заказы, склад, поставки, КМП-комплектации warehouse_assemblies,
 --     перевозки, банк, касса, зарплаты, табели, штанцформы, аренда,
 --     макулатура, журнал синхронизации локальной БД db_sync_runs и др.)
---   • Все представления (die_calc_job_stats), индексы и GIN-индексы
+--   • Все представления с security_invoker = true (die_calc_job_stats), индексы и GIN-индексы
 --   • Все функции и RPC (fn_next_counter, increment_review_helpful,
 --     sync_product_in_stock, calculate_product_box_volume, fn_update_product_rating,
 --     fn_increment_view_count, update_updated_at_column)
 --   • Все триггеры, RLS-политики безопасности (152-ФЗ) и публикации Realtime
 --
--- Скрипт на 100% ИДЕМПОТЕНТЕН: безопасно запускать как на чистой БД,
--- так и поверх существующей базы данных.
+-- Для полной копии и журнала изменений ПК включены отдельные миграции:
+--   migration_complete_app_backup.sql и migration_pc_incremental_backup.sql.
+-- Их порядок сохранён; журнал дополнительно включается владельцем в админке.
+-- migration_pc_merge_apply.sql включена как историческая экспериментальная
+-- миграция, но для локальной копии и чтения она не требуется.
+-- Перед применением к рабочей БД создайте резервную копию и проверьте миграцию
+-- на тестовой копии; поведение на конкретной Supabase не гарантируется.
 --
 -- Как применить в облачном Supabase:
 --   1. Откройте Supabase Dashboard → SQL Editor → New query
@@ -217,7 +239,7 @@ for (const file of ORDERED_MIGRATIONS) {
   if (!fs.existsSync(fullPath)) continue;
   const raw = fs.readFileSync(fullPath, "utf8");
   const cleaned = makePoliciesIdempotent(
-    makeTriggersIdempotent(stripDiagnosticSelects(raw, file))
+    makeTriggersIdempotent(keepFinalCheckValues(stripDiagnosticSelects(raw, file)))
   );
   chunks.push(
     `\n-- =====================================================================\n-- МИГРАЦИЯ: ${file}\n-- =====================================================================\n` +
@@ -268,6 +290,7 @@ CREATE OR REPLACE FUNCTION increment_review_helpful(review_id_param UUID)
 RETURNS INT
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   new_count INT;
@@ -350,7 +373,7 @@ fs.writeFileSync(OUTPUT_PATH, finalSql, "utf8");
 const createdTables = new Set(
   [
     ...finalSql.matchAll(
-      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z0-9_]+)/gi
+      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?([a-z0-9_]+)\s*\(/gi
     ),
   ].map((m) => m[1].toLowerCase())
 );

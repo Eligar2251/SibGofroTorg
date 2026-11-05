@@ -228,12 +228,19 @@ async function fetchRemoteSchema(): Promise<SchemaCache | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 4_000);
   try {
+    // Новые ключи Supabase (`sb_secret_...` / `sb_publishable_...`) не являются JWT:
+    // передаём `Authorization: Bearer ...` только для классических 3-частных JWT (`eyJ...`).
+    const isJwtKey = key.split(".").length === 3;
+    const headers: Record<string, string> = {
+      apikey: key,
+      Accept: "application/openapi+json",
+    };
+    if (isJwtKey) {
+      headers.Authorization = `Bearer ${key}`;
+    }
+
     const response = await fetch(`${url.replace(/\/$/, "")}/rest/v1/`, {
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        Accept: "application/openapi+json",
-      },
+      headers,
       cache: "no-store",
       signal: controller.signal,
     });
