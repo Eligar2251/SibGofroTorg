@@ -10,8 +10,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FullBackupPanel } from "./FullBackupPanel";
-import { PcScheduledFullBackupPanel } from "./PcScheduledFullBackup";
-import { MergeBackupPanel } from "./MergeBackupPanel";
 import {
   Activity,
   AlertTriangle,
@@ -843,7 +841,7 @@ export function DatabaseBackendSwitcher({
               marginTop: 3,
             }}
           >
-            Выбирайте рабочий Supabase для сервера сайта. Отдельный выбор источника на каждом ПК пока не реализован.
+            Переключение меняет рабочую Supabase этого экземпляра сайта. На Timeweb выбор общий для пользователей.
           </div>
         </div>
 
@@ -962,8 +960,6 @@ export function DatabaseBackendSwitcher({
       )}
 
       <FullBackupPanel pcLocalSite={pcLocalSite} />
-      {ownerUsername && <PcScheduledFullBackupPanel username={ownerUsername} />}
-      {ownerUsername && <MergeBackupPanel />}
 
       {/* Три карточки выбора источника БД */}
       <div
@@ -1202,7 +1198,7 @@ export function DatabaseBackendSwitcher({
 
       </div>
 
-      <div className="admin-muted" style={{ fontSize: 12 }}>Рабочая JSON-БД на ПК ещё не подключена. Прежний серверный JSON не удалён и доступен только для скачивания владельцем.</div>
+      <div className="admin-muted" style={{ fontSize: 12 }}>Локальная JSON-копия доступна при запуске сайта на этом ПК и предназначена только для чтения. Старый серверный JSON не удалён.</div>
 
       {/* Форма ввода URL и ключей для выбранного сервера Supabase */}
       {editingTarget && (

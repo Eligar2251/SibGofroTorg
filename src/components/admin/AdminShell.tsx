@@ -196,7 +196,7 @@ export function AdminShell({
           icon: link.icon,
         }))}
       >
-        {role === "owner" && <PcScheduledFullBackupRunner username={username} />}
+        {role === "owner" && <PcScheduledFullBackupRunner username={username} adminPath={adminPath} />}
         {children}
       </MobileAdminShell>
     );
@@ -393,7 +393,7 @@ export function AdminShell({
         {/* Индикатор состояния realtime-канала: зелёный = данные живые,
             красный = realtime недоступен, обновляем по таймеру. */}
         {role && <RealtimeStatusIndicator />}
-        {role === "owner" && <PcScheduledFullBackupRunner username={username} />}
+        {role === "owner" && <PcScheduledFullBackupRunner username={username} adminPath={adminPath} />}
 
         {/* Три кружка справа сверху: планы поставок · новые заявки ·
             срочные уведомления. Макулатурщику и юристу недоступны. */}

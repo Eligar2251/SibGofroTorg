@@ -11,6 +11,7 @@ import { DatabaseBrowser } from "@/components/admin/DatabaseBrowser";
 import { DatabaseBackendSwitcher } from "@/components/admin/DatabaseBackendSwitcher";
 import { isPcLocalServer } from "@/lib/pc-local-runtime";
 import { PcLocalReadOnlyPanel } from "@/components/admin/PcLocalReadOnlyPanel";
+import { PcScheduledFullBackupPanel } from "@/components/admin/PcScheduledFullBackup";
 import { ADMIN_PATH } from "@/lib/admin-path";
 
 
@@ -43,6 +44,7 @@ export default async function AdminDatabasePage({
         )}
       </p>
       {session.role === "owner" && <PcLocalReadOnlyPanel adminPath={ADMIN_PATH} />}
+      {session.role === "owner" && <PcScheduledFullBackupPanel username={session.username} />}
       <DatabaseBackendSwitcher pcLocalSite={isPcLocalServer()} ownerUsername={session.role === "owner" ? session.username : undefined} />
       <DatabaseBrowser />
     </div>

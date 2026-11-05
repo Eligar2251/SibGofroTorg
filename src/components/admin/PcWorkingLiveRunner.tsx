@@ -1,8 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { isAdminDatabasePath } from "@/lib/admin-database-path";
 
 /** The website itself updates its PC JSON while an owner tab is open. */
-export function PcWorkingLiveRunner() {
+export function PcWorkingLiveRunner({adminPath}:{adminPath:string}) {
+  const pathname=usePathname();
   const [error,setError]=useState("");
   useEffect(()=>{
     let stopped=false, enabled=false, running=false, lastError=0, lastPrepare=0;
@@ -41,5 +44,5 @@ export function PcWorkingLiveRunner() {
     const timer=window.setInterval(()=>void tick(),5000),configTimer=window.setInterval(()=>void refresh(),30000);
     return ()=>{stopped=true;clearInterval(timer);clearInterval(configTimer);window.removeEventListener('sgt-pc-working-live',update)};
   },[]);
-  return error?<div role="alert" style={{padding:10,background:'#fff4e5',color:'#762d0a'}}>Локальная копия ПК: {error}</div>:null;
+  return error && isAdminDatabasePath(pathname,adminPath)?<div role="alert" style={{padding:10,background:'#fff4e5',color:'#762d0a'}}>Локальная копия ПК: {error}</div>:null;
 }

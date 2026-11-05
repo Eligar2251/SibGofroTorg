@@ -131,7 +131,7 @@ export default async function AdminLayout({
         >
           {pcLocalRoute().kind === "readonly" && <div role="status" style={{padding:12,background:"#fff4e5",color:"#762d0a",fontWeight:600}}>Локальная копия на этом ПК: только чтение. Данные могут быть устаревшими; изменения и синхронизация отключены.</div>}
           {pcLocalRoute().kind === "error" && <div role="alert" style={{padding:12,background:"#fff4e5",color:"#762d0a"}}>Ошибка настроек локального сервера: доступ к БД остановлен.</div>}
-          {isPcLocalServer() && session?.role === "owner" && pcLocalRoute().kind === "remote" && <PcWorkingLiveRunner />}
+          {isPcLocalServer() && session?.role === "owner" && pcLocalRoute().kind === "remote" && <PcWorkingLiveRunner adminPath={ADMIN_PATH} />}
           <AdminShell
             adminPath={ADMIN_PATH}
             pcLocalSite={isPcLocalServer()}
