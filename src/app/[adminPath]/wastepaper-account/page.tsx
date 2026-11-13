@@ -13,6 +13,7 @@ import { notFound, redirect } from "next/navigation";
 import { verifySession } from "@/lib/auth";
 import { isFullAccessRole } from "@/lib/admin-rbac";
 import { getWpDashboardData, type WpDashboardData } from "@/lib/wastepaper-account";
+import { pcLocalRoute, pcLocalStatus } from "@/lib/pc-local-runtime";
 import {
   buildWpTypeLabels,
   buildWpTransportQueue,
@@ -60,9 +61,11 @@ export default async function WastepaperAccountPage({
   // (например, миграция ещё не применена) показываем пустой модуль,
   // а не 500: текст ошибки пишем в консоль сервера.
   let data: WpDashboardData;
+  let loadError: string | null = null;
   try {
     data = await getWpDashboardData();
   } catch (error) {
+    loadError = error instanceof Error ? error.message : String(error);
     console.error(
       "wastepaper-account: не удалось загрузить данные (применена ли миграция migration_wastepaper_account.sql?):",
       error
@@ -113,7 +116,31 @@ export default async function WastepaperAccountPage({
     typeLabels: wpTypeLabels,
   });
 
+  // Локальный режим включён: объясняем макулатурщику, откуда данные и что
+  // сейчас недоступно, вместо молчаливого пустого списка.
+  const route = pcLocalRoute();
+  const local = pcLocalStatus();
   return (
+    <>
+      {route.kind === "readonly" && (
+        <div role="status" style={{ padding: "10px 12px", border: "1px solid #f0c36d", background: "#fff8e6", borderRadius: 10, marginBottom: 12, fontSize: 13 }}>
+          <strong>Работа от локальной копии на этом ПК.</strong> Приёмы, сдачи, перевозки, платежи и справочники
+          читаются из файла {local.configured ? `${local.root} \ pc-${local.computerId} \ sgt-working-db.json` : "локальной копии"} —
+          раздел работает, даже когда база и интернет недоступны. Добавление и правка документов на время такого
+          просмотра выключены, чтобы ничего не потерялось: проведите их после возврата к Supabase.
+          Резервные копии этих же данных (JSON и полный SQL-дамп) — в разделе «База данных».
+        </div>
+      )}
+      {route.kind === "error" && (
+        <div role="alert" className="admin-error" style={{ marginBottom: 12 }}>
+          Локальная копия настроена неверно и потому отключена: {route.message}. Данные не изменены.
+        </div>
+      )}
+      {loadError && (
+        <div role="alert" style={{ padding: "10px 12px", border: "1px solid #d29", background: "#fff0f3", borderRadius: 10, marginBottom: 12, fontSize: 13 }}>
+          Данные макулатуры не загрузились, поэтому показан пустой раздел: {loadError}
+        </div>
+      )}
     <WastepaperAccountManager
       adminPath={ADMIN_PATH}
       initialTab={initialTab}
@@ -135,5 +162,6 @@ export default async function WastepaperAccountPage({
       stockAdjustments={data.stockAdjustments}
       accountTransfers={data.accountTransfers}
     />
+    </>
   );
 }

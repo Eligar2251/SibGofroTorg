@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/auth";
 import { captureFullSnapshot, validateFullSnapshot, effectiveSource, restoreFullSnapshotTargets, isFullBackupRunning } from "@/lib/full-backup";
-import { assertPcOwner, initializePcLocal, isPcLocalServer, pcLocalStatus, readConfiguredPcSnapshot, readConfiguredPcStore, setPcLocalMode, setPcLiveDisabled, setPcArchivesEnabled, pcLocalRoute, changePcRoot, defaultPcDownloadsRoot, restoreConfiguredPcSnapshot } from "@/lib/pc-local-runtime";
+import { assertPcOwner, initializePcLocal, isPcLocalServer, pcLocalStatus, readConfiguredPcSnapshot, readConfiguredPcStore, setPcLocalMode, setPcLiveDisabled, setPcArchivesEnabled, pcLocalRoute, changePcRoot, writePcSqlDumpFiles, defaultPcDownloadsRoot, restoreConfiguredPcSnapshot } from "@/lib/pc-local-runtime";
 import { resolveSupabaseCredentials } from "@/lib/db-runtime-config";
 import { createDirectSupabaseClient } from "@/lib/supabase-server-engine";
 import { readFullBackupSettings } from "@/lib/full-backup-settings";
@@ -84,6 +84,7 @@ export async function POST(req:NextRequest) {
       return result(initializePcLocal(body.root,body.source,snapshot));
     }
     if(body.action==="change_root") return result(changePcRoot(body.root));
+    if(body.action==="sql_dump") return result(writePcSqlDumpFiles());
     if(body.action==="archives" && typeof body.enabled==="boolean") return result(setPcArchivesEnabled(body.enabled));
     if(body.action==="live_disable") return result(setPcLiveDisabled());
     if(body.action==="live_enable") {

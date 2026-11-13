@@ -56,7 +56,8 @@ test('downloads without a folder, remains separate per account/source, and never
   savePcScheduleSettings('owner',{...cfg,enabled:true,autoActive:true});
   await runPcScheduledBackups('owner',new Date('2026-11-04T11:00:00Z'));
   assert.match(getPcScheduleStatus('owner').last,/запрошена загрузка.*не подтверждено/);
-  assert.match(downloads.at(-1),/sgt-scheduled-primary/);
+  assert.match(downloads.at(-2),/sgt-scheduled-primary.*\.json$/,'JSON-копия запрошена');
+  assert.match(downloads.at(-1),/sgt-scheduled-primary.*\.sql$/,'тот же снимок выгружен и в SQL');
   const key=downloadCopyKey('owner',cfg.computerId,'primary'), cached=await readDownloadCopy(key);
   const records=idb.dbs.get('sgt-pc-download-copy-v1').get('snapshots');
   records.set(key,{...cached,text:'externally altered'});
