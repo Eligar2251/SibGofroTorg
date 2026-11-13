@@ -107,6 +107,7 @@ export default async function WastepaperAccountPage({
     price: p.price,
     priceWholesale: p.priceWholesale,
     stockQty: p.stockQty,
+    isService: (p as any).isService === true,
   }));
   const wpTypeLabels = buildWpTypeLabels(data.products);
   const pendingWpDocs = buildWpTransportQueue({

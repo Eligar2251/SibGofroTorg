@@ -92,6 +92,8 @@ interface DealItemDraft {
   quantity: number | "";
   price: number | "";
   stockQty: number;
+  /** Услуга: остаток не проверяем и склад по ней не двигаем. */
+  isService?: boolean;
   /** Цена подставлена автоматически (со скидкой уровня покупателя) —
       при смене покупателя пересчитывается; ручная правка снимает флаг. */
   autoPrice?: boolean;
@@ -496,7 +498,13 @@ export function DealForm({
     return priceTierDiscountPercent(normalizePriceTier(found.priceTier), tierDiscounts);
   }
 
-  function addItem(p: PickerProduct) {
+  function addItem(p: PickerProduct, pickedQty?: number) {
+    // Количество передаётся из «быстрого создания» позиции (там же задаётся
+    // и цена) — для обычного выбора из списка его нет.
+    const startQty =
+      pickedQty != null && Number.isFinite(pickedQty) && pickedQty > 0
+        ? Math.round(pickedQty * 1000) / 1000
+        : 1;
     setItems((prev) => {
       const existing = prev.find((it) => it.productId === p.id);
       if (existing) {
@@ -524,15 +532,16 @@ export function DealForm({
           productId: p.id,
           name: p.name,
           sku: p.sku,
-          quantity: 1,
+          quantity: startQty,
           price: basePrice != null ? applyTierDiscount(basePrice, discount) : "",
           stockQty: p.stockQty,
+          isService: Boolean((p as any).isService),
           autoPrice: basePrice != null,
           isCuttable: isCut,
           metersPerRoll: mpr,
           cutPricePerMeter: pricePerMeter,
           unit: (isCut ? 'roll' : 'piece') as any,
-          baseQty: 1,
+          baseQty: startQty,
         },
       ];
     });
@@ -835,8 +844,12 @@ export function DealForm({
               </details>
 
               <div className="admin-field">
-                <label className="admin-label">Товары</label>
-                <ProductPicker products={products} onPick={addItem} />
+                <label className="admin-label">Товары и услуги</label>
+                <ProductPicker
+                  products={products}
+                  onPick={addItem}
+                  createLabel="Новая позиция (товар или услуга)"
+                />
               </div>
 
               {items.length > 0 && (
@@ -866,8 +879,11 @@ export function DealForm({
                         (s: any) => s.productId === it.productId
                       )?.shippedQty || 0;
                     const needFree = Math.max(0, baseRequested - Number(shippedForItem || 0));
-                    const overFree = needFree > freeQty + 0.0009;
-                    const stockHint = it.isCuttable
+                    // Услуга на складе не лежит: «не хватает» по ней быть не может.
+                    const overFree = !it.isService && needFree > freeQty + 0.0009;
+                    const stockHint = it.isService
+                      ? 'услуга · склад не трогает'
+                      : it.isCuttable
                       ? `${formatCutStock(it.stockQty, it.metersPerRoll)}${freeBreakdown ? ` · своб. ${formatCutStock(freeQty, it.metersPerRoll)}` : ''}`
                       : `ост. ${it.stockQty}`;
                     return (

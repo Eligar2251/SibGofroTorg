@@ -304,11 +304,18 @@ async function applyProductStockDeltas(
   const now = new Date().toISOString();
   for (const { productId, delta } of deltas) {
     if (!productId || Math.abs(delta) < 1e-6) continue;
-    const { data: prod, error: selErr } = await db
+    let { data: prod, error: selErr } = await db
       .from("products")
-      .select("id, name, stock_qty")
+      .select("id, name, stock_qty, is_service")
       .eq("id", productId)
       .maybeSingle();
+    if (selErr && /is_service/i.test(String((selErr as any).message || ""))) {
+      ({ data: prod, error: selErr } = await db
+        .from("products")
+        .select("id, name, stock_qty")
+        .eq("id", productId)
+        .maybeSingle());
+    }
     if (selErr) {
       throw new Error(
         `Не удалось прочитать остаток товара (${productId}): ${selErr.message}`
@@ -317,6 +324,8 @@ async function applyProductStockDeltas(
     if (!prod) {
       throw new Error(`Товар не найден (${productId})`);
     }
+    // Услуга складу не подчиняется: ни списания, ни приходования.
+    if ((prod as any).is_service === true) continue;
     const newQty = roundQty(Number(prod.stock_qty || 0) + delta);
     const { error: updErr } = await db
       .from("products")
@@ -374,13 +383,22 @@ export async function createWarehouseAssembly(
     throw new Error("Выберите исходный и получаемый товары");
   }
 
-  const [{ data: productRows, error: prodErr }, latestSupplierPrices] =
-    await Promise.all([
-      db
-        .from("products")
-        .select("id, name, sku, stock_qty, purchase_price, price"),
-      getLatestSupplierReceiptPrices(),
-    ]);
+  const [productQuery, latestSupplierPrices] = await Promise.all([
+    db
+      .from("products")
+      .select("id, name, sku, stock_qty, purchase_price, price, is_service"),
+    getLatestSupplierReceiptPrices(),
+  ]);
+  let productRows: any[] | null = productQuery.data as any;
+  let prodErr: any = productQuery.error;
+  if (prodErr && /is_service/i.test(String(prodErr.message || ""))) {
+    // БД без supabase/migration_product_services.sql — читаем без флага услуги.
+    const retry = await db
+      .from("products")
+      .select("id, name, sku, stock_qty, purchase_price, price");
+    productRows = retry.data as any;
+    prodErr = retry.error;
+  }
 
   if (prodErr) {
     throw new Error(`Не удалось загрузить товары: ${prodErr.message}`);
@@ -401,6 +419,7 @@ export async function createWarehouseAssembly(
       stockQty: Number((row as any).stock_qty || 0),
       purchasePrice,
       price: (row as any).price != null ? Number((row as any).price) : null,
+      isService: (row as any).is_service === true,
     });
     if (!latestSupplierPrices[id] && purchasePrice != null && purchasePrice > 0) {
       latestSupplierPrices[id] = {

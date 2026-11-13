@@ -103,6 +103,8 @@ interface ProductData {
   promoLabelTextColor?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
+  /** Формат позиции: TRUE — услуга, а не складской товар. */
+  isService?: boolean | null;
   isCuttable?: boolean | null;
   cutMetersPerRoll?: number | null;
   cutPricePerMeter?: number | null;
@@ -239,6 +241,7 @@ export function ProductFormClient({
   const [madeToOrderMinQty, setMadeToOrderMinQty] = useState<string>(
     product?.madeToOrderMinQty != null ? String(product.madeToOrderMinQty) : ""
   );
+  const [isServiceChecked, setIsServiceChecked] = useState(product?.isService ?? false);
   const [isCuttableChecked, setIsCuttableChecked] = useState(product?.isCuttable ?? false);
   const [cutMetersPerRoll, setCutMetersPerRoll] = useState<string>(
     product?.cutMetersPerRoll != null ? String(product.cutMetersPerRoll) : "100"
@@ -416,9 +419,15 @@ export function ProductFormClient({
     const safeStockQty = Number.isFinite(parsedStock) ? parsedStock : 0;
 
     const body = {
-      stockQty: safeStockQty,
-      stockWarnQty:
-        data.get("stockWarnQty") !== "" ? Number(data.get("stockWarnQty")) : null,
+      // У услуги склада нет. Остаток не переписываем (иначе отметка
+      // «услуга» обнулила бы реальные цифры), и на сайт её не пускаем.
+      ...(isServiceChecked
+        ? {}
+        : {
+            stockQty: safeStockQty,
+            stockWarnQty:
+              data.get("stockWarnQty") !== "" ? Number(data.get("stockWarnQty")) : null,
+          }),
       name: data.get("name"),
       sku: data.get("sku") || null,
       // Штрихкод из контролируемого поля (форма его всегда
@@ -448,7 +457,7 @@ export function ProductFormClient({
       packQty: data.get("packQty") ? Number(data.get("packQty")) : null,
       volume: calculatedVolume,
       note: data.get("note") || null,
-      inStock: Math.floor(safeStockQty) >= 1,
+      ...(isServiceChecked ? {} : { inStock: Math.floor(safeStockQty) >= 1 }),
       isPromo: data.get("isPromo") === "on",
       promoLabel: cleanPromoLabel || null,
       tags,
@@ -456,6 +465,9 @@ export function ProductFormClient({
       promoLabelTextColor: cleanPromoLabel ? promoLabelTextColor : null,
       madeToOrder: madeToOrderChecked,
       madeToOrderMinQty: madeToOrderChecked && madeToOrderMinQty !== "" ? Math.max(1, Math.floor(Number(madeToOrderMinQty) || 1)) : null,
+      isService: isServiceChecked,
+      // Услуги — внутренние позиции учёта: на витрине их быть не должно.
+      isVisible: isServiceChecked ? false : data.get("isVisible") === "on",
       isCuttable: isCuttableChecked,
       cutMetersPerRoll: isCuttableChecked && cutMetersPerRoll !== "" ? Math.max(0.01, Number(cutMetersPerRoll) || 0) : null,
       cutPricePerMeter: isCuttableChecked && cutPricePerMeter !== "" ? Math.max(0, Number(cutPricePerMeter) || 0) : null,
@@ -465,7 +477,6 @@ export function ProductFormClient({
         ? Number(data.get("discountValue"))
         : null,
       discountBadge: data.get("discountBadge") || null,
-      isVisible: data.get("isVisible") === "on",
       isFeatured,
       isSale: data.get("isSale") === "on",
       images,
@@ -1279,16 +1290,52 @@ export function ProductFormClient({
                 label: "Распродажа остатков (показывать в секции на главной)",
                 defaultChecked: product?.isSale ?? false,
               },
-            ].map((flag) => (
-              <label key={flag.name} className="admin-check">
-                <input
-                  name={flag.name}
-                  type="checkbox"
-                  defaultChecked={flag.defaultChecked}
-                />
-                <span>{flag.label}</span>
-              </label>
-            ))}
+            ].map((flag) => {
+              const lockedByService = flag.name === "isVisible" && isServiceChecked;
+              return (
+                <label key={flag.name} className="admin-check">
+                  <input
+                    name={flag.name}
+                    type="checkbox"
+                    defaultChecked={flag.defaultChecked}
+                    disabled={lockedByService}
+                  />
+                  <span>
+                    {flag.label}
+                    {lockedByService && (
+                      <span style={{ color: "var(--adm-sand)", fontSize: 12 }}>
+                        {" "}— у услуги недоступно
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+
+          <div
+            className="admin-field"
+            style={{
+              marginTop: 12,
+              padding: 14,
+              border: "1px solid var(--adm-border)",
+              borderRadius: 10,
+              background: isServiceChecked ? "rgba(16,122,87,0.07)" : "transparent",
+            }}
+          >
+            <label className="admin-check" style={{ marginBottom: 8 }}>
+              <input
+                type="checkbox"
+                checked={isServiceChecked}
+                onChange={(e) => setIsServiceChecked(e.target.checked)}
+              />
+              <span style={{ fontWeight: 700 }}>Это услуга, а не складской товар</span>
+            </label>
+            <p className="admin-hint" style={{ margin: 0 }}>
+              {isServiceChecked
+                ? "Позиция с ценой: её можно указывать в поставке и в заказе, но остаток на складе, резерв, инвентаризация и себестоимость склада её не касаются — при проведении документа склад не меняется. Размеры и артикул заполнять не нужно, на сайте позиция не показывается. Подходит для резки, доставки, упаковки, нанесения логотипа, аренды."
+                : "Включите, если позиция — работа или услуга, а не коробку, которую кладовщик считает на складе."}
+            </p>
           </div>
 
           <div

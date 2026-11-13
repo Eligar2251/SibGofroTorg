@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS products (
   tags TEXT[] DEFAULT '{}'::text[],
   promo_label_color TEXT,
   promo_label_text_color TEXT,
+  -- Формат позиции: FALSE — складской товар, TRUE — услуга (остаток не ведётся).
+  is_service BOOLEAN DEFAULT FALSE,
   made_to_order BOOLEAN DEFAULT FALSE,
   made_to_order_min_qty INT,
   -- Вариативность: продажа рулонами и метрами (отмотка)
@@ -132,6 +134,7 @@ CREATE INDEX IF NOT EXISTS idx_products_featured ON products(is_featured) WHERE 
 CREATE INDEX IF NOT EXISTS idx_products_promo ON products(is_promo) WHERE is_promo = TRUE;
 CREATE INDEX IF NOT EXISTS idx_products_tags ON products USING GIN (tags);
 CREATE INDEX IF NOT EXISTS idx_products_in_stock ON products(in_stock) WHERE in_stock = TRUE;
+CREATE INDEX IF NOT EXISTS idx_products_is_service ON products(is_service) WHERE is_service = TRUE;
 DROP TRIGGER IF EXISTS trg_products_updated ON products;
 CREATE TRIGGER trg_products_updated BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -5206,6 +5209,36 @@ END $$;
 -- Проверка: что сейчас в публикации
 -- SELECT tablename FROM pg_publication_tables
 --  WHERE pubname = 'supabase_realtime' ORDER BY tablename;
+
+
+-- =====================================================================
+-- МИГРАЦИЯ: migration_product_services.sql
+-- =====================================================================
+-- =========================================================
+-- Миграция: формат позиции — ТОВАР или УСЛУГА
+--
+-- Услуга (резка, доставка, упаковка, нанесение логотипа, аренда склада ...)
+-- участвует в документах учёта — поставке и заказе — как позиция с ценой,
+-- но НЕ является складским товаром:
+--   • остаток не заводится и не меняется при проведении документов;
+--   • не попадает в «Остатки», резерв, инвентаризацию и себестоимость склада;
+--   • не публикуется на сайте (карточка внутренняя).
+--
+-- Только ALTER/CREATE INDEX — без TEMP-таблиц, BEGIN/COMMIT и SET LOCAL,
+-- чтобы скрипт можно было вставить в Supabase → SQL Editor на пул-режиме.
+-- Идемпотентен: повторно запускать безопасно.
+-- =========================================================
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS is_service BOOLEAN DEFAULT FALSE;
+
+-- Быстрый отбор услуг (их мало, индекс частичный — на товары не разрастается).
+CREATE INDEX IF NOT EXISTS idx_products_is_service ON products(is_service) WHERE is_service = TRUE;
+
+COMMENT ON COLUMN products.is_service IS
+  'TRUE — позиция является услугой, а не складским товаром: остаток не ведётся, на сайте не показывается';
+
+-- Для справки: сколько услуг уже заведено (можно выполнить отдельно).
+-- SELECT count(*) FROM products WHERE is_service = TRUE;
 
 
 -- =====================================================================

@@ -8,6 +8,19 @@ import {
   normalizeProductImages,
   firstImageUrl,
 } from "@/lib/supabase-queries";
+import { normalizeServiceFlag } from "@/lib/product-service";
+
+/**
+ * Позиции-услуги. Склад по ним не ведётся, поэтому cell «остаток» в массовом
+ * редакторе таких строк не касается — иначе у услуги появился бы фантомный
+ * склад, который потом невозможно ни списать, ни инвентаризировать.
+ * БД без supabase/migration_product_services.sql → пустой набор (как раньше).
+ */
+async function serviceProductIds(db: any): Promise<Set<string>> {
+  const { data, error } = await db.from("products").select("id").eq("is_service", true);
+  if (error) return new Set();
+  return new Set((data || []).map((row: any) => String(row.id)));
+}
 
 function isMissingOptionalProductColumnError(err: any): boolean {
   if (!err) return false;
@@ -73,6 +86,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const db = getAdminDb();
+    const serviceIds = await serviceProductIds(db);
     const fieldMap: Record<string, string> = {
       name: "name", price: "price", purchasePrice: "purchase_price", priceWholesale: "price_wholesale",
       minWholesaleQty: "min_wholesale_qty", dimensionLength: "dimension_length",
@@ -87,6 +101,7 @@ export async function PUT(request: NextRequest) {
       discountType: "discount_type", discountValue: "discount_value", discountBadge: "discount_badge",
       madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
       isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
+      isService: "is_service",
       images: "images", imageUrl: "image_url",
     };
 
@@ -103,6 +118,13 @@ export async function PUT(request: NextRequest) {
         const safeStock = Number.isFinite(parsedStock) ? parsedStock : 0;
         payload.stock_qty = safeStock;
         payload.in_stock = Math.floor(safeStock) >= 1;
+      }
+      if (rest.isService !== undefined) {
+        payload.is_service = normalizeServiceFlag(rest.isService);
+      }
+      if (payload.is_service === true || serviceIds.has(p.id)) {
+        delete payload.stock_qty;
+        delete payload.in_stock;
       }
       if ("category_id" in payload && !payload.category_id) {
         payload.category_id = null;
@@ -143,6 +165,16 @@ export async function PUT(request: NextRequest) {
       ) {
         delete payload.purchase_price;
         delete payload.barcode;
+        ({ error } = await db.from("products").update(payload).eq("id", p.id));
+      }
+      if (
+        error &&
+        "is_service" in payload &&
+        /is_service/i.test(String(error.message || "")) &&
+        (error.code === "PGRST204" || error.code === "42703")
+      ) {
+        // Миграция услуг ещё не применена — остальное сохраняем без флага.
+        delete payload.is_service;
         ({ error } = await db.from("products").update(payload).eq("id", p.id));
       }
       if (error) throw error;
