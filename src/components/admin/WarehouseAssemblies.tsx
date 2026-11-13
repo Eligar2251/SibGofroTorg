@@ -175,6 +175,13 @@ function AssemblyEditorForm({
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
 
+  // Комплектация — складская операция: услуги в ней участвовать не могут
+  // (остатка у них нет), поэтому в список позиций их не добавляем.
+  const stockProducts = useMemo(
+    () => products.filter((p) => !p.isService),
+    [products]
+  );
+
   const productsById = useMemo(() => {
     const map = new Map<string, PickerProduct>();
     for (const p of products) map.set(p.id, p);
@@ -686,7 +693,8 @@ function AssemblyEditorForm({
                       </div>
                     ) : (
                       <ProductPicker
-                        products={products}
+                        products={stockProducts}
+                        allowCreate={false}
                         onPick={(picked) => {
                           setSpentRows((prev) =>
                             prev.map((r, i) =>
@@ -962,7 +970,8 @@ function AssemblyEditorForm({
                       </div>
                     ) : (
                       <ProductPicker
-                        products={products}
+                        products={stockProducts}
+                        allowCreate={false}
                         onPick={(picked) => {
                           setProducedRows((prev) =>
                             prev.map((r, i) =>

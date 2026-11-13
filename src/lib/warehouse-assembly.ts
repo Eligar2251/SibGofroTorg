@@ -96,6 +96,8 @@ export interface AssemblyProductSnapshot {
   stockQty: number;
   purchasePrice: number | null;
   price?: number | null;
+  /** Услуга вместо складского товара — в комплектации участвовать не может. */
+  isService?: boolean;
 }
 
 export interface AssemblyPreset {
@@ -292,6 +294,17 @@ export function prepareAssemblyPlan(params: {
     throw new Error(
       "Выберите получаемую позицию и укажите количество выхода больше нуля"
     );
+  }
+
+  // Комплектация — это складская операция: пересобрать «услугу» нельзя,
+  // и приходовать/списывать по ней остаток нечего.
+  for (const line of [...spentDraft, ...producedDraft]) {
+    const prod = params.productsById.get(line.productId);
+    if (prod?.isService === true) {
+      throw new Error(
+        `«${prod.name}» — услуга, а не складской товар: в комплектации её указать нельзя`
+      );
+    }
   }
 
   const spentIds = new Set(spentDraft.map((item) => item.productId));

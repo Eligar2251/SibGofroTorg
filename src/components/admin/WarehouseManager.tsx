@@ -453,7 +453,7 @@ export function WarehouseManager({
   focusProductId,
   focusPaymentId,
   focusTransportId,
-  stock,
+  stock: stockRowsAll,
   receipts,
   deals,
   payments,
@@ -483,6 +483,27 @@ export function WarehouseManager({
   companyAddress,
   tierDiscounts = { special: 5, exclusive: 10 },
 }: WarehouseManagerProps) {
+  // ── Услуги (products.is_service) — не складские позиции ──────────────
+  // В остатках, статистике склада, резерве и инвентаризации они не участвуют:
+  // у услуги нет количества на складе, и нулевой «остаток» только мешал бы.
+  // При этом в пикерах позиций (поставка, заказ, комплектация) услуги
+  // остаются — их можно указывать в документах.
+  const stockRows = useMemo(
+    () => stockRowsAll.filter((row) => !row.isService),
+    [stockRowsAll]
+  );
+  const stock = stockRows;
+  /** id позиций-услуг: по ним не считаем дефицит и резерв. */
+  const serviceProductIds = useMemo(
+    () => new Set(stockRowsAll.filter((row) => row.isService).map((row) => row.id)),
+    [stockRowsAll]
+  );
+  /** Все позиции, включая услуги — для подписей в позициях документов. */
+  const productByIdAll = useMemo(
+    () => new Map(stockRowsAll.map((row) => [row.id, row])),
+    [stockRowsAll]
+  );
+
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [stockSub, setStockSub] = useState<string>(initialSub);
 
@@ -1990,6 +2011,8 @@ export function WarehouseManager({
         isReserved: Boolean(d.isReserved),
         items: d.items.map((item: any) => {
           const prod = productById.get(item.productId) as any;
+          // Услуги живут в productByIdAll: в складских остатках их нет.
+          const anyProd = (productByIdAll.get(item.productId) || {}) as any;
           const isCut = Boolean(prod?.isCuttable || item.isCuttable);
           const unit = isCut ? (item.unit || "roll") : "piece";
           const metersPerRoll = item.metersPerRoll || prod?.cutMetersPerRoll || null;
@@ -2006,6 +2029,7 @@ export function WarehouseManager({
             quantity: saleQty,
             price: item.salePrice != null ? item.salePrice : item.price,
             stockQty: stockById.get(item.productId) ?? 0,
+            isService: Boolean(anyProd.isService),
             isCuttable: Boolean(prod?.isCuttable),
             metersPerRoll,
             cutPricePerMeter: prod?.cutPricePerMeter || item.salePrice || null,
@@ -2016,7 +2040,7 @@ export function WarehouseManager({
       });
     }
     return map;
-  }, [deals, productById, stockById, dealPaymentMethod]);
+  }, [deals, productById, productByIdAll, stockById, dealPaymentMethod]);
   const receiptById = useMemo(() => new Map(receipts.map((r) => [String(r.id), r])), [receipts]);
   // Связь «поставка → заказ» хранится на приходном ордере. Учитываем только
   // активные (ещё не проведённые) поставки: проведённый товар уже находится
@@ -3252,6 +3276,7 @@ export function WarehouseManager({
                 const shortage =
                   d.status === "new"
                     ? d.items
+                        .filter((it: any) => !serviceProductIds.has(String(it?.productId || "")))
                         .map((it) => {
                           const stock = stockById.get(it.productId) ?? 0;
                           const otherReserve = reservedByOthers(it.productId);

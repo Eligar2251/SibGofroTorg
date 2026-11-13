@@ -38,6 +38,7 @@ export default async function WarehouseImportPage({
     cutMetersPerRoll: (p as any).cutMetersPerRoll ?? null,
     cutPricePerMeter: (p as any).cutPricePerMeter ?? null,
     cutUnitName: (p as any).cutUnitName || "м",
+    isService: (p as any).isService === true,
   }));
 
   const counterpartyOptions: CounterpartyOption[] = counterpartyRows.map(

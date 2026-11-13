@@ -72,6 +72,7 @@ export default async function AdminDeliveriesPage({
       price: p.price,
       priceWholesale: p.priceWholesale,
       stockQty: p.stockQty,
+      isService: (p as any).isService === true,
     }));
   } catch (e) {
     console.error("deliveries page:", e);
