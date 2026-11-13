@@ -5,6 +5,14 @@ export function PcLocalReadOnlyPanel({adminPath}:{adminPath:string}) {
   const [status,setStatus]=useState<Status|null>(null),[root,setRoot]=useState(""),[source,setSource]=useState<"primary"|"secondary">("primary"),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
   useEffect(()=>{const refresh=()=>{fetch('/api/admin/database/pc-local',{cache:'no-store'}).then(async r=>{const data=await r.json();if(r.ok)setStatus(data);else {setStatus({available:true,error:data.error});setMessage(data.error||'Ошибка');}}).catch(()=>{setStatus({available:true});setMessage('Не удалось проверить сайт на этом ПК.')})};refresh();window.addEventListener('sgt-pc-local-status',refresh);return ()=>window.removeEventListener('sgt-pc-local-status',refresh)},[]);
   if(!status?.available) return null;
+  async function dumpSql() {
+    setBusy(true);setMessage('');
+    try {
+      const res=await fetch('/api/admin/database/pc-local',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sql_dump'})});
+      const data=await res.json();if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);
+      setMessage(`SQL-дамп записан: ${data.files.map((f:string)=>f.split(/[\\/]/).pop()).join(', ')} · ${data.totalRows} строк.${data.warnings?.length?` Замечания: ${data.warnings.join('; ')}`:''}`);
+    } catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
+  }
   async function run(body:object) {
     setBusy(true);setMessage('');
     try {const res=await fetch('/api/admin/database/pc-local',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await res.json();if(!res.ok)throw new Error(data.error||`HTTP ${res.status}`);setStatus(data);window.dispatchEvent(new Event('sgt-pc-working-live'));if('mode' in body) window.location.reload();else setMessage('Настройки сохранены. Локальная копия остаётся доступной только для чтения.');}
@@ -28,6 +36,10 @@ export function PcLocalReadOnlyPanel({adminPath}:{adminPath:string}) {
         <button className="admin-btn admin-btn--outline admin-btn--sm" disabled={busy || !status.source} onClick={async()=>{if(!window.confirm('Подготовить журнал изменений на выбранной Supabase? Он включится для всей базы, будет записывать журнал при каждом изменении и может временно блокировать таблицы. Сначала проверьте на тестовой базе и выполняйте вне рабочего времени.'))return;setBusy(true);try{const r=await fetch('/api/admin/database/pc-incremental',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:status.source,action:'enable'})});const data=await r.json();if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);setMessage('Журнал подготовлен. Автообновление проверит его в течение минуты.');window.dispatchEvent(new Event('sgt-pc-working-live'));}catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}}>Подготовить журнал выбранной Supabase</button>
         <button className="admin-btn admin-btn--outline admin-btn--sm" disabled={busy} onClick={()=>{if(window.confirm('Заменить чистую локальную копию актуальным снимком выбранной Supabase и включить автообновление? Нужно заранее подготовить журнал отслеживания на этой Supabase. Локальная запись и обратная синхронизация не работают.'))run({action:'live_enable',confirmReplace:true})}}>Подготовить и включить автообновление</button>
         <button className="admin-btn admin-btn--outline admin-btn--sm" disabled={busy || (!status.liveEnabled && !status.autoManaged)} onClick={()=>run({action:'live_disable'})}>Остановить автообновление на этом ПК</button>
+      </div>}
+      {status.ready && <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+        <button className="admin-btn admin-btn--outline admin-btn--sm" disabled={busy} onClick={dumpSql}>Полный SQL-дамп в папку на ПК</button>
+        <span style={{fontSize:12}}>Рядом с sgt-working-db.json появятся sgt-full-data-current.sql и датированный файл: их можно вставить в Supabase → SQL Editor, если база или интернет недоступны. Дамп берётся из локальной копии, поэтому сеть для него не нужна.</span>
       </div>}
       <label><input type="checkbox" checked={!!status.archivesEnabled} disabled={busy || !status.ready} onChange={e=>{const enabled=e.target.checked;if(!enabled || window.confirm('Сохранять архивы локальной копии в 18:00 и 23:00 по Новосибирску и ежедневный файл в 18:00 по Москве? Сайт на этом ПК и диск должны работать; архив содержит персональные данные.'))run({action:'archives',enabled})}} /> Сохранять архивы в 18:00 и 23:00 (Новосибирск) и ежедневный файл в 18:00 (Москва)</label>
       <div style={{fontSize:12}}>Архивы сохраняются сайтом на этом ПК в подпапку scheduled; файл sgt-pc-daily-msk.json перезаписывается ежедневно в 18:00 по Москве, если диск доступен: прежние архивы — в первые 10 минут, ежедневный московский файл — при первом запуске после 18:00 в тот же день. Архив содержит локальный снимок, который может отставать от Supabase.</div>

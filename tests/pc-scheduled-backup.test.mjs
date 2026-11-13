@@ -89,3 +89,56 @@ test('independent accounts and sources, retry failures without recording false s
     assert.deepEqual(fetches,['/api/admin/database/pc-local?download=1']);
   } finally { for (const [key, desc] of Object.entries(old)) desc ? Object.defineProperty(globalThis,key,desc) : delete globalThis[key]; }
 });
+
+test('local save writes the SQL data dump next to the JSON copy of the same snapshot', async () => {
+  const saved = new Map(), local = new Map(), files = new Map();
+  const full = {
+    app: 'SibGofroTorg', backupFormat: 'sgt-public-v1', version: 1, exportedAt: '2026-11-04T10:00:00Z', totalRows: 1,
+    tables: { products: [{ id: 7, name: "Короб 'Д' 600×400" }] },
+    columns: { products: [{ name: 'id', type: 'bigint', generated: '', identity: 'a' }, { name: 'name', type: 'text', generated: '', identity: '' }] },
+    sequences: { products: { id: { last: '7', called: true } } },
+  };
+  const old = Object.fromEntries(['window', 'localStorage', 'indexedDB', 'navigator', 'fetch'].map(k => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
+  const makeDir = prefix => ({
+    name: 'backup', queryPermission: async () => 'granted', requestPermission: async () => 'granted',
+    getDirectoryHandle: async name => makeDir(`${prefix}/${name}`),
+    getFileHandle: async name => ({ createWritable: async () => { let text = ''; return { write: async t => { text = t }, close: async () => files.set(`${prefix}/${name}`, text), abort: async () => {} }; } }),
+  });
+  try {
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: k => local.get(k) ?? null, setItem: (k, v) => local.set(k, v) } });
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { showDirectoryPicker: async () => makeDir('Z:'), dispatchEvent() {} } });
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: { request: async (_k, _o, cb) => cb({ name: 'lock' }) } } });
+    Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: { open() {
+      const req = {};
+      queueMicrotask(() => {
+        const store = {
+          get(key) { const r = {}; queueMicrotask(() => { r.result = saved.get(key); if (r.onsuccess) r.onsuccess(); if (tx.oncomplete) tx.oncomplete(); }); return r },
+          put(value, key) { const r = {}; queueMicrotask(() => { saved.set(key, value); if (r.onsuccess) r.onsuccess(); if (tx.oncomplete) tx.oncomplete(); }); return r },
+        };
+        const tx = { objectStore() { return store } };
+        req.result = { close() {}, transaction() { return tx } };
+        if (req.onsuccess) req.onsuccess();
+      });
+      return req;
+    } } });
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: async url => {
+      if (String(url).includes('pc-source')) return new Response(JSON.stringify({ localReadonly: false, source: 'primary' }));
+      if (String(url).endsWith('pc-local')) return new Response(JSON.stringify({ available: false }));
+      return new Response(JSON.stringify(full), { status: 200 });
+    } });
+    const settings = await choosePcScheduleDirectory('sql-owner');
+    savePcScheduleSettings('sql-owner', { ...settings, enabled: true, autoActive: false, sources: { primary: true, secondary: false } });
+    const messages = await savePcCurrentBackups('sql-owner');
+    assert.match(messages[0], /сохранено \+ sgt-full-current\.sql/);
+    const jsonKey = [...files.keys()].find(x => x.endsWith('/primary/sgt-full-current.json'));
+    const sqlKey = [...files.keys()].find(x => x.endsWith('/primary/sgt-full-current.sql'));
+    assert.ok(jsonKey && sqlKey, `expected JSON and SQL next to each other, got ${[...files.keys()]}`);
+    const sql = files.get(sqlKey);
+    // Дамп собран из того же снимка, что и рядом лежащий JSON.
+    assert.deepEqual(JSON.parse(files.get(jsonKey)).tables.products, full.tables.products);
+    assert.ok(sql.includes('INSERT INTO public."products"'), sql.slice(0, 200));
+    assert.ok(sql.includes("''Д''"), 'quote inside the literal must be doubled');
+    assert.ok(sql.includes('OVERRIDING SYSTEM VALUE'), sql);
+    assert.equal(files.get(sqlKey).match(/CREATE TEMP|BEGIN;|COMMIT;/g), null);
+  } finally { for (const [key, desc] of Object.entries(old)) desc ? Object.defineProperty(globalThis, key, desc) : delete globalThis[key]; }
+});

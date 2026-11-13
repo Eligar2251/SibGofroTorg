@@ -1,4 +1,5 @@
 import { requestPcDownload } from "./pc-download-backup";
+import { downloadTextFile, sqlDumpFromSnapshotText } from "./sql-dump-client";
 import { validatePublicBackup } from "./merge-public-snapshots";
 // Scheduled browser backups are separate from the server's local JSON database.
 // Defaults apply per browser profile. Files from different profiles never share a path.
@@ -118,6 +119,32 @@ export async function writePcFile(dir: any, name: string, text: string) {
   try { await stream.write(text); await stream.close(); }
   catch (e) { await stream.abort().catch(() => {}); throw e; }
 }
+
+/**
+ * Имя для загрузки браузера без выбранной папки: совпадает с `requestPcDownload`
+ * до расширения, поэтому JSON и SQL одного снимка лежат в загрузках рядом.
+ */
+function pcDownloadBase(kind: "live" | "full" | "scheduled", source: PcSource | "local", computerId: string, now: Date): string {
+  return `sgt-${kind}-${source}-${computerId.slice(0, 8)}-${now.toISOString().replace(/[:.]/g, "-")}`;
+}
+
+/**
+ * SQL-дамп рядом с JSON-копией: тот же текст снимка, поэтому оба файла
+ * описывают одно и то же состояние базы. Ошибка SQL не отменяет JSON.
+ */
+async function writeSqlBesideJson(dir: any, baseName: string, snapshotText: string): Promise<string | null> {
+  const dump = sqlDumpFromSnapshotText(snapshotText);
+  if (!dump) return null;
+  await writePcFile(dir, `${baseName}.sql`, dump.sql);
+  return `${baseName}.sql (${dump.totalRows} строк)`;
+}
+function downloadSqlBesideJson(snapshotText: string, baseName: string): string | null {
+  const dump = sqlDumpFromSnapshotText(snapshotText);
+  if (!dump) return null;
+  downloadTextFile(`${baseName}.sql`, dump.sql);
+  return `${baseName}.sql запрошено (${dump.totalRows} строк)`;
+}
+
 export async function runPcScheduledBackups(username: string, now = new Date()): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.locks) return;
   const initial = getPcScheduleSettings(username); const slot = novosibirskSlot(now) || moscowDailySlot(now);
@@ -148,12 +175,20 @@ export async function runPcScheduledBackups(username: string, now = new Date()):
         if (snapshot.app !== "SibGofroTorg" || snapshot.backupFormat !== "sgt-public-v1") throw new Error("Сервер вернул не полный бэкап");
         const stillEnabled = getPcScheduleSettings(username);
         if (!stillEnabled.enabled || (source !== "local" && !(stillEnabled.autoActive || stillEnabled.sources[source])) || stillEnabled.computerId !== settings.computerId) continue;
+        const base = slot.time === "18-00-msk" ? "sgt-full-daily-msk" : `sgt-full-${slot.date}-${slot.time}`;
         if (handle) {
           const computer = await handle.getDirectoryHandle(`pc-${settings.computerId}`, { create: true });
           const sourceDir = await computer.getDirectoryHandle(source, { create: true });
           const archives = await sourceDir.getDirectoryHandle("scheduled", { create: true });
-          await writePcFile(archives, slot.time === "18-00-msk" ? "sgt-full-daily-msk.json" : `sgt-full-${slot.date}-${slot.time}.json`, text);
-        } else { validatePublicBackup(snapshot); requestPcDownload(text,source,settings.computerId,"scheduled",now); }
+          await writePcFile(archives, `${base}.json`, text);
+          try { await writeSqlBesideJson(archives, base, text); }
+          catch (e) { errors.push(`${source === "local" ? "Локальная JSON-БД" : pcSourceLabel(source)}: SQL рядом не записан — ${e instanceof Error ? e.message : String(e)}`); }
+        } else {
+          validatePublicBackup(snapshot);
+          requestPcDownload(text,source,settings.computerId,"scheduled",now);
+          // Без папки файл уходит той же загрузкой браузера и с тем же именем, что и JSON.
+          try { downloadSqlBesideJson(text, pcDownloadBase("scheduled", source, settings.computerId, now)); } catch (e) { errors.push(`${source}: SQL-файл не запрошен — ${e instanceof Error ? e.message : String(e)}`); }
+        }
         const current = getPcScheduleStatus(username);
         savePcScheduleStatus(username, { ...current, last: `${source === "local" ? "Локальная JSON-БД" : pcSourceLabel(source)}: ${handle ? "архив записан" : "запрошена загрузка архива (сохранение не подтверждено)"} · ${slot.date} ${slot.time === "18-00-msk" ? "18:00 (Москва)" : `${slot.time.replace("-", ":")} (Новосибирск)`}`, completed: { ...current.completed, [completeKey]: key } });
       } catch (e) {
@@ -187,12 +222,21 @@ export async function savePcCurrentBackups(username: string): Promise<string[]> 
         if (snapshot.app !== "SibGofroTorg" || snapshot.backupFormat !== "sgt-public-v1") throw new Error("Сервер вернул не полный бэкап");
         const current = getPcScheduleSettings(username);
         if ((source !== "local" && !(current.autoActive || current.sources[source])) || current.computerId !== settings.computerId) throw new Error("Настройки изменились; повторите сохранение.");
-        if(root) {
+        const sqlNote: string[] = [];
+        if (root) {
           const computer = await root.getDirectoryHandle(`pc-${settings.computerId}`, { create: true });
           const dir = await computer.getDirectoryHandle(source, { create: true });
           await writePcFile(dir, "sgt-full-current.json", text);
-          messages.push(`${source === "local" ? "Локальная JSON-БД" : pcSourceLabel(source)}: сохранено`);
-        } else {validatePublicBackup(snapshot);requestPcDownload(text,source,settings.computerId,"full");messages.push(`${source === "local" ? "Локальная JSON-БД" : pcSourceLabel(source)}: запрошена загрузка (сохранение не подтверждено)`)}
+          // Тот же снимок, что и в JSON: SQL кладётся рядом, отдельным файлом.
+          try { const note = await writeSqlBesideJson(dir, "sgt-full-current", text); if (note) sqlNote.push(note); }
+          catch (e) { errors.push(`${source === "local" ? "Локальная JSON-БД" : pcSourceLabel(source)}: SQL рядом не записан — ${e instanceof Error ? e.message : String(e)}`); }
+        } else {
+          validatePublicBackup(snapshot);
+          requestPcDownload(text,source,settings.computerId,"full");
+          try { const note = downloadSqlBesideJson(text, pcDownloadBase("full", source, settings.computerId, new Date())); if (note) sqlNote.push(note); }
+          catch (e) { errors.push(`${source === "local" ? "Локальная JSON-БД" : pcSourceLabel(source)}: SQL-файл не запрошен — ${e instanceof Error ? e.message : String(e)}`); }
+        }
+        messages.push(`${source === "local" ? "Локальная JSON-БД" : pcSourceLabel(source)}: сохранено${sqlNote.length ? ` + ${sqlNote.join(", ")}` : ""}`);
       } catch (e) { errors.push(`${source === "local" ? "Локальная JSON-БД" : pcSourceLabel(source)}: ${e instanceof Error ? e.message : String(e)}`); }
     }
     const status = getPcScheduleStatus(username);

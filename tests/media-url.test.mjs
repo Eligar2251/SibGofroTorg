@@ -3,6 +3,7 @@
 // Тесты перевода внешних картинок на собственный домен (/media/...).
 // =========================================================
 
+import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -129,4 +130,38 @@ test("неизвестные источники и опасные пути не 
     null,
     "только хосты из белого списка"
   );
+});
+
+test("фото из загрузчика проходит полный путь /media → Cloudinary без блокировки CSP", () => {
+  // Ровно такую форму возвращает /api/admin/upload (result.secure_url): имя облака,
+  // image/upload/, версия, папка sibgofrotorg/products/….
+  const secureUrl =
+    "https://res.cloudinary.com/demo123/image/upload/v1763000000/sibgofrotorg/products/generated/gk-1_1763000000.png";
+  const mapped = toSameOriginMediaUrl(secureUrl);
+  assert.equal(
+    mapped,
+    "/media/cloudinary/demo123/image/upload/v1763000000/sibgofrotorg/products/generated/gk-1_1763000000.png"
+  );
+  // Имя облака из пути должно совпадать с NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+  // иначе прокси отдаёт 404 и в конструкторе фото не появится.
+  assert.equal(
+    buildUpstreamUrl("cloudinary", mapped.slice("/media/cloudinary/".length), 800, 75, "demo123"),
+    "https://res.cloudinary.com/demo123/image/upload/w_800,q_75,f_auto,c_limit/v1763000000/sibgofrotorg/products/generated/gk-1_1763000000.png"
+  );
+  assert.equal(buildUpstreamUrl("cloudinary", mapped.slice("/media/cloudinary/".length), null, null, "another-cloud"), null);
+  // Повторный вызов безопасен: уже внутренний путь не меняется.
+  assert.equal(toSameOriginMediaUrl(mapped), mapped);
+});
+
+test("конструктор фото грузит картинки только через собственный /media", () => {
+  // CSP запрещает img-src для чужих хостов (src/proxy.ts), поэтому canvas обязан
+  // получать внутренний путь — иначе загрузка в Cloudinary есть, а картинки нет.
+  const source = fs.readFileSync("src/components/admin/PhotoTemplateGenerator.tsx", "utf8");
+  const loader = /function loadImage\(src: string\)[\s\S]*?\n}/.exec(source);
+  assert.ok(loader, "не найден loadImage");
+  assert.match(loader[0], /toSameOriginMediaUrl\(src\)/, "loadImage обязан прогонять адрес через /media");
+  assert.match(loader[0], /img\.src = url/, "в Image нужно отдавать уже переведённый адрес");
+  const csp = fs.readFileSync("src/proxy.ts", "utf8");
+  assert.match(csp, /img-src 'self' data: blob:/, "CSP: внешних CDN в img-src нет");
+  assert.doesNotMatch(csp, /img-src[^"]*cloudinary/, "Cloudinary не должен попадать в img-src");
 });

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createPcWorkingStore, readPcWorkingStore, replacePcCleanBaseline, restorePcWorkingSnapshot, copyPcWorkingStore, type PcWorkingStore } from "./pc-working-store";
+import { buildSqlDataDump, sqlDumpFilename } from "./sql-data-dump";
 import type { PublicBackup } from "./merge-public-snapshots";
 
 export type PcLocalSettings = { version:1; root:string; computerId:string; source:"primary"|"secondary"; mode:"remote"|"readonly"; liveEnabled?:boolean; archivesEnabled?:boolean; autoManaged?:boolean };
@@ -68,12 +69,22 @@ export function setPcLocalMode(mode:"remote"|"readonly") {
     return pcLocalStatus();
   });
 }
-/** Existing Downloads only: never guess a missing, redirected or inaccessible folder. */
+/** Стандартная папка пользователя на этом ПК: Documents, иначе Downloads. */
+function standardPcUserRoot():string {
+  for (const name of ["Documents","Downloads"]) {
+    const candidate=path.join(os.homedir(),name);
+    try { if (fs.statSync(candidate).isDirectory()) return candidate; } catch { /* берём следующую */ }
+  }
+  throw new Error("На этом ПК не найдены ни Documents, ни Downloads. Укажите папку для локальной копии вручную в админке.");
+}
+/** Существующие Documents/Downloads: отсутствующая или перенаправленная папка не угадывается. */
 export function defaultPcDownloadsRoot():string {
   if(!isPcLocalServer())throw new Error("Путь ПК доступен только при запуске сайта на этом компьютере.");
-  const root=process.env.SGT_PC_DOWNLOADS_DIR || path.join(os.homedir(),"Downloads");
-  if(!path.isAbsolute(root))throw new Error("Путь загрузок ПК должен быть абсолютным.");
-  try {if(!fs.statSync(root).isDirectory())throw new Error("not directory");} catch {throw new Error("Папка Downloads не найдена или недоступна. Укажите существующую папку ПК в админке.");}
+  // По умолчанию — стандартная папка пользователя: Documents, иначе Downloads
+  // (порядок задает defaultPcBackupRoot). Переопределение — SGT_PC_BACKUP_DIR.
+  const root=process.env.SGT_PC_BACKUP_DIR || process.env.SGT_PC_DOWNLOADS_DIR || standardPcUserRoot();
+  if(!path.isAbsolute(root))throw new Error("Путь папки резервных копий на ПК должен быть абсолютным.");
+  try {if(!fs.statSync(root).isDirectory())throw new Error("not directory");} catch {throw new Error("Папка Documents или Downloads не найдена или недоступна. Укажите существующую папку ПК в админке.");}
   return root;
 }
 
@@ -189,6 +200,64 @@ export function recordPcArchiveStatus(now:Date,result:{created:boolean;file?:str
   const file=archiveStatusPath();fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});const tmp=`${file}.${crypto.randomUUID()}.tmp`;let fd:number|undefined;
   try{fd=fs.openSync(tmp,'wx',0o600);fs.writeFileSync(fd,JSON.stringify(next));fs.fsyncSync(fd);fs.closeSync(fd);fd=undefined;fs.renameSync(tmp,file);}
   finally{if(fd!==undefined)fs.closeSync(fd);try{fs.unlinkSync(tmp)}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}}
+}
+
+/** Atomic single-file write with the same guarantees as the working database file. */
+function writePcText(file: string, text: string, onlyIfMissing = false): boolean {
+  const dir = path.dirname(file);
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e; }
+  const stat = fs.lstatSync(dir);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Папка копии на ПК должна быть обычной папкой, не ссылкой.");
+  if (onlyIfMissing) {
+    try { fs.lstatSync(file); return false; } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+  } else {
+    try { const old = fs.lstatSync(file); if (!old.isFile() || old.isSymbolicLink()) throw new Error("Файл копии должен быть обычным файлом, не ссылкой."); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+  }
+  const temp = path.join(dir, `.sgt-dump-${crypto.randomUUID()}.tmp`);
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(temp, "wx", 0o600);
+    fs.writeFileSync(fd, text, "utf8");
+    fs.fsyncSync(fd);
+    fs.closeSync(fd); fd = undefined;
+    if (onlyIfMissing) {
+      // Жёсткая связь создаёт файл только если его нет — replace невозможна.
+      try { fs.linkSync(temp, file); } catch (e) { if ((e as NodeJS.ErrnoException).code === "EEXIST") return false; throw e; }
+    } else fs.renameSync(temp, file);
+    return true;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+    try { fs.unlinkSync(temp); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
+  }
+}
+
+/**
+ * Полный SQL-дамп данных из рабочей копии на этом ПК. Работает без Supabase и
+ * без интернета: текст берётся из того же файла, из которого админка читает
+ * данные в режиме локальной копии. Файлы кладутся рядом с sgt-working-db.json —
+ * в выбранную папку (по умолчанию Documents, затем Downloads; можно указать свою).
+ */
+export function writePcSqlDumpFiles(): { root: string; files: string[]; totalRows: number; bytes: number; exportedAt: string; warnings: string[] } {
+  if (!isPcLocalServer()) throw new Error("Локальный сервер ПК не включён.");
+  const c = loadSettings();
+  if (!c) throw new Error("Локальная копия не настроена.");
+  const store = readPcWorkingStore(c.root, c.computerId);
+  const dump = buildSqlDataDump(store.current, { sourceLabel: `Локальная копия на этом ПК · снимок ${c.source === "primary" ? "Supabase №1" : "Supabase №2"}` });
+  const dir = path.join(c.root, `pc-${c.computerId.toLowerCase()}`);
+  const files: string[] = [];
+  writePcText(path.join(dir, "sgt-full-data-current.sql"), dump.sql);
+  files.push(path.join(dir, "sgt-full-data-current.sql"));
+  // Датированная копия не перезаписывается: история снимков остаётся на диске.
+  // Время в имени нужно, чтобы два снимка одного дня не сливались в один файл.
+  const stamp = new Date(store.current.exportedAt);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const datedName = Number.isFinite(stamp.getTime())
+    ? `sgt-full-data-${stamp.getUTCFullYear()}-${pad(stamp.getUTCMonth() + 1)}-${pad(stamp.getUTCDate())}-${pad(stamp.getUTCHours())}${pad(stamp.getUTCMinutes())}.sql`
+    : dump.filename;
+  const dated = path.join(dir, datedName);
+  if (writePcText(dated, dump.sql, true)) files.push(dated);
+  return { root: c.root, files, totalRows: dump.totalRows, bytes: dump.bytes, exportedAt: store.current.exportedAt, warnings: dump.warnings };
 }
 
 /** Change the per-PC root only after a verified copy has been made; old data is retained. */
