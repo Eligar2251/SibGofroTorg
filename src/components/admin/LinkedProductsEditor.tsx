@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { toSameOriginMediaUrl } from "@/lib/media";
 import {
   ArrowDown,
   ArrowUp,
@@ -536,7 +537,7 @@ export function LinkedProductsEditor({
                       {cand.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={cand.imageUrl}
+                          src={toSameOriginMediaUrl(cand.imageUrl)}
                           alt=""
                           style={{
                             width: "100%",
@@ -733,7 +734,7 @@ export function LinkedProductsEditor({
                       {m.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={m.imageUrl}
+                          src={toSameOriginMediaUrl(m.imageUrl)}
                           alt=""
                           style={{
                             width: "100%",
@@ -869,7 +870,7 @@ export function LinkedProductsEditor({
                     {member.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={member.imageUrl}
+                        src={toSameOriginMediaUrl(member.imageUrl)}
                         alt=""
                         style={{
                           width: "100%",

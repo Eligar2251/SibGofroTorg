@@ -21,7 +21,7 @@
     "test:payments": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/payment-export.test.mjs",
     "test:deal-archive": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/deal-archive.test.mjs",
     "test:export-api": "node --experimental-strip-types --import ./tests/api-register.mjs --test tests/api-payment-export.test.mjs",
-    "test:media": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/media-url.test.mjs tests/media-route.test.mjs",
+    "test:media": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/media-url.test.mjs tests/media-route.test.mjs tests/media-csp-audit.test.mjs",
     "test:assembly": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/warehouse-assembly.test.mjs",
     "test:assembly-api": "node --experimental-strip-types --import ./tests/api-register.mjs --test tests/api-warehouse-assemblies.test.mjs",
     "test:color-twin": "node --experimental-strip-types --import ./tests/ts-register.mjs --test tests/product-color-twin.test.mjs",
