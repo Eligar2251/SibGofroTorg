@@ -175,30 +175,47 @@ function DragNumberInput({
 const imageCache = new Map<string, HTMLImageElement>();
 
 function loadImage(src: string): Promise<HTMLImageElement> {
+  // CSP (src/proxy.ts) разрешает изображения только с собственного домена:
+  // img-src 'self' data: blob:. Ссылка вида https://res.cloudinary.com/… не
+  // загружается — браузер её блокирует, канвас остаётся пустым, и фото в
+  // конструкторе «не появляется», хотя заливка в Cloudinary прошла успешно.
+  // Поэтому внешний адрес переводим во внутренний /media/… (тот же модуль, что
+  // использует сервер для карточек), а data:/blob: оставляем как есть.
+  const url = toSameOriginMediaUrl(src) || src;
   return new Promise((resolve, reject) => {
-    if (imageCache.has(src)) {
-      const img = imageCache.get(src)!;
-      if (img.complete && img.naturalWidth > 0) {
-        resolve(img);
+    if (imageCache.has(url)) {
+      const cached = imageCache.get(url)!;
+      if (cached.complete && cached.naturalWidth > 0) {
+        resolve(cached);
         return;
       }
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("Не удалось загрузить изображение"));
+      cached.onload = () => resolve(cached);
+      cached.onerror = () => reject(loadImageError(url));
       return;
     }
     const img = new Image();
+    // Тот же источник и в кэше: canvas не «загрязняется», toDataURL работает.
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      imageCache.set(src, img);
+      imageCache.set(url, img);
       resolve(img);
     };
-    img.onerror = () => reject(new Error("Не удалось загрузить изображение"));
-    if (src.startsWith("data:")) {
-      img.src = src;
-    } else {
-      img.src = src;
-    }
+    img.onerror = () => reject(loadImageError(url));
+    img.src = url;
   });
+}
+
+function loadImageError(url: string): Error {
+  if (/^https?:\/\//i.test(url)) {
+    const host = url.replace(/^https?:\/\//, "").split("/")[0];
+    return new Error(
+      `Не удалось загрузить изображение: чужой хост ${host} блокирует политика безопасности сайта. ` +
+        "Оставьте ссылку на Cloudinary (она сама пойдёт через /media) или загрузите файл."
+    );
+  }
+  return new Error(
+    "Не удалось загрузить изображение через /media: проверьте NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME на сервере и доступность Cloudinary."
+  );
 }
 
 function applyFont(ctx: CanvasRenderingContext2D, el: PhotoTextElement) {
