@@ -603,6 +603,8 @@ export interface WarehouseStockRow {
   priceWholesale: number | null;
   purchasePrice?: number | null;
   isVisible: boolean;
+  /** TRUE — позиция-услуга: остаток не ведётся, в «Остатках» не показывается. */
+  isService?: boolean;
   // Вариативность
   isCuttable?: boolean | null;
   cutMetersPerRoll?: number | null;

@@ -46,6 +46,10 @@ export interface FirestoreProduct {
   promoLabelTextColor?: string | null | undefined;
   madeToOrder?: boolean | null | undefined;
   madeToOrderMinQty?: number | null | undefined;
+  /** Формат позиции: TRUE — услуга, а не складской товар.
+   *  Остаток/резерв/инвентаризация её не касаются, на сайте она не показывается
+   *  (см. lib/product-service.ts и supabase/migration_product_services.sql). */
+  isService?: boolean | null | undefined;
   // Вариативность рулон / метры (плёнка пузырчатая и т.п.)
   isCuttable?: boolean | null | undefined;
   cutMetersPerRoll?: number | null | undefined;

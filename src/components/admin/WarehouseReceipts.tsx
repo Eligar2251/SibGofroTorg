@@ -48,6 +48,8 @@ interface ReceiptItemDraft {
   productId: string;
   name: string;
   sku: string | null;
+  /** Услуга (не складская позиция): на приход по ней ничего не встанет. */
+  isService?: boolean;
   quantity: number | "";
   /** Пустая строка нужна, чтобы ноль можно было стереть и ввести своё число. */
   lineTotal: number | "";
@@ -407,7 +409,12 @@ export function ReceiptForm({
     }
   }
 
-  function addItem(p: PickerProduct) {
+  function addItem(p: PickerProduct, pickedQty?: number) {
+    // Количество приходит из «быстрого создания» позиции в пикере.
+    const startQty =
+      pickedQty != null && Number.isFinite(pickedQty) && pickedQty > 0
+        ? Math.round(pickedQty * 1000) / 1000
+        : 1;
     setItems((prev) => {
       const existing = prev.find((it) => it.productId === p.id);
       if (existing) return prev;
@@ -434,8 +441,10 @@ export function ReceiptForm({
           productId: p.id,
           name: p.name,
           sku: p.sku,
-          quantity: 1,
-          lineTotal: suggested > 0 ? suggested : "",
+          isService: Boolean((p as any).isService),
+          quantity: startQty,
+          // Для услуги цену берём как цену позиции, без «скидок закупки».
+          lineTotal: suggested > 0 ? suggested * startQty : "",
         },
       ];
     });
@@ -778,8 +787,12 @@ export function ReceiptForm({
               </div>
 
               <div className="admin-field">
-                <label className="admin-label">Товары</label>
-                <ProductPicker products={products} onPick={addItem} />
+                <label className="admin-label">Товары и услуги</label>
+                <ProductPicker
+                  products={products}
+                  onPick={addItem}
+                  createLabel="Новая позиция (товар или услуга)"
+                />
               </div>
 
               <div className="admin-field" style={{ marginTop: 12 }}>
@@ -911,6 +924,21 @@ export function ReceiptForm({
                           {it.name}
                           {it.sku && (
                             <span className="wh-item-row__sku">{it.sku}</span>
+                          )}
+                          {it.isService && (
+                            <span
+                              className="admin-badge"
+                              style={{
+                                marginLeft: 6,
+                                fontSize: 10,
+                                padding: "0 4px",
+                                background: "rgba(16,122,87,0.12)",
+                                border: "1px solid rgba(16,122,87,0.28)",
+                              }}
+                              title="Позиция-услуга: на склад ничего не приходует и не списывает"
+                            >
+                              услуга
+                            </span>
                           )}
                           {qty > 0 && sum > 0 && (
                             <span className="wh-item-row__hint">

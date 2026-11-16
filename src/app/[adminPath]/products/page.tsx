@@ -71,6 +71,7 @@ export default async function AdminProductsPage({
     promoLabelTextColor: p.promoLabelTextColor ?? null,
     madeToOrder: p.madeToOrder ?? false,
     madeToOrderMinQty: (p as any).madeToOrderMinQty ?? null,
+    isService: (p as any).isService === true,
     isCuttable: (p as any).isCuttable ?? false,
     cutMetersPerRoll: (p as any).cutMetersPerRoll ?? null,
     cutPricePerMeter: (p as any).cutPricePerMeter ?? null,

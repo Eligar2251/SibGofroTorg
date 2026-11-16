@@ -12,6 +12,7 @@ import {
 import { saveProductLinkForProduct } from "@/lib/product-links-store";
 import { requireAdminApi } from "@/lib/auth";
 import { isValidBarcode } from "@/lib/qr";
+import { normalizeServiceFlag } from "@/lib/product-service";
 
 export async function PUT(
   request: NextRequest,
@@ -110,10 +111,18 @@ export async function PATCH(
       "purchasePrice",
       "sku",
       "name",
+      // Формат позиции: «услуга» вместо складского товара.
+      "isService",
     ]);
     const payload: Record<string, unknown> = {};
     for (const key of allowed) {
       if (body[key] !== undefined) payload[key] = body[key];
+    }
+    if (payload.isService !== undefined) {
+      payload.isService = normalizeServiceFlag(payload.isService);
+      // Если позицию только что сделали услугой, остаток в этом же запросе
+      // не применяем: у услуги склада нет, а цифры уже ни к чему.
+      if (payload.isService === true) delete payload.stockQty;
     }
     if (Object.keys(payload).length === 0) {
       return NextResponse.json(

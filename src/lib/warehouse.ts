@@ -10,6 +10,7 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { getAdminDb } from "./supabase";
 import { getProductEffectivePrice } from "./types";
 import { isAutoPurposeForDocNumbers } from "./payment-purpose";
+import { filterStockAffectingItems, normalizeServiceFlag } from "./product-service";
 // Прямые правки счетов владельцем: подмешиваются в остатки кассы.
 import { getMoneyAdjustments } from "./money-accounts";
 // Ревизия пишет остатки напрямую — нужно сбросить memory-кеш товаров,
@@ -783,17 +784,58 @@ export async function deleteCounterparty(id: string): Promise<void> {
  * показывает нехватку и гарантирует, что возврат восстановит остаток
  * ровно до исходного значения.
  */
+/**
+ * Какие из позиций являются услугами (products.is_service). Услуга склад не
+ * двигает вообще: не приходуются, не списывается, не резервируется.
+ *
+ * БД без supabase/migration_product_services.sql отдаёт ошибку «колонки нет» —
+ * тогда считаем, что услуг нет, и склад работает ровно как раньше.
+ */
+async function serviceProductIdsOf(ids: unknown): Promise<Set<string>> {
+  const unique = [
+    ...new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map((id) => String(id ?? "").trim())
+        .filter(Boolean)
+    ),
+  ];
+  if (unique.length === 0) return new Set();
+  const db = getAdminDb();
+  const { data, error } = await db
+    .from("products")
+    .select("id")
+    .in("id", unique)
+    .eq("is_service", true);
+  if (error) {
+    console.warn("[warehouse] is_service недоступен — считаем все позиции товарами:", (error as any).message);
+    return new Set();
+  }
+  return new Set((data || []).map((row: any) => String(row.id)));
+}
+
+async function isServiceProductId(productId: string): Promise<boolean> {
+  return (await serviceProductIdsOf([productId])).has(String(productId));
+}
+
 async function adjustStock(productId: string, delta: number): Promise<void> {
   const id = String(productId || "");
   const qty = Number(delta) || 0;
   if (!id || qty === 0) return;
 
   const db = getAdminDb();
-  const { data: product, error: selectError } = await db
+  let { data: product, error: selectError } = await db
     .from("products")
-    .select("stock_qty")
+    .select("stock_qty, is_service")
     .eq("id", id)
     .maybeSingle();
+  // Миграция услуг не применена — читаем остаток без флага.
+  if (selectError && /is_service/i.test(String((selectError as any).message || ""))) {
+    ({ data: product, error: selectError } = await db
+      .from("products")
+      .select("stock_qty")
+      .eq("id", id)
+      .maybeSingle());
+  }
 
   if (selectError) {
     throw new Error(`Не удалось прочитать остаток товара ${id}: ${selectError.message}`);
@@ -801,6 +843,7 @@ async function adjustStock(productId: string, delta: number): Promise<void> {
   if (!product) {
     throw new Error(`Товар ${id} не найден при изменении остатка`);
   }
+  if (normalizeServiceFlag((product as any).is_service)) return;
 
   const newQty = Number(product.stock_qty || 0) + qty;
   const { error: updateError } = await db
@@ -824,7 +867,10 @@ async function adjustStock(productId: string, delta: number): Promise<void> {
 }
 
 async function applyStockDelta(items: StockDocItem[], direction: 1 | -1): Promise<void> {
-  for (const item of Array.isArray(items) ? items : []) {
+  const list = Array.isArray(items) ? items : [];
+  // Услуги отфильтрованы разом — иначе на каждую строку был бы запрос к БД.
+  const services = await serviceProductIdsOf(list.map((it) => it?.productId));
+  for (const item of filterStockAffectingItems(list, services)) {
     await adjustStock(item.productId, direction * (Number(item.quantity) || 0));
   }
 }
@@ -952,6 +998,11 @@ async function returnLegacyCompletedDealToStock(deal: {
 
 export async function setWarehouseStock(productId: string, quantity: number): Promise<void> {
   const db = getAdminDb();
+  if (await isServiceProductId(productId)) {
+    throw new Error(
+      "Услуга не имеет склада: остаток по ней не заполняется. Измените цену в карточке позиции."
+    );
+  }
   const rawQty = Number(quantity);
   if (!Number.isFinite(rawQty)) throw new Error("Остаток должен быть числом");
   // Отрицательный остаток — допустимый учётный долг: он показывает,
@@ -1009,8 +1060,16 @@ export async function applyStockRevision(items: StockRevisionItem[]): Promise<{
   const db = getAdminDb();
   const changes: { productId: string; name: string; from: number; to: number; diff: number; variantId?: string | null; variantName?: string | null }[] = [];
   let skipped = 0;
+  // Инвентаризация считается по складу, а услуга на складе не лежит.
+  const revisionServices = await serviceProductIdsOf(
+    (Array.isArray(items) ? items : []).map((item: any) => item?.productId)
+  );
 
   for (const item of items) {
+    if (revisionServices.has(String(item?.productId || "").trim())) {
+      skipped += 1;
+      continue;
+    }
     const productId = String(item.productId || "").trim();
     if (!productId) {
       skipped += 1;
@@ -5009,14 +5068,24 @@ export async function cancelWebsiteOrderByCustomer(orderId: string): Promise<voi
 export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
   const db = getAdminDb();
   const baseCols = "id, name, sku, stock_qty, stock_warn_qty, in_stock, price, price_wholesale, purchase_price, is_visible, is_cuttable, cut_meters_per_roll, cut_price_per_meter, cut_unit_name, dimension_length, dimension_width, dimension_height, dimension_unit";
-  let { data, error } = await db.from("products")
-    .select(`${baseCols}, dimension_values`)
-    .order("name", { ascending: true });
-  // БД без migration_dimension_profiles.sql — читаем без dimension_values.
-  if (error && /dimension_values/.test(String(error.message || ""))) {
-    ({ data, error } = await db.from("products").select(baseCols).order("name", { ascending: true }) as any);
+  // Колонки, добавленные отдельными миграциями: в старой БД их может не быть,
+  // тогда читаем без них (позиции не должны исчезать из-за миграции).
+  const cols = [...baseCols.split(",").map((c) => c.trim()), "dimension_values", "is_service"];
+  let data: any[] | null = null;
+  for (;;) {
+    const res = await db
+      .from("products")
+      .select(cols.join(", "))
+      .order("name", { ascending: true });
+    if (!res.error) {
+      data = res.data;
+      break;
+    }
+    const msg = String((res.error as any).message || "");
+    const missing = cols.find((col) => new RegExp(`\\b${col}\\b`).test(msg));
+    if (!missing) throw res.error;
+    cols.splice(cols.indexOf(missing), 1);
   }
-  if (error) throw error;
   return (data || []).map((row: any) => ({
     id: row.id, name: row.name, sku: row.sku || null,
     stockQty: Number(row.stock_qty || 0),
@@ -5026,6 +5095,9 @@ export async function getWarehouseStock(): Promise<WarehouseStockRow[]> {
     priceWholesale: row.price_wholesale != null ? Number(row.price_wholesale) : null,
     purchasePrice: row.purchase_price != null ? Number(row.purchase_price) : null,
     isVisible: row.is_visible ?? true,
+    // Услуга — строка учёта без склада: её не показывают в «Остатках»,
+    // по ней не считают резерв и инвентаризацию.
+    isService: row.is_service === true,
     isCuttable: row.is_cuttable ?? false,
     cutMetersPerRoll: row.cut_meters_per_roll != null ? Number(row.cut_meters_per_roll) : null,
     cutPricePerMeter: row.cut_price_per_meter != null ? Number(row.cut_price_per_meter) : null,

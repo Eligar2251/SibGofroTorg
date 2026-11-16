@@ -41,6 +41,8 @@ interface ProductItem {
   promoLabelTextColor?: string | null;
   madeToOrder?: boolean | null;
   madeToOrderMinQty?: number | null;
+  /** Услуга, а не складской товар (остаток не ведётся, на сайте нет). */
+  isService?: boolean | null;
   isCuttable?: boolean | null;
   cutMetersPerRoll?: number | null;
   cutPricePerMeter?: number | null;
@@ -68,6 +70,8 @@ export function ProductListClient({
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedStock, setSelectedStock] = useState<"all" | "in" | "out">("all");
   const [selectedVisibility, setSelectedVisibility] = useState<"all" | "visible" | "hidden">("all");
+  // «Формат»: услуги — позиции учёта без склада, их удобно отфильтровывать отдельно.
+  const [selectedKind, setSelectedKind] = useState<"all" | "goods" | "service">("all");
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -113,6 +117,8 @@ export function ProductListClient({
       if (selectedStock === "out" && p.stockQty > 0) return false;
       if (selectedVisibility === "visible" && !p.isVisible) return false;
       if (selectedVisibility === "hidden" && p.isVisible) return false;
+      if (selectedKind === "service" && !p.isService) return false;
+      if (selectedKind === "goods" && p.isService) return false;
       if (!query) return true;
       return (
         (p.name && p.name.toLowerCase().includes(query)) ||
@@ -120,7 +126,7 @@ export function ProductListClient({
         (p.barcode && p.barcode.includes(digits))
       );
     });
-  }, [items, deferredSearch, selectedCategory, selectedStock, selectedVisibility]);
+  }, [items, deferredSearch, selectedCategory, selectedStock, selectedVisibility, selectedKind]);
 
   // Длинный каталог рендерим кусками (use-windowed-list): на слабых
   // машинах DOM из сотен строк с фото — главная причина рывков при
@@ -347,6 +353,18 @@ export function ProductListClient({
 
         <select
           className="admin-select"
+          value={selectedKind}
+          onChange={(e) => setSelectedKind(e.target.value as "all" | "goods" | "service")}
+          style={{ minWidth: 150 }}
+          title="Товары со складом или только услуги учёта"
+        >
+          <option value="all">Товары и услуги</option>
+          <option value="goods">Только товары</option>
+          <option value="service">Только услуги</option>
+        </select>
+
+        <select
+          className="admin-select"
           value={selectedVisibility}
           onChange={(e) => setSelectedVisibility(e.target.value as "all" | "visible" | "hidden")}
           style={{ minWidth: 150 }}
@@ -516,6 +534,22 @@ export function ProductListClient({
                               </span>
                             )}
                           </div>
+                          {product.isService && (
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                padding: "1px 6px",
+                                borderRadius: 5,
+                                background: "rgba(16,122,87,0.1)",
+                                color: "var(--adm-pine)",
+                                border: "1px solid rgba(16,122,87,0.28)",
+                              }}
+                              title="Позиция-услуга: участвует в поставках и заказах, но остаток на складе по ней не ведётся"
+                            >
+                              услуга
+                            </span>
+                          )}
                           <div className="admin-product-sku">
                             {product.sku || "—"}
                           </div>
@@ -558,7 +592,11 @@ export function ProductListClient({
                       <Link
                         href={`/${adminPath}/warehouse?tab=stock&product=${product.id}`}
                         prefetch={false}
-                        title="Открыть расширенную сводку: заказы, поступления и недостача"
+                        title={
+                          product.isService
+                            ? "У услуги остатка на складе нет — сводка по позициям документа"
+                            : "Открыть расширенную сводку: заказы, поступления и недостача"
+                        }
                       >
                         <span
                           className={`admin-stock-count${
@@ -567,7 +605,11 @@ export function ProductListClient({
                               : ""
                           }`}
                         >
-                          {product.isCuttable && Number(product.cutMetersPerRoll) > 0 ? formatCutStock(product.stockQty, product.cutMetersPerRoll) : `${product.stockQty.toLocaleString("ru-RU")} шт.`}
+                          {product.isService
+                            ? "не склад"
+                            : product.isCuttable && Number(product.cutMetersPerRoll) > 0
+                            ? formatCutStock(product.stockQty, product.cutMetersPerRoll)
+                            : `${product.stockQty.toLocaleString("ru-RU")} шт.`}
                         </span>
                       </Link>
                       {product.isCuttable && Number(product.cutMetersPerRoll) > 0 && (

@@ -2957,6 +2957,82 @@ body:has(.admin-modal-overlay) {
   text-align: center;
 }
 
+/* ── Быстрое создание позиции (товар/услуга) прямо в пикере ── */
+
+.wh-picker__list--creating {
+  max-height: 420px;
+}
+
+.wh-picker__create {
+  position: sticky;
+  bottom: 0;
+  background: var(--adm-card);
+  border-top: 1px solid var(--adm-border-mid);
+  padding: 6px 8px;
+}
+
+.wh-picker__create-open {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 6px;
+  border: 1px dashed var(--adm-border-mid);
+  border-radius: var(--adm-r-sm);
+  background: none;
+  color: var(--adm-ink);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wh-picker__create-open:hover {
+  background: var(--adm-paper);
+}
+
+.wh-picker__create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 2px;
+}
+
+.wh-picker__create-row {
+  display: flex;
+  gap: 6px;
+}
+
+.wh-picker__create-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.wh-picker__create-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wh-picker__create-hint {
+  font-size: 11px;
+  color: var(--adm-sand);
+}
+
+.wh-picker__create-error {
+  font-size: 12px;
+  color: var(--adm-red);
+  background: var(--adm-red-bg);
+  border-radius: var(--adm-r-sm);
+  padding: 5px 7px;
+}
+
 /* ── Переиспользуемый выбор с поиском (SearchPicker) ── */
 .spicker {
   position: relative;

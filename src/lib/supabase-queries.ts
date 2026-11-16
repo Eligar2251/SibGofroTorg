@@ -54,6 +54,7 @@ import {
   calculateBoxVolumeLiters,
   normalizeProductLabelColor,
 } from "./product-fields";
+import { normalizeServiceFlag } from "./product-service";
 import {
   parseHomeTileKind,
   productMatchesTile,
@@ -189,6 +190,18 @@ function isMissingCuttableColumnError(err: any): boolean {
   );
 }
 
+function isMissingServiceColumnError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || "").toLowerCase();
+  if (!msg.includes("is_service")) return false;
+  return (
+    err.code === "PGRST204" ||
+    err.code === "42703" ||
+    msg.includes("schema cache") ||
+    msg.includes("does not exist")
+  );
+}
+
 function isMissingPurchasePriceColumnError(err: any): boolean {
   if (!err) return false;
   const msg = String(err.message || err.details || "").toLowerCase();
@@ -296,6 +309,8 @@ function mapProductRow(row: any): FirestoreProduct {
     madeToOrder: row.made_to_order ?? false,
     madeToOrderMinQty: row.made_to_order_min_qty != null ? Number(row.made_to_order_min_qty) : null,
     isCuttable: row.is_cuttable ?? false,
+    /** Услуга, а не складской товар (см. lib/product-service.ts). */
+    isService: row.is_service === true,
     cutMetersPerRoll: row.cut_meters_per_roll != null ? Number(row.cut_meters_per_roll) : null,
     cutPricePerMeter: row.cut_price_per_meter != null ? Number(row.cut_price_per_meter) : null,
     cutUnitName: row.cut_unit_name || "м",
@@ -879,18 +894,22 @@ const BULK_EDITOR_COLUMNS = [
   "cut_meters_per_roll",
   "cut_price_per_meter",
   "cut_unit_name",
+  "is_service",
   "barcode",
 ];
 
 /** Колонки, добавленные отдельными миграциями; в БД без них редактор
  *  продолжает работать, просто без закупочной цены и штрихкода. */
 const BULK_EDITOR_COLUMNS_WITHOUT_OPTIONAL = BULK_EDITOR_COLUMNS.filter(
-  (column) => column !== "purchase_price" && column !== "barcode"
+  (column) =>
+    column !== "purchase_price" && column !== "barcode" && column !== "is_service"
 );
 
 function isMissingOptionalBulkColumnError(err: any): boolean {
   return (
-    isMissingPurchasePriceColumnError(err) || isMissingBarcodeColumnError(err)
+    isMissingPurchasePriceColumnError(err) ||
+    isMissingBarcodeColumnError(err) ||
+    isMissingServiceColumnError(err)
   );
 }
 
@@ -1105,6 +1124,7 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
     made_to_order: data.madeToOrder ?? false,
     made_to_order_min_qty: data.madeToOrderMinQty ?? null,
     is_cuttable: data.isCuttable ?? false,
+    is_service: normalizeServiceFlag(data.isService),
     cut_meters_per_roll: data.cutMetersPerRoll ?? null,
     cut_price_per_meter: data.cutPricePerMeter ?? null,
     cut_unit_name: data.cutUnitName || "м",
@@ -1195,6 +1215,16 @@ export async function createProduct(data: Record<string, any>): Promise<{ id: st
       if (retry7.error) throw retry7.error;
       result = retry7.data;
       insertErr = null;
+    } else if (isMissingServiceColumnError(first.error)) {
+      console.warn(
+        "[products] Колонки is_service нет — товар записан как обычный. " +
+          "Выполните supabase/migration_product_services.sql в Supabase."
+      );
+      const { is_service: _svc, ...payloadNoService } = payload;
+      const retry8 = await db.from("products").insert(payloadNoService).select("id").single();
+      if (retry8.error) throw retry8.error;
+      result = retry8.data;
+      insertErr = null;
     }
   } else {
     result = first.data;
@@ -1235,6 +1265,7 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
     tags: "tags",
     promoLabelTextColor: "promo_label_text_color",
     madeToOrder: "made_to_order", madeToOrderMinQty: "made_to_order_min_qty",
+    isService: "is_service",
     isCuttable: "is_cuttable", cutMetersPerRoll: "cut_meters_per_roll", cutPricePerMeter: "cut_price_per_meter", cutUnitName: "cut_unit_name",
     discountType: "discount_type", discountValue: "discount_value",
     discountBadge: "discount_badge", isVisible: "is_visible",
@@ -1314,6 +1345,9 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
   if (data.isCuttable !== undefined) {
     payload.is_cuttable = Boolean(data.isCuttable);
   }
+  if (data.isService !== undefined) {
+    payload.is_service = normalizeServiceFlag(data.isService);
+  }
   if (data.cutMetersPerRoll !== undefined) {
     payload.cut_meters_per_roll = data.cutMetersPerRoll == null || data.cutMetersPerRoll === ""
       ? null
@@ -1364,6 +1398,14 @@ export async function updateProduct(id: string, data: Record<string, any>): Prom
       ...payloadNoLabelColors
     } = payload;
     ({ error } = await db.from("products").update(payloadNoLabelColors).eq("id", id));
+  }
+  if (error && isMissingServiceColumnError(error) && "is_service" in payload) {
+    console.warn(
+      "[products] Колонки is_service нет — сохранение без флага услуги. " +
+        "Выполните supabase/migration_product_services.sql в Supabase."
+    );
+    const { is_service: _svc, ...payloadNoService } = payload;
+    ({ error } = await db.from("products").update(payloadNoService).eq("id", id));
   }
   if (error && isMissingSaleColumnError(error) && "is_sale" in payload) {
     console.warn("[products] Колонки is_sale нет — сохранение без флага распродажи");
