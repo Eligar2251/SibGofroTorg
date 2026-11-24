@@ -360,7 +360,17 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
     if (showOnlySelected) {
       list = list.filter((p) => selectedIds.has(p.id));
     }
-    return list;
+    return [...list].sort((a, b) => {
+      const catA = a.categoryName || "";
+      const catB = b.categoryName || "";
+      if (!catA && catB) return 1;
+      if (catA && !catB) return -1;
+      const catCmp = catA.localeCompare(catB, "ru", { sensitivity: "base" });
+      if (catCmp !== 0) return catCmp;
+      return (a.name || "").localeCompare(b.name || "", "ru", {
+        sensitivity: "base",
+      });
+    });
   }, [products, selectedCategory, search, showOnlySelected, selectedIds]);
 
   function toggleProduct(id: string) {
@@ -388,10 +398,20 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
     });
   }
 
-  const selectedProducts = useMemo(
-    () => products.filter((p) => selectedIds.has(p.id)),
-    [products, selectedIds]
-  );
+  const selectedProducts = useMemo(() => {
+    const list = products.filter((p) => selectedIds.has(p.id));
+    return list.sort((a, b) => {
+      const catA = a.categoryName || "";
+      const catB = b.categoryName || "";
+      if (!catA && catB) return 1;
+      if (catA && !catB) return -1;
+      const catCmp = catA.localeCompare(catB, "ru", { sensitivity: "base" });
+      if (catCmp !== 0) return catCmp;
+      return (a.name || "").localeCompare(b.name || "", "ru", {
+        sensitivity: "base",
+      });
+    });
+  }, [products, selectedIds]);
 
   /** Все строки печати: выбранные коробки + добавленные вручную */
   const allRows = useMemo<PrintRow[]>(
