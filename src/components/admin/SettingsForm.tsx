@@ -204,6 +204,7 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
       messenger_banner_color: "#1b2b4b",
       box_badge_enabled: "true",
       box_badge_text: "подобрать коробку под ваши размеры",
+      emergency_banner_enabled: "true",
       [CASH_CARD_HOLDER_SETTING_KEY]: DEFAULT_CASH_CARD_HOLDER,
       // Карта ЮМ исторически заполнялась в «Сдаче кассы» — значение то же.
       bank_card_ym_holder: String(
@@ -1103,9 +1104,36 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
           )}
 
           {activeTab === "notifications" && (
-            <div className="admin-card" style={cardStyle}>
-              <div className="admin-card__pad" style={cardPadStyle}>
-                <h2 className="admin-h2" style={{ margin: 0 }}>Уведомления о заявках (MAX)</h2>
+            <>
+              <div className="admin-card" style={cardStyle}>
+                <div className="admin-card__pad" style={cardPadStyle}>
+                  <h2 className="admin-h2" style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                    <AlertTriangle size={16} /> Плашка о проблемах на сайте
+                  </h2>
+                  <p className="admin-hint" style={{ margin: 0 }}>
+                    Показывает вверху сайта красную плашку о временных проблемах
+                    (аварийный режим). Включайте, когда на сайте сбои, и выключайте
+                    после восстановления.
+                  </p>
+                  <label className="admin-check" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={values.emergency_banner_enabled !== "false"}
+                      onChange={(e) =>
+                        setValues({
+                          ...values,
+                          emergency_banner_enabled: e.target.checked ? "true" : "false",
+                        })
+                      }
+                    />
+                    <span>Показывать плашку о проблемах на сайте</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="admin-card" style={cardStyle}>
+                <div className="admin-card__pad" style={cardPadStyle}>
+                  <h2 className="admin-h2" style={{ margin: 0 }}>Уведомления о заявках (MAX)</h2>
                 <div style={{ color: "var(--adm-muted)", fontSize: 13, overflowWrap: "anywhere" }}>
                   Сюда приходят новые заявки с сайта. Бот берёт токен и chat_id из
                   переменных окружения <code>MAX_BOT_TOKEN</code> и{" "}
@@ -1244,6 +1272,7 @@ export function SettingsForm({ settings, adminPath }: SettingsFormProps) {
                 </div>
               </div>
             </div>
+            </>
           )}
 
           {activeTab === "privacy" && (

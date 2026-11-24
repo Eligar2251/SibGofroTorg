@@ -100,6 +100,9 @@ export async function GET() {
           enabled: settings.box_badge_enabled !== "false",
           text: (settings.box_badge_text || "подобрать коробку под ваши размеры").trim(),
         },
+        emergencyBanner: {
+          enabled: settings.emergency_banner_enabled !== "false",
+        },
       },
       {
         headers: {
@@ -131,6 +134,9 @@ export async function GET() {
         boxBadge: {
           enabled: true,
           text: "подобрать коробку под ваши размеры",
+        },
+        emergencyBanner: {
+          enabled: true,
         },
       },
       {

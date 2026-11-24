@@ -2,21 +2,25 @@
 // FILE: src/components/layout/BegetEmergencyBanner.tsx
 // Информационный баннер об аварийном режиме сайта из-за проблем
 // в дата-центре Beget с прямыми контактами для клиентов.
-// По умолчанию включён; чтобы скрыть после восстановления ДЦ без
-// правки кода, достаточно задать NEXT_PUBLIC_EMERGENCY_BANNER=0 в .env.
+// Включается/отключается в админке (Настройки → Уведомления).
+// NEXT_PUBLIC_EMERGENCY_BANNER=0 в .env принудительно скрывает баннер.
 // =========================================================
 
 "use client";
 
 import { AlertTriangle, Mail, Phone } from "lucide-react";
+import { useSiteSettings } from "@/hooks/use-site-settings";
 
 const BANNER_ENV = process.env.NEXT_PUBLIC_EMERGENCY_BANNER;
-const IS_ENABLED =
-  BANNER_ENV === undefined ||
-  (BANNER_ENV !== "0" && BANNER_ENV.toLowerCase() !== "false");
+const ENV_DISABLED =
+  BANNER_ENV !== undefined &&
+  (BANNER_ENV === "0" || BANNER_ENV.toLowerCase() === "false");
 
 export function BegetEmergencyBanner() {
-  if (!IS_ENABLED) return null;
+  const { emergencyBanner, ready } = useSiteSettings();
+
+  if (ENV_DISABLED) return null;
+  if (!ready || !emergencyBanner.enabled) return null;
 
   return (
     <div

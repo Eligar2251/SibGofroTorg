@@ -40,6 +40,10 @@ export interface BoxBadgeSettings {
   text: string;
 }
 
+export interface EmergencyBannerSettings {
+  enabled: boolean;
+}
+
 export interface SiteSettings {
   phone: string;
   phoneHref: string;
@@ -56,6 +60,7 @@ export interface SiteSettings {
   wastepaperPhoneHref: string;
   messengerBanner: MessengerBannerSettings;
   boxBadge: BoxBadgeSettings;
+  emergencyBanner: EmergencyBannerSettings;
   registrationField: "phone" | "email";
   ready: boolean;
 }
@@ -67,6 +72,10 @@ const EMPTY_MESSENGER_BANNER: MessengerBannerSettings = {
   whatsapp: { url: "", iconUrl: "" },
   max: { url: "", iconUrl: "" },
   channels: [],
+};
+
+const DEFAULT_EMERGENCY_BANNER: EmergencyBannerSettings = {
+  enabled: true,
 };
 
 let cache: SiteSettings | null = null;
@@ -121,6 +130,10 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         enabled: rawBoxBadge.enabled === false ? false : true,
         text: String(rawBoxBadge.text || "подобрать коробку под ваши размеры").trim() || "подобрать коробку под ваши размеры",
       };
+      const rawEmergencyBanner = data.emergencyBanner || {};
+      const emergencyBanner: EmergencyBannerSettings = {
+        enabled: rawEmergencyBanner.enabled === false ? false : true,
+      };
       const settings: SiteSettings = {
         phone,
         phoneHref: `tel:${phone.replace(/[^\d+]/g, "")}`,
@@ -135,6 +148,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
           : "",
         messengerBanner,
         boxBadge,
+        emergencyBanner,
         registrationField,
         ready: true,
       };
@@ -155,6 +169,7 @@ async function fetchSiteSettings(): Promise<SiteSettings> {
         wastepaperPhoneHref: "",
         messengerBanner: EMPTY_MESSENGER_BANNER,
         boxBadge: { enabled: true, text: "подобрать коробку под ваши размеры" },
+        emergencyBanner: DEFAULT_EMERGENCY_BANNER,
         registrationField: "phone",
         ready: false,
       };
@@ -186,6 +201,7 @@ export function useSiteSettings(): SiteSettings {
     wastepaperPhoneHref: "",
     messengerBanner: EMPTY_MESSENGER_BANNER,
     boxBadge: { enabled: true, text: "подобрать коробку под ваши размеры" },
+    emergencyBanner: DEFAULT_EMERGENCY_BANNER,
     registrationField: "phone",
     ready: false,
   });
