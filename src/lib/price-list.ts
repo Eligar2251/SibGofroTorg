@@ -277,6 +277,8 @@ export function markupForDiscount(baseMarkup: number, discount: number): number 
 export type PriceListRowInput = {
   /** Закупочная цена (из базы или введённая вручную). */
   purchase: number | null | undefined;
+  /** Обычная цена из карточки товара — используется как база, если нет ручной. */
+  defaultBase?: number | null;
   /** Ручная обычная цена: если задана, она важнее расчёта от закупки. */
   baseOverride?: number | null;
   /** Ручные цены столбцов: id столбца → цена. */
@@ -312,12 +314,13 @@ export function computePriceListRow(
 ): PriceListRowResult {
   const purchase = toPrice(input.purchase);
   const manualBase = toPrice(input.baseOverride);
+  const dbBase = toPrice(input.defaultBase);
   const factor = 1 + normalizeMarkup(input.baseMarkup) / 100;
   const computedBase =
     purchase !== null && factor > 0
       ? applyRounding(purchase * factor, input.rounding)
       : null;
-  const base = manualBase ?? computedBase;
+  const base = manualBase ?? dbBase ?? computedBase;
 
   const tiers: Record<string, number | null> = {};
   const manualTiers: Record<string, boolean> = {};
