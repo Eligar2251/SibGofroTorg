@@ -99,6 +99,7 @@ function loadPrefs(): {
   fields?: Record<FieldKey, boolean>;
   layout?: PrintLayout;
   orientation?: PageOrientation;
+  selectedIds?: string[];
 } {
   if (typeof window === "undefined") return {};
   try {
@@ -108,6 +109,7 @@ function loadPrefs(): {
       fields?: Record<FieldKey, boolean>;
       layout?: PrintLayout;
       orientation?: PageOrientation;
+      selectedIds?: string[];
     };
   } catch {
     return {};
@@ -270,9 +272,13 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
   }, [products]);
 
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => new Set(products.map((p) => p.id))
-  );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
+    if (Array.isArray(prefs.selectedIds)) {
+      const known = new Set(products.map((p) => p.id));
+      return new Set(prefs.selectedIds.filter((id) => known.has(id)));
+    }
+    return new Set(products.map((p) => p.id));
+  });
   const [fields, setFields] = useState<Record<FieldKey, boolean>>(
     () => ({ ...DEFAULT_FIELDS, ...(prefs.fields || {}) })
   );
@@ -312,17 +318,22 @@ export function BoxReportClient({ products }: { products: BoxProduct[] }) {
     () => editsRaw.subtitleEdit ?? null
   );
 
-  // Запоминаем выбор полей / макет
+  // Запоминаем выбор полей / макет / выбранные товары
   useEffect(() => {
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ fields, layout, orientation })
+        JSON.stringify({
+          fields,
+          layout,
+          orientation,
+          selectedIds: Array.from(selectedIds),
+        })
       );
     } catch {
       /* ignore */
     }
-  }, [fields, layout, orientation]);
+  }, [fields, layout, orientation, selectedIds]);
 
   // Запоминаем ручные правки
   useEffect(() => {
