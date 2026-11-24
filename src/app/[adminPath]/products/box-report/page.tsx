@@ -47,7 +47,7 @@ export default async function BoxReportPage({
 
   return (
     <div className="admin-stack">
-      <div className="admin-page-head">
+      <div className="admin-page-head no-print">
         <div>
           <h1 className="admin-h1">Отчёт по коробкам — печать и прайс A4</h1>
           <p className="admin-sub">
