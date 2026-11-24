@@ -780,6 +780,7 @@ export function PriceListClient({
         product.id,
         computePriceListRow({
           purchase: purchaseFor(product),
+          defaultBase: toPrice(product.price),
           baseOverride: entry?.base !== undefined ? toPrice(entry.base) : null,
           tierOverrides,
           baseMarkup: pricing.baseMarkup,
@@ -1578,7 +1579,8 @@ export function PriceListClient({
                 <span className="pl-step">2</span> Закупка, обычная цена и объёмы
               </h2>
               <p className="pl-section-sub">
-                Обычная цена = закупка × (1 + наценка). Цены столбцов = обычная
+                Обычная цена берётся из карточки товара (цена в базе); если её нет —
+                считается как закупка × (1 + наценка). Цены столбцов = обычная
                 цена × (1 − скидка столбца): чем больше объём, тем ниже цена.
                 Любую цену можно переписать вручную — она будет выделена.
               </p>
